@@ -1,0 +1,22 @@
+Usage:
+
+1. Install portaudio:
+
+    $ wget http://www.portaudio.com/archives/pa_stable_v190600_20161030.tgz
+    $ tar -xvzf pa_stable_v190600_20161030.tgz
+    $ cd portaudio
+    $ ./configure --disable-mac-universal
+    $ make
+    $ sudo make install
+
+2. Build zeros.c:
+
+    gcc zeros.c -Wall -o zeros -lportaudio
+
+3. Put on headphones, use a higly directional mic, or otherwise avoid letting
+   the output of this program mix with the input.
+
+4. Run it and whistle:
+
+    ./zeros
+
