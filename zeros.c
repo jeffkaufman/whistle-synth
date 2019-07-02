@@ -36,7 +36,7 @@
  * license above.
  */
 
-// derived from paex_read_write_wire.c by Jeff Kaufman
+// derived from paex_read_write_wire.c by Jeff Kaufman 2019-07
 
 #include <math.h>
 #include <stdio.h>
@@ -45,7 +45,7 @@
 #include "portaudio.h"
 
 #define SAMPLE_RATE       (44100)
-#define FRAMES_PER_BUFFER   (8)
+#define FRAMES_PER_BUFFER   (8)      // this is absurdly low, to minimize latency
 
 /* Select sample format. */
 #define PA_SAMPLE_TYPE  paFloat32
@@ -74,9 +74,7 @@ int main(void)
     float *sampleBlock = NULL;
     int numBytes;
 
-    printf("patest_read_write_wire.c\n"); fflush(stdout);
-    printf("sizeof(int) = %lu\n", sizeof(int)); fflush(stdout);
-    printf("sizeof(long) = %lu\n", sizeof(long)); fflush(stdout);
+    printf("zeros.c\n"); fflush(stdout);
 
     err = Pa_Initialize();
     if( err != paNoError ) goto error2;
@@ -84,23 +82,21 @@ int main(void)
     inputParameters.device = Pa_GetDefaultInputDevice(); /* default input device */
     printf( "Input device # %d.\n", inputParameters.device );
     inputInfo = Pa_GetDeviceInfo( inputParameters.device );
-    printf( "    Name: %s\n", inputInfo->name );
-    printf( "      LL: %g s\n", inputInfo->defaultLowInputLatency );
-    printf( "      HL: %g s\n", inputInfo->defaultHighInputLatency );
+    printf( "   Name: %s\n", inputInfo->name );
+    printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
 
     outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
     printf( "Output device # %d.\n", outputParameters.device );
     outputInfo = Pa_GetDeviceInfo( outputParameters.device );
     printf( "   Name: %s\n", outputInfo->name );
-    printf( "     LL: %g s\n", outputInfo->defaultLowOutputLatency );
-    printf( "     HL: %g s\n", outputInfo->defaultHighOutputLatency );
+    printf( "     LL: %.2fms\n", outputInfo->defaultLowOutputLatency*1000 );
 
-    inputParameters.channelCount = 1;
+    inputParameters.channelCount = 1;  // mono
     inputParameters.sampleFormat = PA_SAMPLE_TYPE;
     inputParameters.suggestedLatency = inputInfo->defaultLowInputLatency ;
     inputParameters.hostApiSpecificStreamInfo = NULL;
 
-    outputParameters.channelCount = 1;
+    outputParameters.channelCount = 1; // mono
     outputParameters.sampleFormat = PA_SAMPLE_TYPE;
     outputParameters.suggestedLatency = outputInfo->defaultLowOutputLatency;
     outputParameters.hostApiSpecificStreamInfo = NULL;
@@ -244,6 +240,9 @@ int main(void)
           }
         }
 
+        // This averaging makes the output mostly continuous.  It's kind of a
+        // low-pass filter, which keeps us from getting pops and crackles as
+        // frequency changes would normally give us non-continuous sine waves.
         val = (val + 15*last_out) / 16;
 
         sampleBlock[i] = val;
