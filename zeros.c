@@ -236,6 +236,9 @@ int main(void)
             samples_per_crossing <
             max_samples_per_crossing) {
           float e = sample_energy - 0.0003;
+          if (e > .1) {
+            e = .1;
+          }
           if (e > 0) {
             val = 5 * e * (mod_32_note + mod_16_note*.6 + mod_12_note*.1 + mod_8_note*.3);
           }
