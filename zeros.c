@@ -140,6 +140,8 @@ int main(void)
     float energy = 0;
     float sample_energy = 0;
 
+    float last_out = 0;
+
     int mod_32_loc = 0;  // five octaves down
     int mod_16_loc = 0;  // four octaves down
     int mod_8_loc  = 0;  // three octaves down
@@ -235,10 +237,14 @@ int main(void)
             max_samples_per_crossing) {
           float e = sample_energy - 0.0003;
           if (e > 0) {
-            val = 5 * e * (mod_32_note + mod_16_note*.4 + mod_12_note*0 + mod_8_note*.1);
+            val = 5 * e * (mod_32_note + mod_16_note*.6 + mod_12_note*.1 + mod_8_note*.3);
           }
         }
+
+        val = (val + 15*last_out) / 16;
+
         sampleBlock[i] = val;
+        last_out = val;
       }
     }
 
