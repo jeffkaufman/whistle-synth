@@ -47,6 +47,17 @@ note_names = {}
 for _, note_name, note_number in frequencies:
   note_names[note_number] = note_name
 
+# sines for values from 0*tau to 1*tau
+n_sines = 100
+sines = []
+for i in range(n_sines):
+  sines.append(math.sin(i/n_sines * math.tau))
+
+def sin(v):
+  # approximation of math.sin(v * math.tau)
+  return sines[(int(v*n_sines + 0.5)) % n_sines]
+
+
 def samples_to_frequency(samples):
   return samplerate/samples
 
@@ -130,23 +141,20 @@ class PitchDetect:
     # plain sine.
     #
     # Unfortunately the following is too slow in python.
-    mod_16_note = math.sin(
+    mod_16_note = sin(
       (self.samples_since_last_crossing + (
           self.samples_per_crossing * self.mod_16_loc)) /
-      (self.samples_per_crossing * 16) *
-      math.tau)
+      (self.samples_per_crossing * 16))
 
-    mod_12_note = math.sin(
+    mod_12_note = sin(
       (self.samples_since_last_crossing + (
           self.samples_per_crossing * self.mod_12_loc)) /
-      (self.samples_per_crossing * 12) *
-      math.tau)
+      (self.samples_per_crossing * 12))
 
-    mod_8_note = math.sin(
+    mod_8_note = sin(
       (self.samples_since_last_crossing + (
           self.samples_per_crossing * self.mod_8_loc)) /
-      (self.samples_per_crossing * 8) *
-      math.tau)
+      (self.samples_per_crossing * 8))
 
     if (min_samples_per_crossing <
         self.samples_per_crossing <
@@ -156,7 +164,7 @@ class PitchDetect:
         e = 0
 
       return e * (mod_16_note + mod_12_note + mod_8_note)
-
+      
 pd = PitchDetect()
 
 def callback(indata, outdata, frames, time, status):
