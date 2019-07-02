@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import math
 import sounddevice as sd
 from simplecoremidi import send_midi
 
@@ -39,6 +40,9 @@ frequencies = [
   (2793.826, 'F7',  101),
 ]
 
+min_samples_per_crossing = samplerate / frequencies[-1][0]
+max_samples_per_crossing = samplerate / frequencies[0][0]
+
 note_names = {}
 for _, note_name, note_number in frequencies:
   note_names[note_number] = note_name
@@ -57,26 +61,22 @@ def note_number(frequency):
 
 class PitchDetect:
   def __init__(self):
-    self.crossing = 0
+    self.samples_since_last_crossing = 0
     self.positive = True
     self.previous_sample = 0
-    
-    #self.s_window_size = 4
-    #self.s_index = 0
-    #self.s_window = [0]*self.s_window_size
 
-    self.e_window_size = 20
-    self.e_index = 0
-    self.e_window = [0]*self.e_window_size
-
-    self.last_note = None
-    self.last_e = None
+    self.samples_per_crossing = 40
 
     self.energy = 0
+    self.sample_energy = 0
+
+    self.mod_16_loc = 0   #  four octaves down
+    self.mod_8_loc  = 0   #  three octaves down
+    self.mod_12_loc = 0   #  three and a half octaves down
 
   def update(self, sample):
     self.energy += abs(sample)
-    self.crossing += 1
+    self.samples_since_last_crossing += 1
     if self.positive:
       if sample < 0:
         # Let's say we take samples at p and n:
@@ -104,51 +104,65 @@ class PitchDetect:
         first_negative = sample
         last_positive = self.previous_sample
         adjustment = first_negative / (last_positive - first_negative)
-        self.crossing -= adjustment
+        self.samples_since_last_crossing -= adjustment
+        self.samples_per_crossing = self.samples_since_last_crossing
 
         self.positive = False
 
-        #self.s_window[self.s_index] = self.crossing
-        #self.s_index = (self.s_index + 1) % self.s_window_size
+        self.sample_energy = self.energy / self.samples_per_crossing
 
-        self.e_window[self.e_index] = self.energy / self.crossing
-        self.e_index = (self.e_index + 1) % self.e_window_size
-
-        e = int(sum(self.e_window) / self.e_window_size / 2 * 127)
-        if e > 127:
-          e = 127
-
-        if e != self.last_e:
-          midi((0xb0, 11, e))
-
-        if e >= 40:
-          #f = samples_to_frequency(sum(self.s_window) / self.s_window_size)
-          f = samples_to_frequency(self.crossing)
-          cur_note = note_number(f)
-
-          if cur_note != self.last_note:
-            if self.last_note:
-              midi((0x80, self.last_note - 24, 0))  # turn off last note
-            if cur_note:
-              print('%.2f\t%.2f\t%s\t%s' % (f, self.crossing, note_names[cur_note], e))
-              midi((0x90, cur_note - 24, 100)) # turn on new note
-
-          self.last_note = cur_note
-
-        self.crossing = -adjustment
+        self.samples_since_last_crossing = -adjustment
         self.energy = 0
-        self.last_e = e
+
+        self.mod_16_loc = (self.mod_16_loc + 1) % 16
+        self.mod_12_loc = (self.mod_12_loc + 1) % 12
+        self.mod_8_loc  = (self.mod_8_loc  + 1) %  8
     else:
       if sample > 0:
         self.positive = True
     self.previous_sample = sample
 
+
+    # now synthesize
+    #
+    # self.samples_since_last_crossing / self.samples_per_crossing is
+    # approximately [0-1] and is our phase angle if we want to synthesize a
+    # plain sine.
+    #
+    # Unfortunately the following is too slow in python.
+    mod_16_note = math.sin(
+      (self.samples_since_last_crossing + (
+          self.samples_per_crossing * self.mod_16_loc)) /
+      (self.samples_per_crossing * 16) *
+      math.tau)
+
+    mod_12_note = math.sin(
+      (self.samples_since_last_crossing + (
+          self.samples_per_crossing * self.mod_12_loc)) /
+      (self.samples_per_crossing * 12) *
+      math.tau)
+
+    mod_8_note = math.sin(
+      (self.samples_since_last_crossing + (
+          self.samples_per_crossing * self.mod_8_loc)) /
+      (self.samples_per_crossing * 8) *
+      math.tau)
+
+    if (min_samples_per_crossing <
+        self.samples_per_crossing <
+        max_samples_per_crossing):
+      e = self.sample_energy - 0.1
+      if e < 0:
+        e = 0
+
+      return e * (mod_16_note + mod_12_note + mod_8_note)
+
 pd = PitchDetect()
 
-def callback(indata, frames, time, status):
-  for sample in indata:
-    pd.update(sample)
+def callback(indata, outdata, frames, time, status):
+  for i, sample in enumerate(indata):
+    outdata[i] = pd.update(sample)
 
-with sd.InputStream(device=None, channels=1, callback=callback, samplerate=samplerate):
+with sd.Stream(device=None, channels=1, callback=callback, samplerate=samplerate):
   while True:
     response = input()
