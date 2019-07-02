@@ -129,24 +129,32 @@ class PitchDetect:
     # approximately [0-1] and is our phase angle if we want to synthesize a
     # plain sine.
     #
-    # Unfortunately the following is too slow in python.
-    mod_16_note = math.sin(
-      (self.samples_since_last_crossing + (
-          self.samples_per_crossing * self.mod_16_loc)) /
-      (self.samples_per_crossing * 16) *
-      math.tau)
+    
+    if ((self.samples_since_last_crossing +
+         self.samples_per_crossing * self.mod_16_loc)
+        > (self.samples_per_crossing * 16 / 2)):
+      mod_16_note = 1
+    else:
+      mod_16_note = -1
 
-    mod_12_note = math.sin(
-      (self.samples_since_last_crossing + (
-          self.samples_per_crossing * self.mod_12_loc)) /
-      (self.samples_per_crossing * 12) *
-      math.tau)
+    if ((self.samples_since_last_crossing +
+         self.samples_per_crossing * self.mod_12_loc)
+        > (self.samples_per_crossing * 12 / 2)):
+      mod_12_note = 1
+    else:
+      mod_12_note = -1
 
-    mod_8_note = math.sin(
-      (self.samples_since_last_crossing + (
-          self.samples_per_crossing * self.mod_8_loc)) /
-      (self.samples_per_crossing * 8) *
-      math.tau)
+    if ((self.samples_since_last_crossing +
+         self.samples_per_crossing * self.mod_8_loc)
+        > (self.samples_per_crossing * 8 / 2)):
+      mod_8_note = 1
+    else:
+      mod_8_note = -1
+
+    if self.samples_since_last_crossing > self.samples_per_crossing/2:
+      note = 1
+    else:
+      note = -1
 
     if (min_samples_per_crossing <
         self.samples_per_crossing <
@@ -155,7 +163,9 @@ class PitchDetect:
       if e < 0:
         e = 0
 
-      return e * (mod_16_note + mod_12_note + mod_8_note)
+      #print ('16=%s\t12=%s\t8=%s' % (mod_16_note,mod_12_note,mod_8_note))
+      #return 0.1 * (mod_16_note + mod_12_note + mod_8_note)
+      return 0.2 * note
 
 pd = PitchDetect()
 
