@@ -134,7 +134,9 @@ int main(void)
     float previous_sample = 0;
     float samples_per_crossing = 40;
     float energy = 0;
+    float rms_energy = 0;
     float sample_energy = 0;
+    float sample_rms_energy = 0;
 
     float last_out = 0;
 
@@ -154,6 +156,7 @@ int main(void)
         float sample = sampleBlock[i];
 
         energy += sample > 0 ? sample : -sample;
+        rms_energy += sample*sample;
         samples_since_last_crossing++;
 
         if (positive) {
@@ -191,9 +194,11 @@ int main(void)
             positive = FALSE;
 
             sample_energy = energy / samples_per_crossing;
+            sample_rms_energy = rms_energy / samples_per_crossing;
 
             samples_since_last_crossing = -adjustment;
             energy = 0;
+            rms_energy = 0;
 
             mod_32_loc = (mod_32_loc + 1) % 32;
             mod_16_loc = (mod_16_loc + 1) % 16;
@@ -228,22 +233,30 @@ int main(void)
                                 (samples_per_crossing * 8));
 
         float val = 0;
-        if (min_samples_per_crossing <
-            samples_per_crossing <
-            max_samples_per_crossing) {
-          float e = sample_energy - 0.0003;
-          if (e > .1) {
-            e = .1;
-          }
+        float e = sample_energy - 0.003;
+        if (e > 1) {
+          e = 1;
+        } else if (e < 0) {
+          e = 0;
+        }
+        if (sample_rms_energy > 0.001 &&
+            samples_per_crossing > min_samples_per_crossing &&
+            samples_per_crossing < max_samples_per_crossing) {
           if (e > 0) {
-            val = 5 * e * (mod_32_note + mod_16_note*.6 + mod_12_note*.1 + mod_8_note*.3);
+            if (last_out == 0) {
+              mod_32_loc = 0;
+              mod_16_loc = 0;
+              mod_12_loc = 0;
+              mod_8_loc  = 0;
+            }
+            val = e * (mod_32_note * .3 + mod_16_note*.3 + mod_12_note*.1 + mod_8_note*.3);
           }
         }
 
         // This averaging makes the output mostly continuous.  It's kind of a
         // low-pass filter, which keeps us from getting pops and crackles as
         // frequency changes would normally give us non-continuous sine waves.
-        val = (val + 15*last_out) / 16;
+        val = (val + 31*last_out) / 32;
 
         sampleBlock[i] = val;
         last_out = val;
