@@ -83,22 +83,22 @@ int main(void)
     }
     int history_pos = 0;
 
-    printf("zeros.c\n"); fflush(stdout);
+    //printf("zeros.c\n"); fflush(stdout);
 
     err = Pa_Initialize();
     if( err != paNoError ) goto error2;
 
     inputParameters.device = Pa_GetDefaultInputDevice(); /* default input device */
-    printf( "Input device # %d.\n", inputParameters.device );
+    //printf( "Input device # %d.\n", inputParameters.device );
     inputInfo = Pa_GetDeviceInfo( inputParameters.device );
-    printf( "   Name: %s\n", inputInfo->name );
-    printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
+    //printf( "   Name: %s\n", inputInfo->name );
+    //printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
 
     outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
-    printf( "Output device # %d.\n", outputParameters.device );
+    //printf( "Output device # %d.\n", outputParameters.device );
     outputInfo = Pa_GetDeviceInfo( outputParameters.device );
-    printf( "   Name: %s\n", outputInfo->name );
-    printf( "     LL: %.2fms\n", outputInfo->defaultLowOutputLatency*1000 );
+    //printf( "   Name: %s\n", outputInfo->name );
+    //printf( "     LL: %.2fms\n", outputInfo->defaultLowOutputLatency*1000 );
 
     inputParameters.channelCount = 1;  // mono
     inputParameters.sampleFormat = PA_SAMPLE_TYPE;
@@ -139,22 +139,20 @@ int main(void)
     BOOL positive = TRUE;
     float previous_sample = 0;
     float rough_input_period = 40;
-    float valid_input_period = 40;
-    float energy = 0;
+
+    float note_period = rough_input_period*32; // in samples
+    long double note_loc = 0;  // 0-1, where we are in note_period
+
     float rms_energy = 0;
-    float sample_energy = 0;
-    float sample_rms_energy = 0;
 
-    BOOL active = FALSE;
+    float val = 0;
+    float last_val = 0;
 
-    float last_out = 0;
+    // -1: ramp down
+    //  1: ramp up
+    char ramp_direction = -1;    
 
-    int mod_32_loc = 0;  // five octaves down
-    int mod_16_loc = 0;
-    int mod_8_loc  = 0;
-
-    BOOL ramp_down = FALSE;
-
+    float ramp = 0;
 
     while(TRUE) {
       // You may get underruns or overruns if the output is not primed by PortAudio.
@@ -165,13 +163,13 @@ int main(void)
 
       for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
         float sample = sampleBlock[i];
+        rms_energy += sample*sample;
         history[history_pos] = sample;
         history_pos = (history_pos + 1) % MAX_INPUT_PERIOD;
 
-        energy += sample > 0 ? sample : -sample;
-        rms_energy += sample*sample;
         samples_since_last_crossing++;
 
+        val = 0;
         if (positive) {
           if (sample < 0) {
             /**
@@ -240,39 +238,49 @@ int main(void)
               // see how well it fits history.
               error += (sample_max_loc - rough_input_period/4)*(sample_max_loc - rough_input_period/4);
               error += (sample_min_loc - 3*rough_input_period/4)*(sample_min_loc - 3*rough_input_period/4);
-              
-              if (error < 5) {
-                if (!active) {
-                  active = TRUE;
-                  ramp_down = FALSE;
-                  printf("activating\n");
-                  mod_32_loc = 0;
-                  mod_16_loc = 0;
-                  mod_8_loc  = 0;
-                }
-                valid_input_period = rough_input_period;
-                sample_energy = energy / valid_input_period;
-                sample_rms_energy = rms_energy / valid_input_period;
-              } else if (active) {
-                printf("deactivating\n");
-                active = FALSE;
-                ramp_down = TRUE;
-              }
-            } else if (active) {
-              printf("deactivating\n");
-              active = FALSE;
-              ramp_down = TRUE;
-            }
 
+              //printf("%.5f\t\t%.3f\n", sample_max, sample_energy);
+             
+              BOOL ok = TRUE;
+              float rough_period_rms_energy = rms_energy/rough_input_period;
+              if (rough_period_rms_energy < 0.00001) {
+                //printf("not ok: rough_period_rms_energy=%.8f\n",
+                //       rough_period_rms_energy);
+                ok = FALSE;
+              } else if (error > 5 && rough_period_rms_energy < 0.0001) {
+                //printf("not ok: error=%.2f with rough_period_rms_energy=%.5f\n",
+                //       error, rough_period_rms_energy);
+                ok = FALSE;
+              }
+
+              if (ok) {
+                float goal_period = rough_input_period*32;
+
+                if (ramp < 0.0001) {
+                  // effectively off, just go to new period
+                  note_period = goal_period;
+                } else {
+                  // already playing, change slowly
+                  note_period = (31*note_period + goal_period)/32;
+                }
+
+                if (ramp_direction < 0) {
+                  //printf("ramping up");
+                  ramp_direction = 1;
+                }
+              } else if (ramp_direction > 0) {
+                //printf("ramping down");
+                ramp_direction = -1;
+              }
+            } else if (ramp_direction > 0) {
+              //printf("ramping down");
+              ramp_direction = -1;
+            }
+            
             positive = FALSE;
 
             samples_since_last_crossing = -adjustment;
-            energy = 0;
             rms_energy = 0;
-
-            mod_32_loc = (mod_32_loc + 1) % 32;
-            mod_16_loc = (mod_16_loc + 1) % 16;
-            mod_8_loc  = (mod_8_loc  + 1) %  8;
           }
         } else {
           if (sample > 0) {
@@ -281,72 +289,42 @@ int main(void)
         }
         previous_sample = sample;
 
-        /**
-         * now synthesize
-         *
-         * samples_since_last_crossing / input_period is
-         * approximately [0-1] and is our phase angle if we want to synthesize a
-         * plain sine.
-         */
-
-        if (ramp_down && mod_32_loc == 0) {
-          ramp_down = FALSE;
-          printf("offed at next zero crossing\n");
+        // start by synthesizing the lowest tone
+        float h1 = sine(note_loc);
+        float h2 = sine(note_loc * 2);
+        float h3 = sine(note_loc * 3);
+        float h4 = sine(note_loc * 4);
+        
+        if (ramp_direction > 0) {
+          if (ramp < 0.00001) {
+            ramp = 0.00001;
+          }
+          ramp *= 1.01;
+        } else if (ramp_direction < 0) {
+          ramp *= 0.999;
         }
-
-        float val = 0;
-        if (active || ramp_down > 0) {
-          float use_energy = sample_energy;
-
-          /*
-          if (ramp_up_loc < ramp_up_time) {
-            printf("ramping %.2f\n", ((float)ramp_up_loc / ramp_up_time));
-            use_energy *= ((float)ramp_up_loc / ramp_up_time);
-            ramp_up_loc++;
-          }
-
-          if (ramp_down_loc > 0) {
-            printf("ramping %.2f\n", ((float)ramp_down_loc / ramp_down_time));
-            use_energy *= ((float)ramp_down_loc / ramp_down_time);
-            ramp_down_loc--;
-          }
-          */
-          float e = use_energy - 0.003;
-
-          if (e > 1) {
-            e = 1;
-          } else if (e < 0) {
-            e = 0;
-          }
-          e = 1;
-          if (e > 0) {
-            float mod_32_note = sine((samples_since_last_crossing + (valid_input_period * mod_32_loc)) /
-                                     (valid_input_period * 32));
-            
-            float mod_16_note = sine((samples_since_last_crossing + (valid_input_period * mod_16_loc)) /
-                                     (valid_input_period * 16));
-            
-            float mod_8_note = sine((samples_since_last_crossing + (valid_input_period * mod_8_loc)) /
-                                    (valid_input_period * 8));
-
-            val = mod_32_note;
-            //val = e * (mod_32_note * 0.4 +
-            //           mod_16_note * 0.5 +
-            //           mod_8_note  * 0.1);
-          }
+        
+        if (ramp > 1) {
+          ramp = 1;
+        } else if (ramp < 0) {
+          ramp = 0;
         }
-
-        // This averaging makes the output mostly continuous.  It's kind of a
-        // low-pass filter, which keeps us from getting pops and crackles as
-        // frequency changes would normally give us non-continuous sine waves.
-        //val = (val + 7*last_out) / 8;
+        
+        note_loc += 1/note_period;
+        if (note_loc > 1) {
+          note_loc -= 1;
+        }
+        val = ramp * (0.4*h1 + 0.4*h2 + 0.1*h3 + 0.1*h4);
+      
+        val = (last_val*7 + val) / 8;
 
         sampleBlock[i] = val;
-        last_out = val;
-
-        if (val < -0.0000001 || val > 0.0000001) {
-          printf("%.4f\n", val);
-        }
+        last_val = val;
+      
+        //if (val < -0.0000001 || val > 0.0000001) {
+        //  printf("%.4f\n", val);
+        // }
+        //printf("ramp: %0.5f\tdirection=%d\n", ramp, ramp_direction);
       }
     }
 
