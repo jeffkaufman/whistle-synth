@@ -44,7 +44,7 @@
 #include <string.h>
 #include "portaudio.h"
 
-#define SAMPLE_RATE       (44100)
+#define SAMPLE_RATE       (44100)    // if you change this, change MIN/MAX_INPUT_PERIOD too
 #define FRAMES_PER_BUFFER   (8)      // this is absurdly low, to minimize latency
 
 /* Select sample format. */
@@ -52,6 +52,9 @@
 #define SAMPLE_SIZE (4)
 #define SAMPLE_SILENCE  (0.0f)
 #define PRINTF_S_FORMAT "%.8f"
+
+#define MIN_INPUT_PERIOD (14)
+#define MAX_INPUT_PERIOD (71)
 
 #define BOOL char
 #define TRUE 1
@@ -73,6 +76,12 @@ int main(void)
     const PaDeviceInfo* outputInfo;
     float *sampleBlock = NULL;
     int numBytes;
+
+    float history[MAX_INPUT_PERIOD];
+    for (int i = 0; i < MAX_INPUT_PERIOD; i++) {
+      history[i] = 0;
+    }
+    int history_pos = 0;
 
     printf("zeros.c\n"); fflush(stdout);
 
@@ -114,9 +123,6 @@ int main(void)
               NULL ); /* no callback, so no callback userData */
     if( err != paNoError ) goto error2;
 
-    float min_input_period = SAMPLE_RATE / 2793.826; // F7
-    float max_input_period = SAMPLE_RATE / 622.2540; //  Eb5
-
     numBytes = FRAMES_PER_BUFFER * SAMPLE_SIZE ;
     sampleBlock = (float *) malloc( numBytes );
     if( sampleBlock == NULL )
@@ -132,17 +138,23 @@ int main(void)
     float samples_since_last_crossing = 0;
     BOOL positive = TRUE;
     float previous_sample = 0;
-    float input_period = 40;
+    float rough_input_period = 40;
+    float valid_input_period = 40;
     float energy = 0;
     float rms_energy = 0;
     float sample_energy = 0;
     float sample_rms_energy = 0;
+
+    BOOL active = FALSE;
 
     float last_out = 0;
 
     int mod_32_loc = 0;  // five octaves down
     int mod_16_loc = 0;
     int mod_8_loc  = 0;
+
+    BOOL ramp_down = FALSE;
+
 
     while(TRUE) {
       // You may get underruns or overruns if the output is not primed by PortAudio.
@@ -153,6 +165,8 @@ int main(void)
 
       for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
         float sample = sampleBlock[i];
+        history[history_pos] = sample;
+        history_pos = (history_pos + 1) % MAX_INPUT_PERIOD;
 
         energy += sample > 0 ? sample : -sample;
         rms_energy += sample*sample;
@@ -188,12 +202,69 @@ int main(void)
             float last_positive = previous_sample;
             float adjustment = first_negative / (last_positive - first_negative);
             samples_since_last_crossing -= adjustment;
-            input_period = samples_since_last_crossing;
+            rough_input_period = samples_since_last_crossing;
+
+            if (rough_input_period > MIN_INPUT_PERIOD &&
+                rough_input_period < MAX_INPUT_PERIOD) {
+              float sample_max = 0;
+              float sample_max_loc = -1000;
+              float sample_min = 0;
+              float sample_min_loc = -1000;
+              for (int j = 0; j < rough_input_period; j++) {
+                float histval = history[(MAX_INPUT_PERIOD + history_pos - j) %
+                                        MAX_INPUT_PERIOD];
+                if (histval < sample_min) {
+                  sample_min = histval;
+                  sample_min_loc = j;
+                } else if (histval > sample_max) {
+                  sample_max = histval;
+                  sample_max_loc = j;
+                }
+              }
+              /**
+               * With a perfect sine wave centered on 0 and lined up with our
+               * sampling we'd expect:
+               *
+               * history[now] == 0                         (verified)
+               * history[now - input_period] == 0          (verified)
+               * history[now - input_period/2] == 0        (very likely)
+               * history[now - input_period/4] == max
+               * history[now - 3*input_period/4] == min
+               *
+               * Let's check if that's right, to within a sample or so.
+               */
+              float error = 0;
+              // You could make these better by finding the second
+              // highest/lowest values to figure out which direction the peak
+              // is off in, and adjusting.  Or construct a whole sine wave and
+              // see how well it fits history.
+              error += (sample_max_loc - rough_input_period/4)*(sample_max_loc - rough_input_period/4);
+              error += (sample_min_loc - 3*rough_input_period/4)*(sample_min_loc - 3*rough_input_period/4);
+              
+              if (error < 5) {
+                if (!active) {
+                  active = TRUE;
+                  ramp_down = FALSE;
+                  printf("activating\n");
+                  mod_32_loc = 0;
+                  mod_16_loc = 0;
+                  mod_8_loc  = 0;
+                }
+                valid_input_period = rough_input_period;
+                sample_energy = energy / valid_input_period;
+                sample_rms_energy = rms_energy / valid_input_period;
+              } else if (active) {
+                printf("deactivating\n");
+                active = FALSE;
+                ramp_down = TRUE;
+              }
+            } else if (active) {
+              printf("deactivating\n");
+              active = FALSE;
+              ramp_down = TRUE;
+            }
 
             positive = FALSE;
-
-            sample_energy = energy / input_period;
-            sample_rms_energy = rms_energy / input_period;
 
             samples_since_last_crossing = -adjustment;
             energy = 0;
@@ -218,46 +289,64 @@ int main(void)
          * plain sine.
          */
 
-        float val = 0;
-        float e = sample_energy*10 - 0.003;
-        if (e > 1) {
-          e = 1;
-        } else if (e < 0) {
-          e = 0;
+        if (ramp_down && mod_32_loc == 0) {
+          ramp_down = FALSE;
+          printf("offed at next zero crossing\n");
         }
-        if (e > 0 &&
-            input_period > min_input_period &&
-            input_period < max_input_period) {
+
+        float val = 0;
+        if (active || ramp_down > 0) {
+          float use_energy = sample_energy;
+
+          /*
+          if (ramp_up_loc < ramp_up_time) {
+            printf("ramping %.2f\n", ((float)ramp_up_loc / ramp_up_time));
+            use_energy *= ((float)ramp_up_loc / ramp_up_time);
+            ramp_up_loc++;
+          }
+
+          if (ramp_down_loc > 0) {
+            printf("ramping %.2f\n", ((float)ramp_down_loc / ramp_down_time));
+            use_energy *= ((float)ramp_down_loc / ramp_down_time);
+            ramp_down_loc--;
+          }
+          */
+          float e = use_energy - 0.003;
+
+          if (e > 1) {
+            e = 1;
+          } else if (e < 0) {
+            e = 0;
+          }
+          e = 1;
           if (e > 0) {
-            if (last_out < 0.00000001 && last_out > -0.00000001) {
-              mod_32_loc = 0;
-              mod_16_loc = 0;
-              mod_8_loc  = 0;
-            }
-
-            float mod_32_note = sine((samples_since_last_crossing + (input_period * mod_32_loc)) /
-                                     (input_period * 32));
+            float mod_32_note = sine((samples_since_last_crossing + (valid_input_period * mod_32_loc)) /
+                                     (valid_input_period * 32));
             
-            float mod_16_note = sine((samples_since_last_crossing + (input_period * mod_16_loc)) /
-                                     (input_period * 16));
+            float mod_16_note = sine((samples_since_last_crossing + (valid_input_period * mod_16_loc)) /
+                                     (valid_input_period * 16));
             
-            float mod_8_note = sine((samples_since_last_crossing + (input_period * mod_8_loc)) /
-                                    (input_period * 8));
+            float mod_8_note = sine((samples_since_last_crossing + (valid_input_period * mod_8_loc)) /
+                                    (valid_input_period * 8));
 
-
-            val = e * (mod_32_note * 0.4 +
-                       mod_16_note * 0.5 +
-                       mod_8_note  * 0.1);
+            val = mod_32_note;
+            //val = e * (mod_32_note * 0.4 +
+            //           mod_16_note * 0.5 +
+            //           mod_8_note  * 0.1);
           }
         }
 
         // This averaging makes the output mostly continuous.  It's kind of a
         // low-pass filter, which keeps us from getting pops and crackles as
         // frequency changes would normally give us non-continuous sine waves.
-        val = (val + 7*last_out) / 8;
+        //val = (val + 7*last_out) / 8;
 
         sampleBlock[i] = val;
         last_out = val;
+
+        if (val < -0.0000001 || val > 0.0000001) {
+          printf("%.4f\n", val);
+        }
       }
     }
 
