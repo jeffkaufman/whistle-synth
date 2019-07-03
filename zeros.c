@@ -114,8 +114,8 @@ int main(void)
               NULL ); /* no callback, so no callback userData */
     if( err != paNoError ) goto error2;
 
-    float min_samples_per_crossing = SAMPLE_RATE / 2793.826; // F7
-    float max_samples_per_crossing = SAMPLE_RATE / 622.2540; //  Eb5
+    float min_input_period = SAMPLE_RATE / 2793.826; // F7
+    float max_input_period = SAMPLE_RATE / 622.2540; //  Eb5
 
     numBytes = FRAMES_PER_BUFFER * SAMPLE_SIZE ;
     sampleBlock = (float *) malloc( numBytes );
@@ -132,7 +132,7 @@ int main(void)
     float samples_since_last_crossing = 0;
     BOOL positive = TRUE;
     float previous_sample = 0;
-    float samples_per_crossing = 40;
+    float input_period = 40;
     float energy = 0;
     float rms_energy = 0;
     float sample_energy = 0;
@@ -141,9 +141,8 @@ int main(void)
     float last_out = 0;
 
     int mod_32_loc = 0;  // five octaves down
-    int mod_16_loc = 0;  // four octaves down
-    int mod_8_loc  = 0;  // three octaves down
-    int mod_12_loc = 0;  // three and a half octaves down
+    int mod_16_loc = 0;
+    int mod_8_loc  = 0;
 
     while(TRUE) {
       // You may get underruns or overruns if the output is not primed by PortAudio.
@@ -189,12 +188,12 @@ int main(void)
             float last_positive = previous_sample;
             float adjustment = first_negative / (last_positive - first_negative);
             samples_since_last_crossing -= adjustment;
-            samples_per_crossing = samples_since_last_crossing;
+            input_period = samples_since_last_crossing;
 
             positive = FALSE;
 
-            sample_energy = energy / samples_per_crossing;
-            sample_rms_energy = rms_energy / samples_per_crossing;
+            sample_energy = energy / input_period;
+            sample_rms_energy = rms_energy / input_period;
 
             samples_since_last_crossing = -adjustment;
             energy = 0;
@@ -202,7 +201,6 @@ int main(void)
 
             mod_32_loc = (mod_32_loc + 1) % 32;
             mod_16_loc = (mod_16_loc + 1) % 16;
-            mod_12_loc = (mod_12_loc + 1) % 12;
             mod_8_loc  = (mod_8_loc  + 1) %  8;
           }
         } else {
@@ -215,48 +213,48 @@ int main(void)
         /**
          * now synthesize
          *
-         * samples_since_last_crossing / samples_per_crossing is
+         * samples_since_last_crossing / input_period is
          * approximately [0-1] and is our phase angle if we want to synthesize a
          * plain sine.
          */
 
-        float mod_32_note = sine((samples_since_last_crossing + (samples_per_crossing * mod_32_loc)) /
-                                 (samples_per_crossing * 32));
-
-        float mod_16_note = sine((samples_since_last_crossing + (samples_per_crossing * mod_16_loc)) /
-                                 (samples_per_crossing * 16));
-
-        float mod_12_note = sine((samples_since_last_crossing + (samples_per_crossing * mod_12_loc)) /
-                                 (samples_per_crossing * 12));
-
-        float mod_8_note = sine((samples_since_last_crossing + (samples_per_crossing * mod_8_loc)) /
-                                (samples_per_crossing * 8));
-
         float val = 0;
-        float e = sample_energy - 0.003;
+        float e = sample_energy*10 - 0.003;
         if (e > 1) {
           e = 1;
         } else if (e < 0) {
           e = 0;
         }
-        if (sample_rms_energy > 0.001 &&
-            samples_per_crossing > min_samples_per_crossing &&
-            samples_per_crossing < max_samples_per_crossing) {
+        if (e > 0 &&
+            input_period > min_input_period &&
+            input_period < max_input_period) {
           if (e > 0) {
-            if (last_out == 0) {
+            if (last_out < 0.00000001 && last_out > -0.00000001) {
               mod_32_loc = 0;
               mod_16_loc = 0;
-              mod_12_loc = 0;
               mod_8_loc  = 0;
             }
-            val = e * (mod_32_note * .3 + mod_16_note*.3 + mod_12_note*.1 + mod_8_note*.3);
+
+            float mod_32_note = sine((samples_since_last_crossing + (input_period * mod_32_loc)) /
+                                     (input_period * 32));
+            
+            float mod_16_note = sine((samples_since_last_crossing + (input_period * mod_16_loc)) /
+                                     (input_period * 16));
+            
+            float mod_8_note = sine((samples_since_last_crossing + (input_period * mod_8_loc)) /
+                                    (input_period * 8));
+
+
+            val = e * (mod_32_note * 0.4 +
+                       mod_16_note * 0.5 +
+                       mod_8_note  * 0.1);
           }
         }
 
         // This averaging makes the output mostly continuous.  It's kind of a
         // low-pass filter, which keeps us from getting pops and crackles as
         // frequency changes would normally give us non-continuous sine waves.
-        val = (val + 31*last_out) / 32;
+        val = (val + 7*last_out) / 8;
 
         sampleBlock[i] = val;
         last_out = val;
