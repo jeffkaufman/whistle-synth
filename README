@@ -13,7 +13,7 @@ Usage:
 
     gcc zeros.c -Wall -o zeros -lportaudio
 
-3. Put on headphones, use a higly directional mic, or otherwise avoid letting
+3. Put on headphones, use a highly directional mic, or otherwise avoid letting
    the output of this program mix with the input.
 
 4. Run it and whistle:
