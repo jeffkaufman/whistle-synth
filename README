@@ -20,3 +20,7 @@ Usage:
 
     ./zeros
 
+If you want to use this with a DAW such as Reaper there's a plug-in version:
+
+   source: https://github.com/jeffkaufman/iPlug2
+   mac vst: https://www.jefftk.com/BassWhistleVST3-v1.zip
