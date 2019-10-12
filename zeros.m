@@ -80,6 +80,8 @@ void attempt(OSStatus result, char* errmsg) {
 
 #define PACKET_BUF_SIZE (3+64) /* 3 for message, 32 for structure vars */
 void send_midi(char actionType, int noteNo, int v, MIDIEndpointRef endpoint) {
+  printf("Sending: %x / %d / %d\n", actionType, noteNo, v); 
+
   Byte buffer[PACKET_BUF_SIZE];
   Byte msg[3];
   msg[0] = actionType;
@@ -101,6 +103,30 @@ void send_midi(char actionType, int noteNo, int v, MIDIEndpointRef endpoint) {
   attempt(MIDIReceived(endpoint, packetList), "error sending midi");
 }
 
+void midi_on(int noteNo, MIDIEndpointRef endpoint) {
+  send_midi(0x90, noteNo, 100, endpoint);
+}
+
+void midi_off(int noteNo, MIDIEndpointRef endpoint) {
+  send_midi(0x80, noteNo, 0, endpoint);
+}
+
+void midi_bend(int noteNo, MIDIEndpointRef endpoint) {
+  // not yet implemented
+}
+
+void determine_note(float input_period_samples, int* chosen_note, int* chosen_bend) {
+  // input_period is in samples, convert it to hz
+  float input_period_hz = SAMPLE_RATE/input_period_samples;
+
+  float midi_note = 69 + 12 * log2(input_period_hz/440);
+
+  //printf("%.5fhz (%.4f)\n", input_period_hz, midi_note);
+
+  *chosen_note = (int)(midi_note + 0.5);
+  *chosen_bend = 0;
+}
+
 float sine(float v) {
   return sin(v*M_PI*2);
 }
@@ -108,11 +134,10 @@ float sine(float v) {
 int main(void);
 int main(void)
 {
-    PaStreamParameters inputParameters, outputParameters;
+    PaStreamParameters inputParameters;
     PaStream *stream = NULL;
     PaError err;
     const PaDeviceInfo* inputInfo;
-    const PaDeviceInfo* outputInfo;
     float *sampleBlock = NULL;
     int numBytes;
 
@@ -142,27 +167,17 @@ int main(void)
     printf( "   Name: %s\n", inputInfo->name );
     printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
 
-    outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
-    outputInfo = Pa_GetDeviceInfo( outputParameters.device );
-    printf( "   Name: %s\n", outputInfo->name );
-    printf( "     LL: %.2fms\n", outputInfo->defaultLowOutputLatency*1000 );
-
     inputParameters.channelCount = 1;  // mono
     inputParameters.sampleFormat = PA_SAMPLE_TYPE;
     inputParameters.suggestedLatency = inputInfo->defaultLowInputLatency ;
     inputParameters.hostApiSpecificStreamInfo = NULL;
-
-    outputParameters.channelCount = 1; // mono
-    outputParameters.sampleFormat = PA_SAMPLE_TYPE;
-    outputParameters.suggestedLatency = outputInfo->defaultLowOutputLatency;
-    outputParameters.hostApiSpecificStreamInfo = NULL;
 
     /* -- setup -- */
 
     err = Pa_OpenStream(
               &stream,
               &inputParameters,
-              &outputParameters,
+              NULL,
               SAMPLE_RATE,
               FRAMES_PER_BUFFER,
               paClipOff,      /* we won't output out of range samples so don't bother clipping them */
@@ -187,26 +202,14 @@ int main(void)
     float previous_sample = 0;
     float rough_input_period = 40;
 
-    float note_period = rough_input_period*32; // in samples
-    long double note_loc = 0;  // 0-1, where we are in note_period
-
     float rms_energy = 0;
 
-    float val = 0;
-    float last_val = 0;
-
-    // -1: ramp down
-    //  1: ramp up
-    char ramp_direction = -1;    
-
-    float ramp = 0;
+    int current_note = -1;
 
     while(TRUE) {
-      // You may get underruns or overruns if the output is not primed by PortAudio.
-      err = Pa_WriteStream( stream, sampleBlock, FRAMES_PER_BUFFER );
-      if( err ) goto xrun;
       err = Pa_ReadStream( stream, sampleBlock, FRAMES_PER_BUFFER );
       if( err ) goto xrun;
+
 
       for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
         float sample = sampleBlock[i];
@@ -216,7 +219,9 @@ int main(void)
 
         samples_since_last_crossing++;
 
-        val = 0;
+        int chosen_note = -1;
+        int chosen_bend = -1;
+
         if (positive) {
           if (sample < 0) {
             /**
@@ -295,25 +300,32 @@ int main(void)
               }
 
               if (ok) {
-                float goal_period = rough_input_period*32;
-
-                if (ramp < 0.0001) {
-                  // effectively off, just go to new period
-                  note_period = goal_period;
-                  send_midi(0x90, 60, 100, endpoint);
-                } else {
-                  // already playing, change slowly
-                  note_period = (31*note_period + goal_period)/32;
-                }
-
-                if (ramp_direction < 0) {
-                  ramp_direction = 1;
-                }
-              } else if (ramp_direction > 0) {
-                ramp_direction = -1;
+                determine_note(rough_input_period, &chosen_note, &chosen_bend);
+              } else {
+                chosen_note = -1;
               }
-            } else if (ramp_direction > 0) {
-              ramp_direction = -1;
+            } else {
+              chosen_note = -1;
+            }
+
+            BOOL is_on = current_note != -1;
+            BOOL should_on = chosen_note != -1;
+            BOOL note_changed = (current_note != chosen_note);
+
+            //printf("cur=%d, chos=%d, is_on=%d, should_on=%d, note_changed=%d\n",
+            //       current_note, chosen_note, is_on, should_on, note_changed);
+
+            if (is_on && note_changed) {
+              midi_off(current_note, endpoint);
+              current_note = -1;
+            }
+
+            if (should_on) {
+              if (note_changed) {
+                midi_on(chosen_note, endpoint);
+              }
+              midi_bend(chosen_bend, endpoint);
+              current_note = chosen_note;
             }
             
             positive = FALSE;
@@ -327,38 +339,6 @@ int main(void)
           }
         }
         previous_sample = sample;
-
-        // start by synthesizing the lowest tone
-        float h1 = sine(note_loc);
-        float h2 = sine(note_loc * 2);
-        float h3 = sine(note_loc * 3);
-        float h4 = sine(note_loc * 4);
-        
-        if (ramp_direction > 0) {
-          if (ramp < 0.00001) {
-            ramp = 0.00001;
-          }
-          ramp *= 1.01;
-        } else if (ramp_direction < 0) {
-          ramp *= 0.999;
-        }
-        
-        if (ramp > 1) {
-          ramp = 1;
-        } else if (ramp < 0) {
-          ramp = 0;
-        }
-        
-        note_loc += 1/note_period;
-        if (note_loc > 1) {
-          note_loc -= 1;
-        }
-        val = ramp * (0.4*h1 + 0.4*h2 + 0.1*h3 + 0.1*h4);
-      
-        val = (last_val*7 + val) / 8;
-
-        sampleBlock[i] = val;
-        last_val = val;
       }
     }
 
