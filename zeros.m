@@ -43,6 +43,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include "portaudio.h"
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreMIDI/MIDIServices.h>
+#include <CoreAudio/HostTime.h>
+#import <Foundation/Foundation.h>
+
 
 #define SAMPLE_RATE       (44100)    // if you change this, change MIN/MAX_INPUT_PERIOD too
 #define FRAMES_PER_BUFFER   (8)      // this is absurdly low, to minimize latency
@@ -62,6 +67,40 @@
 
 /*******************************************************************/
 
+void die(char *errmsg) {
+  printf("%s\n",errmsg);
+  exit(-1);
+}
+
+void attempt(OSStatus result, char* errmsg) {
+  if (result != noErr) {
+    die(errmsg);
+  }
+}
+
+#define PACKET_BUF_SIZE (3+64) /* 3 for message, 32 for structure vars */
+void send_midi(char actionType, int noteNo, int v, MIDIEndpointRef endpoint) {
+  Byte buffer[PACKET_BUF_SIZE];
+  Byte msg[3];
+  msg[0] = actionType;
+  msg[1] = noteNo;
+  msg[2] = v;
+
+  MIDIPacketList *packetList = (MIDIPacketList*) buffer;
+  MIDIPacket *curPacket = MIDIPacketListInit(packetList);
+  if (!curPacket) {
+    die("packet list allocation failed");
+  }
+  MIDIPacketListAdd(packetList,
+                            PACKET_BUF_SIZE,
+                            curPacket,
+                            AudioGetCurrentHostTime(),
+                            3,
+                    msg);
+
+  attempt(MIDIReceived(endpoint, packetList), "error sending midi");
+}
+
 float sine(float v) {
   return sin(v*M_PI*2);
 }
@@ -76,6 +115,17 @@ int main(void)
     const PaDeviceInfo* outputInfo;
     float *sampleBlock = NULL;
     int numBytes;
+
+    MIDIClientRef midiclient;
+    attempt(MIDIClientCreate(CFSTR("whistle-pitch"),
+                             NULL, NULL, &midiclient),
+            "creating OS-X MIDI client object." );
+
+    MIDIEndpointRef endpoint;
+    attempt(MIDISourceCreate(midiclient,
+                             CFSTR("whistle-pitch"),
+                             &endpoint),
+            "creating OS-X virtual MIDI source." );
 
     float history[MAX_INPUT_PERIOD];
     for (int i = 0; i < MAX_INPUT_PERIOD; i++) {
@@ -93,7 +143,6 @@ int main(void)
     printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
 
     outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
-    printf( "Output device # %d.\n", outputParameters.device );
     outputInfo = Pa_GetDeviceInfo( outputParameters.device );
     printf( "   Name: %s\n", outputInfo->name );
     printf( "     LL: %.2fms\n", outputInfo->defaultLowOutputLatency*1000 );
@@ -251,6 +300,7 @@ int main(void)
                 if (ramp < 0.0001) {
                   // effectively off, just go to new period
                   note_period = goal_period;
+                  send_midi(0x90, 60, 100, endpoint);
                 } else {
                   // already playing, change slowly
                   note_period = (31*note_period + goal_period)/32;
