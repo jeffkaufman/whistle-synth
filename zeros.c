@@ -83,22 +83,20 @@ int main(void)
     }
     int history_pos = 0;
 
-    //printf("zeros.c\n"); fflush(stdout);
-
     err = Pa_Initialize();
     if( err != paNoError ) goto error2;
 
     inputParameters.device = Pa_GetDefaultInputDevice(); /* default input device */
-    //printf( "Input device # %d.\n", inputParameters.device );
+    printf( "Input device # %d.\n", inputParameters.device );
     inputInfo = Pa_GetDeviceInfo( inputParameters.device );
-    //printf( "   Name: %s\n", inputInfo->name );
-    //printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
+    printf( "   Name: %s\n", inputInfo->name );
+    printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
 
     outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
-    //printf( "Output device # %d.\n", outputParameters.device );
+    printf( "Output device # %d.\n", outputParameters.device );
     outputInfo = Pa_GetDeviceInfo( outputParameters.device );
-    //printf( "   Name: %s\n", outputInfo->name );
-    //printf( "     LL: %.2fms\n", outputInfo->defaultLowOutputLatency*1000 );
+    printf( "   Name: %s\n", outputInfo->name );
+    printf( "     LL: %.2fms\n", outputInfo->defaultLowOutputLatency*1000 );
 
     inputParameters.channelCount = 1;  // mono
     inputParameters.sampleFormat = PA_SAMPLE_TYPE;
@@ -239,17 +237,11 @@ int main(void)
               error += (sample_max_loc - rough_input_period/4)*(sample_max_loc - rough_input_period/4);
               error += (sample_min_loc - 3*rough_input_period/4)*(sample_min_loc - 3*rough_input_period/4);
 
-              //printf("%.5f\t\t%.3f\n", sample_max, sample_energy);
-             
               BOOL ok = TRUE;
               float rough_period_rms_energy = rms_energy/rough_input_period;
               if (rough_period_rms_energy < 0.00001) {
-                //printf("not ok: rough_period_rms_energy=%.8f\n",
-                //       rough_period_rms_energy);
                 ok = FALSE;
               } else if (error > 5 && rough_period_rms_energy < 0.0001) {
-                //printf("not ok: error=%.2f with rough_period_rms_energy=%.5f\n",
-                //       error, rough_period_rms_energy);
                 ok = FALSE;
               }
 
@@ -265,15 +257,12 @@ int main(void)
                 }
 
                 if (ramp_direction < 0) {
-                  //printf("ramping up");
                   ramp_direction = 1;
                 }
               } else if (ramp_direction > 0) {
-                //printf("ramping down");
                 ramp_direction = -1;
               }
             } else if (ramp_direction > 0) {
-              //printf("ramping down");
               ramp_direction = -1;
             }
             
@@ -320,11 +309,6 @@ int main(void)
 
         sampleBlock[i] = val;
         last_val = val;
-      
-        //if (val < -0.0000001 || val > 0.0000001) {
-        //  printf("%.4f\n", val);
-        // }
-        //printf("ramp: %0.5f\tdirection=%d\n", ramp, ramp_direction);
       }
     }
 
