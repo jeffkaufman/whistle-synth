@@ -80,7 +80,7 @@ void attempt(OSStatus result, char* errmsg) {
 
 #define PACKET_BUF_SIZE (3+64) /* 3 for message, 32 for structure vars */
 void send_midi(char actionType, int noteNo, int v, MIDIEndpointRef endpoint) {
-  printf("Sending: %x / %d / %d\n", actionType, noteNo, v); 
+  //printf("Sending: %x / %d / %d\n", actionType, noteNo, v); 
 
   Byte buffer[PACKET_BUF_SIZE];
   Byte msg[3];
@@ -104,6 +104,7 @@ void send_midi(char actionType, int noteNo, int v, MIDIEndpointRef endpoint) {
 }
 
 void midi_on(int noteNo, MIDIEndpointRef endpoint) {
+  printf("on: %d\n", noteNo);
   send_midi(0x90, noteNo, 100, endpoint);
 }
 
@@ -111,8 +112,14 @@ void midi_off(int noteNo, MIDIEndpointRef endpoint) {
   send_midi(0x80, noteNo, 0, endpoint);
 }
 
-void midi_bend(int noteNo, MIDIEndpointRef endpoint) {
-  // not yet implemented
+void midi_bend(int bend, MIDIEndpointRef endpoint) {
+  // We need to send bend as two 7-bit numbers, first the LSB then the MSB.
+  // Since we only ever bend by 0.5 we're only using 13 bits of range, but
+  // we can ignore that.
+  int lsb = bend & 0b00000001111111;
+  int msb = bend & 0b11111110000000;
+
+  send_midi(0xE0, lsb, msb, endpoint);
 }
 
 void determine_note(float input_period_samples, int* chosen_note, int* chosen_bend) {
@@ -124,7 +131,17 @@ void determine_note(float input_period_samples, int* chosen_note, int* chosen_be
   //printf("%.5fhz (%.4f)\n", input_period_hz, midi_note);
 
   *chosen_note = (int)(midi_note + 0.5);
-  *chosen_bend = 0;
+
+  // Between -0.5 and 0.5
+  float rough_bend = (midi_note - *chosen_note);
+
+  // The full range of pitch bend is from -1 to 1 and is expressed by 0 to
+  // 16,383 (2^14).  Since we're running from -0.5 to 0.5 we'll only use 4095
+  // to 12287.
+  *chosen_bend = (int)((1 + rough_bend) * 8192);
+
+  // Then map to reasonable pitches.
+  *chosen_note -= 36;
 }
 
 float sine(float v) {
