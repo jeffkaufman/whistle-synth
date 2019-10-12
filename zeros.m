@@ -178,7 +178,25 @@ int main(void)
     err = Pa_Initialize();
     if( err != paNoError ) goto error2;
 
-    inputParameters.device = Pa_GetDefaultInputDevice(); /* default input device */
+    int numDevices = Pa_GetDeviceCount();
+    if (numDevices < 0) {
+      die("no devices found");
+    }
+    const PaDeviceInfo* deviceInfo;
+    int best_audio_device_index = -1;
+    for(int i = 0; i < numDevices; i++) {
+      deviceInfo = Pa_GetDeviceInfo(i);
+      printf("device[%d]: %s\n", i, deviceInfo->name);
+      if (strcmp(deviceInfo->name, "USB Audio Device") == 0) {
+        best_audio_device_index = i;
+      }
+    }
+
+    if (best_audio_device_index == -1) {
+      best_audio_device_index = Pa_GetDefaultInputDevice();
+    }
+
+    inputParameters.device = best_audio_device_index;
     printf( "Input device # %d.\n", inputParameters.device );
     inputInfo = Pa_GetDeviceInfo( inputParameters.device );
     printf( "   Name: %s\n", inputInfo->name );
