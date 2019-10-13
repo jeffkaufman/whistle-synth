@@ -394,7 +394,7 @@ int main(void)
               if (note_changed) {
                 midi_on(chosen_note, endpoint);
               }
-              //midi_bend(chosen_bend, endpoint);
+              midi_bend(chosen_bend, endpoint);
               current_note = chosen_note;
             }
 
