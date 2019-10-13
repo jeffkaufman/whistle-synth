@@ -136,10 +136,10 @@ void determine_note(float input_period_samples, int* chosen_note, int* chosen_be
   // Between -0.5 and 0.5
   float rough_bend = (midi_note - *chosen_note);
 
-  // The full range of pitch bend is from -1 to 1 and is expressed by 0 to
-  // 16,383 (2^14).  Since we're running from -0.5 to 0.5 we'll only use 4095
-  // to 12287.
-  *chosen_bend = (int)((1 + rough_bend) * 8192);
+  // The full range of pitch bend is from -2 to 2 and is expressed by 0 to
+  // 16,383 (2^14 - 1).  Since we're running from -0.5 to 0.5 we'll only use 6143
+  // to 10239.
+  *chosen_bend = (int)((1 + rough_bend/2) * 8192 - 0.5);
 
   // Then map to reasonable pitches.
   *chosen_note -= 36;
