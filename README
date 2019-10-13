@@ -9,18 +9,22 @@ Usage:
     $ make
     $ sudo make install
 
-2. Build zeros.c:
+2. Build it:
 
-    gcc zeros.c -Wall -o zeros -lportaudio
+    make
 
 3. Put on headphones, use a highly directional mic, or otherwise avoid letting
    the output of this program mix with the input.
 
 4. Run it and whistle:
 
-    ./zeros
+    make run
 
-If you want to use this with a DAW such as Reaper there's a plug-in version:
+It will make a virtual midi source, which you can then pipe into a
+synthesizer.
+
+There's also a version with its own built-in bass synthesizer, which is a
+plgg-in version for a DAW (like Reaper):
 
    source: https://github.com/jeffkaufman/iPlug2
    mac vst: https://www.jefftk.com/BassWhistleVST3-v1.zip
