@@ -104,11 +104,12 @@ void send_midi(char actionType, int noteNo, int v, MIDIEndpointRef endpoint) {
 }
 
 void midi_on(int noteNo, MIDIEndpointRef endpoint) {
-  //printf("on: %d\n", noteNo);
+  printf("on: %d\n", noteNo);
   send_midi(0x90, noteNo, 100, endpoint);
 }
 
 void midi_off(int noteNo, MIDIEndpointRef endpoint) {
+    printf("off: %d\n", noteNo);
   send_midi(0x80, noteNo, 0, endpoint);
 }
 
@@ -335,12 +336,12 @@ int main(void)
               float rough_period_rms_energy = rms_energy/instantaneous_period;
 
               //printf("rough_period_rms_energy: %.9f\n", rough_period_rms_energy);
-              if (rough_period_rms_energy < 0.000001) {
+              if (rough_period_rms_energy < 0.0000001) {
                 //if (current_note != -1) {
                 //  printf("low energy (%.6f)\n", rough_period_rms_energy);
                 //}
                 ok = FALSE;
-              } else if (error > 5 && rough_period_rms_energy < 0.00001) {
+              } else if (error > 5 && rough_period_rms_energy < 0.000001) {
                 //printf("high error (%.2f, %.6f)\n", error, rough_period_rms_energy);
                 ok = FALSE;
               } else if (recent_period > 0 &&
