@@ -142,7 +142,7 @@ void determine_note(float input_period_samples, int* chosen_note, int* chosen_be
   *chosen_bend = (int)((1 + rough_bend/2) * 8192 - 0.5);
 
   // Then map to reasonable pitches.
-  *chosen_note -= 36;
+  *chosen_note -= 24;
 
   //printf("%.2f samples   %.2fhz  note=%d  bend=%.4f  intbend=%d\n", input_period_samples, input_period_hz,
   // *chosen_note, rough_bend, *chosen_bend);
