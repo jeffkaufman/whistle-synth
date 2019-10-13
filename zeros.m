@@ -50,7 +50,7 @@
 
 
 #define SAMPLE_RATE       (44100)    // if you change this, change MIN/MAX_INPUT_PERIOD too
-#define FRAMES_PER_BUFFER   (8)      // this is absurdly low, to minimize latency
+#define FRAMES_PER_BUFFER   (128)    // this is low, to minimize latency
 
 /* Select sample format. */
 #define PA_SAMPLE_TYPE  paFloat32
@@ -80,7 +80,7 @@ void attempt(OSStatus result, char* errmsg) {
 
 #define PACKET_BUF_SIZE (3+64) /* 3 for message, 32 for structure vars */
 void send_midi(char actionType, int noteNo, int v, MIDIEndpointRef endpoint) {
-  //printf("Sending: %x / %d / %d\n", actionType, noteNo, v); 
+  //printf("Sending: %x / %d / %d\n", actionType, noteNo, v);
 
   Byte buffer[PACKET_BUF_SIZE];
   Byte msg[3];
@@ -104,7 +104,7 @@ void send_midi(char actionType, int noteNo, int v, MIDIEndpointRef endpoint) {
 }
 
 void midi_on(int noteNo, MIDIEndpointRef endpoint) {
-  printf("on: %d\n", noteNo);
+  //printf("on: %d\n", noteNo);
   send_midi(0x90, noteNo, 100, endpoint);
 }
 
@@ -117,7 +117,7 @@ void midi_bend(int bend, MIDIEndpointRef endpoint) {
   // Since we only ever bend by 0.5 we're only using 13 bits of range, but
   // we can ignore that.
   int lsb = bend & 0b00000001111111;
-  int msb = bend & 0b11111110000000;
+  int msb = (bend & 0b11111110000000) >> 7;
 
   send_midi(0xE0, lsb, msb, endpoint);
 }
@@ -142,6 +142,9 @@ void determine_note(float input_period_samples, int* chosen_note, int* chosen_be
 
   // Then map to reasonable pitches.
   *chosen_note -= 36;
+
+  //printf("%.2f samples   %.2fhz  note=%d  bend=%.4f  intbend=%d\n", input_period_samples, input_period_hz,
+  // *chosen_note, rough_bend, *chosen_bend);
 }
 
 float sine(float v) {
@@ -235,11 +238,13 @@ int main(void)
     float samples_since_last_crossing = 0;
     BOOL positive = TRUE;
     float previous_sample = 0;
-    float rough_input_period = 40;
+    float instantaneous_period = 40;
+    float recent_period = -1;
 
     float rms_energy = 0;
 
     int current_note = -1;
+    int good_samples = 0;
 
     while(TRUE) {
       err = Pa_ReadStream( stream, sampleBlock, FRAMES_PER_BUFFER );
@@ -287,15 +292,15 @@ int main(void)
             float last_positive = previous_sample;
             float adjustment = first_negative / (last_positive - first_negative);
             samples_since_last_crossing -= adjustment;
-            rough_input_period = samples_since_last_crossing;
+            instantaneous_period = samples_since_last_crossing;
 
-            if (rough_input_period > MIN_INPUT_PERIOD &&
-                rough_input_period < MAX_INPUT_PERIOD) {
+            if (instantaneous_period > MIN_INPUT_PERIOD &&
+                instantaneous_period < MAX_INPUT_PERIOD) {
               float sample_max = 0;
               float sample_max_loc = -1000;
               float sample_min = 0;
               float sample_min_loc = -1000;
-              for (int j = 0; j < rough_input_period; j++) {
+              for (int j = 0; j < instantaneous_period; j++) {
                 float histval = history[(MAX_INPUT_PERIOD + history_pos - j) %
                                         MAX_INPUT_PERIOD];
                 if (histval < sample_min) {
@@ -323,19 +328,37 @@ int main(void)
               // highest/lowest values to figure out which direction the peak
               // is off in, and adjusting.  Or construct a whole sine wave and
               // see how well it fits history.
-              error += (sample_max_loc - rough_input_period/4)*(sample_max_loc - rough_input_period/4);
-              error += (sample_min_loc - 3*rough_input_period/4)*(sample_min_loc - 3*rough_input_period/4);
+              error += (sample_max_loc - instantaneous_period/4)*(sample_max_loc - instantaneous_period/4);
+              error += (sample_min_loc - 3*instantaneous_period/4)*(sample_min_loc - 3*instantaneous_period/4);
 
               BOOL ok = TRUE;
-              float rough_period_rms_energy = rms_energy/rough_input_period;
-              if (rough_period_rms_energy < 0.00001) {
+              float rough_period_rms_energy = rms_energy/instantaneous_period;
+
+              //printf("rough_period_rms_energy: %.9f\n", rough_period_rms_energy);
+              if (rough_period_rms_energy < 0.000001) {
+                //if (current_note != -1) {
+                //  printf("low energy (%.6f)\n", rough_period_rms_energy);
+                //}
                 ok = FALSE;
-              } else if (error > 5 && rough_period_rms_energy < 0.0001) {
+              } else if (error > 5 && rough_period_rms_energy < 0.00001) {
+                //printf("high error (%.2f, %.6f)\n", error, rough_period_rms_energy);
+                ok = FALSE;
+              } else if (recent_period > 0 &&
+                         (instantaneous_period/recent_period > 1.2 ||
+                          instantaneous_period/recent_period < 0.8)) {
+                //printf("too much shift\n");
                 ok = FALSE;
               }
 
               if (ok) {
-                determine_note(rough_input_period, &chosen_note, &chosen_bend);
+                if (recent_period < 0) {
+                  recent_period = instantaneous_period;
+                } else {
+                  recent_period = (0.9*recent_period +
+                                   0.1*instantaneous_period);
+                }
+
+                determine_note(recent_period, &chosen_note, &chosen_bend);
               } else {
                 chosen_note = -1;
               }
@@ -344,11 +367,22 @@ int main(void)
             }
 
             BOOL is_on = current_note != -1;
-            BOOL should_on = chosen_note != -1;
+
+            if (chosen_note == -1) {
+              good_samples = 0;
+            } else {
+              good_samples++;
+            }
+
+            BOOL should_on = good_samples > 1;
             BOOL note_changed = (current_note != chosen_note);
 
             //printf("cur=%d, chos=%d, is_on=%d, should_on=%d, note_changed=%d\n",
             //       current_note, chosen_note, is_on, should_on, note_changed);
+
+            if (!should_on) {
+              recent_period = -1;
+            }
 
             if (is_on && note_changed) {
               midi_off(current_note, endpoint);
@@ -359,10 +393,10 @@ int main(void)
               if (note_changed) {
                 midi_on(chosen_note, endpoint);
               }
-              midi_bend(chosen_bend, endpoint);
+              //midi_bend(chosen_bend, endpoint);
               current_note = chosen_note;
             }
-            
+
             positive = FALSE;
 
             samples_since_last_crossing = -adjustment;
