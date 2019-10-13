@@ -43,9 +43,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include "portaudio.h"
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreMIDI/MIDIServices.h>
+#include <CoreAudio/HostTime.h>
+#import <Foundation/Foundation.h>
+
 
 #define SAMPLE_RATE       (44100)    // if you change this, change MIN/MAX_INPUT_PERIOD too
-#define FRAMES_PER_BUFFER   (8)      // this is absurdly low, to minimize latency
+#define FRAMES_PER_BUFFER   (128)    // this is low, to minimize latency
 
 /* Select sample format. */
 #define PA_SAMPLE_TYPE  paFloat32
@@ -62,6 +67,86 @@
 
 /*******************************************************************/
 
+void die(char *errmsg) {
+  printf("%s\n",errmsg);
+  exit(-1);
+}
+
+void attempt(OSStatus result, char* errmsg) {
+  if (result != noErr) {
+    die(errmsg);
+  }
+}
+
+#define PACKET_BUF_SIZE (3+64) /* 3 for message, 32 for structure vars */
+void send_midi(char actionType, int noteNo, int v, MIDIEndpointRef endpoint) {
+  //printf("Sending: %x / %d / %d\n", actionType, noteNo, v);
+
+  Byte buffer[PACKET_BUF_SIZE];
+  Byte msg[3];
+  msg[0] = actionType;
+  msg[1] = noteNo;
+  msg[2] = v;
+
+  MIDIPacketList *packetList = (MIDIPacketList*) buffer;
+  MIDIPacket *curPacket = MIDIPacketListInit(packetList);
+  if (!curPacket) {
+    die("packet list allocation failed");
+  }
+  MIDIPacketListAdd(packetList,
+                            PACKET_BUF_SIZE,
+                            curPacket,
+                            AudioGetCurrentHostTime(),
+                            3,
+                    msg);
+
+  attempt(MIDIReceived(endpoint, packetList), "error sending midi");
+}
+
+void midi_on(int noteNo, MIDIEndpointRef endpoint) {
+  //printf("on: %d\n", noteNo);
+  send_midi(0x90, noteNo, 100, endpoint);
+}
+
+void midi_off(int noteNo, MIDIEndpointRef endpoint) {
+  send_midi(0x80, noteNo, 0, endpoint);
+}
+
+void midi_bend(int bend, MIDIEndpointRef endpoint) {
+  // We need to send bend as two 7-bit numbers, first the LSB then the MSB.
+  // Since we only ever bend by 0.5 we're only using 13 bits of range, but
+  // we can ignore that.
+  int lsb = bend & 0b00000001111111;
+  int msb = (bend & 0b11111110000000) >> 7;
+
+  send_midi(0xE0, lsb, msb, endpoint);
+}
+
+void determine_note(float input_period_samples, int* chosen_note, int* chosen_bend) {
+  // input_period is in samples, convert it to hz
+  float input_period_hz = SAMPLE_RATE/input_period_samples;
+
+  float midi_note = 69 + 12 * log2(input_period_hz/440);
+
+  //printf("%.5fhz (%.4f)\n", input_period_hz, midi_note);
+
+  *chosen_note = (int)(midi_note + 0.5);
+
+  // Between -0.5 and 0.5
+  float rough_bend = (midi_note - *chosen_note);
+
+  // The full range of pitch bend is from -1 to 1 and is expressed by 0 to
+  // 16,383 (2^14).  Since we're running from -0.5 to 0.5 we'll only use 4095
+  // to 12287.
+  *chosen_bend = (int)((1 + rough_bend) * 8192);
+
+  // Then map to reasonable pitches.
+  *chosen_note -= 36;
+
+  //printf("%.2f samples   %.2fhz  note=%d  bend=%.4f  intbend=%d\n", input_period_samples, input_period_hz,
+  // *chosen_note, rough_bend, *chosen_bend);
+}
+
 float sine(float v) {
   return sin(v*M_PI*2);
 }
@@ -69,13 +154,23 @@ float sine(float v) {
 int main(void);
 int main(void)
 {
-    PaStreamParameters inputParameters, outputParameters;
+    PaStreamParameters inputParameters;
     PaStream *stream = NULL;
     PaError err;
     const PaDeviceInfo* inputInfo;
-    const PaDeviceInfo* outputInfo;
     float *sampleBlock = NULL;
     int numBytes;
+
+    MIDIClientRef midiclient;
+    attempt(MIDIClientCreate(CFSTR("whistle-pitch"),
+                             NULL, NULL, &midiclient),
+            "creating OS-X MIDI client object." );
+
+    MIDIEndpointRef endpoint;
+    attempt(MIDISourceCreate(midiclient,
+                             CFSTR("whistle-pitch"),
+                             &endpoint),
+            "creating OS-X virtual MIDI source." );
 
     float history[MAX_INPUT_PERIOD];
     for (int i = 0; i < MAX_INPUT_PERIOD; i++) {
@@ -83,39 +178,44 @@ int main(void)
     }
     int history_pos = 0;
 
-    //printf("zeros.c\n"); fflush(stdout);
-
     err = Pa_Initialize();
     if( err != paNoError ) goto error2;
 
-    inputParameters.device = Pa_GetDefaultInputDevice(); /* default input device */
-    //printf( "Input device # %d.\n", inputParameters.device );
-    inputInfo = Pa_GetDeviceInfo( inputParameters.device );
-    //printf( "   Name: %s\n", inputInfo->name );
-    //printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
+    int numDevices = Pa_GetDeviceCount();
+    if (numDevices < 0) {
+      die("no devices found");
+    }
+    const PaDeviceInfo* deviceInfo;
+    int best_audio_device_index = -1;
+    for(int i = 0; i < numDevices; i++) {
+      deviceInfo = Pa_GetDeviceInfo(i);
+      printf("device[%d]: %s\n", i, deviceInfo->name);
+      if (strcmp(deviceInfo->name, "USB Audio Device") == 0) {
+        best_audio_device_index = i;
+      }
+    }
 
-    outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
-    //printf( "Output device # %d.\n", outputParameters.device );
-    outputInfo = Pa_GetDeviceInfo( outputParameters.device );
-    //printf( "   Name: %s\n", outputInfo->name );
-    //printf( "     LL: %.2fms\n", outputInfo->defaultLowOutputLatency*1000 );
+    if (best_audio_device_index == -1) {
+      best_audio_device_index = Pa_GetDefaultInputDevice();
+    }
+
+    inputParameters.device = best_audio_device_index;
+    printf( "Input device # %d.\n", inputParameters.device );
+    inputInfo = Pa_GetDeviceInfo( inputParameters.device );
+    printf( "   Name: %s\n", inputInfo->name );
+    printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
 
     inputParameters.channelCount = 1;  // mono
     inputParameters.sampleFormat = PA_SAMPLE_TYPE;
     inputParameters.suggestedLatency = inputInfo->defaultLowInputLatency ;
     inputParameters.hostApiSpecificStreamInfo = NULL;
 
-    outputParameters.channelCount = 1; // mono
-    outputParameters.sampleFormat = PA_SAMPLE_TYPE;
-    outputParameters.suggestedLatency = outputInfo->defaultLowOutputLatency;
-    outputParameters.hostApiSpecificStreamInfo = NULL;
-
     /* -- setup -- */
 
     err = Pa_OpenStream(
               &stream,
               &inputParameters,
-              &outputParameters,
+              NULL,
               SAMPLE_RATE,
               FRAMES_PER_BUFFER,
               paClipOff,      /* we won't output out of range samples so don't bother clipping them */
@@ -138,28 +238,18 @@ int main(void)
     float samples_since_last_crossing = 0;
     BOOL positive = TRUE;
     float previous_sample = 0;
-    float rough_input_period = 40;
-
-    float note_period = rough_input_period*32; // in samples
-    long double note_loc = 0;  // 0-1, where we are in note_period
+    float instantaneous_period = 40;
+    float recent_period = -1;
 
     float rms_energy = 0;
 
-    float val = 0;
-    float last_val = 0;
-
-    // -1: ramp down
-    //  1: ramp up
-    char ramp_direction = -1;    
-
-    float ramp = 0;
+    int current_note = -1;
+    int good_samples = 0;
 
     while(TRUE) {
-      // You may get underruns or overruns if the output is not primed by PortAudio.
-      err = Pa_WriteStream( stream, sampleBlock, FRAMES_PER_BUFFER );
-      if( err ) goto xrun;
       err = Pa_ReadStream( stream, sampleBlock, FRAMES_PER_BUFFER );
       if( err ) goto xrun;
+
 
       for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
         float sample = sampleBlock[i];
@@ -169,7 +259,9 @@ int main(void)
 
         samples_since_last_crossing++;
 
-        val = 0;
+        int chosen_note = -1;
+        int chosen_bend = -1;
+
         if (positive) {
           if (sample < 0) {
             /**
@@ -200,15 +292,15 @@ int main(void)
             float last_positive = previous_sample;
             float adjustment = first_negative / (last_positive - first_negative);
             samples_since_last_crossing -= adjustment;
-            rough_input_period = samples_since_last_crossing;
+            instantaneous_period = samples_since_last_crossing;
 
-            if (rough_input_period > MIN_INPUT_PERIOD &&
-                rough_input_period < MAX_INPUT_PERIOD) {
+            if (instantaneous_period > MIN_INPUT_PERIOD &&
+                instantaneous_period < MAX_INPUT_PERIOD) {
               float sample_max = 0;
               float sample_max_loc = -1000;
               float sample_min = 0;
               float sample_min_loc = -1000;
-              for (int j = 0; j < rough_input_period; j++) {
+              for (int j = 0; j < instantaneous_period; j++) {
                 float histval = history[(MAX_INPUT_PERIOD + history_pos - j) %
                                         MAX_INPUT_PERIOD];
                 if (histval < sample_min) {
@@ -236,47 +328,75 @@ int main(void)
               // highest/lowest values to figure out which direction the peak
               // is off in, and adjusting.  Or construct a whole sine wave and
               // see how well it fits history.
-              error += (sample_max_loc - rough_input_period/4)*(sample_max_loc - rough_input_period/4);
-              error += (sample_min_loc - 3*rough_input_period/4)*(sample_min_loc - 3*rough_input_period/4);
+              error += (sample_max_loc - instantaneous_period/4)*(sample_max_loc - instantaneous_period/4);
+              error += (sample_min_loc - 3*instantaneous_period/4)*(sample_min_loc - 3*instantaneous_period/4);
 
-              //printf("%.5f\t\t%.3f\n", sample_max, sample_energy);
-             
               BOOL ok = TRUE;
-              float rough_period_rms_energy = rms_energy/rough_input_period;
-              if (rough_period_rms_energy < 0.00001) {
-                //printf("not ok: rough_period_rms_energy=%.8f\n",
-                //       rough_period_rms_energy);
+              float rough_period_rms_energy = rms_energy/instantaneous_period;
+
+              //printf("rough_period_rms_energy: %.9f\n", rough_period_rms_energy);
+              if (rough_period_rms_energy < 0.000001) {
+                //if (current_note != -1) {
+                //  printf("low energy (%.6f)\n", rough_period_rms_energy);
+                //}
                 ok = FALSE;
-              } else if (error > 5 && rough_period_rms_energy < 0.0001) {
-                //printf("not ok: error=%.2f with rough_period_rms_energy=%.5f\n",
-                //       error, rough_period_rms_energy);
+              } else if (error > 5 && rough_period_rms_energy < 0.00001) {
+                //printf("high error (%.2f, %.6f)\n", error, rough_period_rms_energy);
+                ok = FALSE;
+              } else if (recent_period > 0 &&
+                         (instantaneous_period/recent_period > 1.2 ||
+                          instantaneous_period/recent_period < 0.8)) {
+                //printf("too much shift\n");
                 ok = FALSE;
               }
 
               if (ok) {
-                float goal_period = rough_input_period*32;
-
-                if (ramp < 0.0001) {
-                  // effectively off, just go to new period
-                  note_period = goal_period;
+                if (recent_period < 0) {
+                  recent_period = instantaneous_period;
                 } else {
-                  // already playing, change slowly
-                  note_period = (31*note_period + goal_period)/32;
+                  recent_period = (0.9*recent_period +
+                                   0.1*instantaneous_period);
                 }
 
-                if (ramp_direction < 0) {
-                  //printf("ramping up");
-                  ramp_direction = 1;
-                }
-              } else if (ramp_direction > 0) {
-                //printf("ramping down");
-                ramp_direction = -1;
+                determine_note(recent_period, &chosen_note, &chosen_bend);
+              } else {
+                chosen_note = -1;
               }
-            } else if (ramp_direction > 0) {
-              //printf("ramping down");
-              ramp_direction = -1;
+            } else {
+              chosen_note = -1;
             }
-            
+
+            BOOL is_on = current_note != -1;
+
+            if (chosen_note == -1) {
+              good_samples = 0;
+            } else {
+              good_samples++;
+            }
+
+            BOOL should_on = good_samples > 1;
+            BOOL note_changed = (current_note != chosen_note);
+
+            //printf("cur=%d, chos=%d, is_on=%d, should_on=%d, note_changed=%d\n",
+            //       current_note, chosen_note, is_on, should_on, note_changed);
+
+            if (!should_on) {
+              recent_period = -1;
+            }
+
+            if (is_on && note_changed) {
+              midi_off(current_note, endpoint);
+              current_note = -1;
+            }
+
+            if (should_on) {
+              if (note_changed) {
+                midi_on(chosen_note, endpoint);
+              }
+              //midi_bend(chosen_bend, endpoint);
+              current_note = chosen_note;
+            }
+
             positive = FALSE;
 
             samples_since_last_crossing = -adjustment;
@@ -288,43 +408,6 @@ int main(void)
           }
         }
         previous_sample = sample;
-
-        // start by synthesizing the lowest tone
-        float h1 = sine(note_loc);
-        float h2 = sine(note_loc * 2);
-        float h3 = sine(note_loc * 3);
-        float h4 = sine(note_loc * 4);
-        
-        if (ramp_direction > 0) {
-          if (ramp < 0.00001) {
-            ramp = 0.00001;
-          }
-          ramp *= 1.01;
-        } else if (ramp_direction < 0) {
-          ramp *= 0.999;
-        }
-        
-        if (ramp > 1) {
-          ramp = 1;
-        } else if (ramp < 0) {
-          ramp = 0;
-        }
-        
-        note_loc += 1/note_period;
-        if (note_loc > 1) {
-          note_loc -= 1;
-        }
-        val = ramp * (0.4*h1 + 0.4*h2 + 0.1*h3 + 0.1*h4);
-      
-        val = (last_val*7 + val) / 8;
-
-        sampleBlock[i] = val;
-        last_val = val;
-      
-        //if (val < -0.0000001 || val > 0.0000001) {
-        //  printf("%.4f\n", val);
-        // }
-        //printf("ramp: %0.5f\tdirection=%d\n", ramp, ramp_direction);
       }
     }
 
