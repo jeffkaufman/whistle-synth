@@ -262,6 +262,7 @@ int main(void)
 
     int current_note = -1;
     int good_samples = 0;
+    int bad_samples = 0;
 
     while(TRUE) {
       err = Pa_ReadStream( stream, sampleBlock, FRAMES_PER_BUFFER );
@@ -387,31 +388,39 @@ int main(void)
 
             if (chosen_note == -1) {
               good_samples = 0;
+              bad_samples++;
             } else {
               good_samples++;
+              bad_samples = 0;
             }
 
-            BOOL should_on = good_samples > 1;
-            BOOL note_changed = (current_note != chosen_note);
+            BOOL should_on = is_on ? bad_samples < 3 : good_samples > 1;
 
-            //printf("cur=%d, chos=%d, is_on=%d, should_on=%d, note_changed=%d\n",
-            //       current_note, chosen_note, is_on, should_on, note_changed);
+            if (should_on && chosen_note == -1) {
+              // We can't detect a pitch right now, but we'd like to stay on
+              // because we think this is probably a momentary blip.
+            } else {
+              BOOL note_changed = (current_note != chosen_note);
 
-            if (!should_on) {
-              recent_period = -1;
-            }
+              //printf("cur=%d, chos=%d, is_on=%d, should_on=%d, note_changed=%d\n",
+              //       current_note, chosen_note, is_on, should_on, note_changed);
 
-            if (is_on && note_changed) {
-              midi_off(current_note, endpoint);
-              current_note = -1;
-            }
-
-            if (should_on) {
-              if (note_changed) {
-                midi_on(chosen_note, endpoint);
+              if (!should_on) {
+                recent_period = -1;
               }
-              midi_bend(chosen_bend, endpoint);
-              current_note = chosen_note;
+
+              if (is_on && note_changed) {
+                midi_off(current_note, endpoint);
+                current_note = -1;
+              }
+
+              if (should_on) {
+                if (note_changed) {
+                  midi_on(chosen_note, endpoint);
+                }
+                midi_bend(chosen_bend, endpoint);
+                current_note = chosen_note;
+              }
             }
 
             positive = FALSE;
