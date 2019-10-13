@@ -103,13 +103,20 @@ void send_midi(char actionType, int noteNo, int v, MIDIEndpointRef endpoint) {
   attempt(MIDIReceived(endpoint, packetList), "error sending midi");
 }
 
+int remap(int noteNo) {
+  // Whistling is too high pitched.
+  return noteNo - 24;
+}
+
 void midi_on(int noteNo, MIDIEndpointRef endpoint) {
+  noteNo = remap(noteNo);
   printf("on: %d\n", noteNo);
   send_midi(0x90, noteNo, 100, endpoint);
 }
 
 void midi_off(int noteNo, MIDIEndpointRef endpoint) {
-    printf("off: %d\n", noteNo);
+  noteNo = remap(noteNo);
+  printf("off: %d\n", noteNo);
   send_midi(0x80, noteNo, 0, endpoint);
 }
 
@@ -123,26 +130,35 @@ void midi_bend(int bend, MIDIEndpointRef endpoint) {
   send_midi(0xE0, lsb, msb, endpoint);
 }
 
-void determine_note(float input_period_samples, int* chosen_note, int* chosen_bend) {
+void determine_note(float input_period_samples, int current_note,
+                    int* chosen_note, int* chosen_bend) {
   // input_period is in samples, convert it to hz
   float input_period_hz = SAMPLE_RATE/input_period_samples;
 
   float midi_note = 69 + 12 * log2(input_period_hz/440);
 
-  //printf("%.5fhz (%.4f)\n", input_period_hz, midi_note);
+  //if (current_note != -1) {
+  //  printf("delta: %.2f\n", (midi_note - current_note));
+  //}
 
-  *chosen_note = (int)(midi_note + 0.5);
+  if (current_note != -1 &&
+      midi_note - current_note < 2 &&
+      current_note - midi_note < 2) {
+    // We can keep the same note and just bend our way there.
+    *chosen_note = current_note;
+  } else {
+    // No current note, or too far to bend.  Take the closest midi note as a
+    // best guess.
+    *chosen_note = (int)(midi_note + 0.5);
+  }
 
-  // Between -0.5 and 0.5
+  // Between -2 and 2
   float rough_bend = (midi_note - *chosen_note);
+  //printf("rough bend: %.2f\n", rough_bend);
 
   // The full range of pitch bend is from -2 to 2 and is expressed by 0 to
-  // 16,383 (2^14 - 1).  Since we're running from -0.5 to 0.5 we'll only use 6143
-  // to 10239.
+  // 16,383 (2^14 - 1).  We use the whole range.
   *chosen_bend = (int)((1 + rough_bend/2) * 8192 - 0.5);
-
-  // Then map to reasonable pitches.
-  *chosen_note -= 24;
 
   //printf("%.2f samples   %.2fhz  note=%d  bend=%.4f  intbend=%d\n", input_period_samples, input_period_hz,
   // *chosen_note, rough_bend, *chosen_bend);
@@ -359,7 +375,7 @@ int main(void)
                                    0.1*instantaneous_period);
                 }
 
-                determine_note(recent_period, &chosen_note, &chosen_bend);
+                determine_note(recent_period, current_note, &chosen_note, &chosen_bend);
               } else {
                 chosen_note = -1;
               }
