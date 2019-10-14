@@ -48,7 +48,7 @@
 #include <CoreAudio/HostTime.h>
 #import <Foundation/Foundation.h>
 
-
+#define MIN_ENERGY      (0.00001)    // tweak this if it's over/undertriggering
 #define SAMPLE_RATE       (44100)    // if you change this, change MIN/MAX_INPUT_PERIOD too
 #define FRAMES_PER_BUFFER   (128)    // this is low, to minimize latency
 
@@ -353,12 +353,12 @@ int main(void)
               float rough_period_rms_energy = rms_energy/instantaneous_period;
 
               //printf("rough_period_rms_energy: %.9f\n", rough_period_rms_energy);
-              if (rough_period_rms_energy < 0.0000001) {
+              if (rough_period_rms_energy < MIN_ENERGY) {
                 //if (current_note != -1) {
                 //  printf("low energy (%.6f)\n", rough_period_rms_energy);
                 //}
                 ok = FALSE;
-              } else if (error > 5 && rough_period_rms_energy < 0.000001) {
+              } else if (error > 5 && rough_period_rms_energy < (MIN_ENERGY*10)) {
                 //printf("high error (%.2f, %.6f)\n", error, rough_period_rms_energy);
                 ok = FALSE;
               } else if (recent_period > 0 &&
