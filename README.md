@@ -11,17 +11,19 @@
    ```
 
 2. Build it:
-
+   ```
     make
+   ```
 
 3. Put on headphones, use a directional mic, or otherwise avoid letting the
    output of this program mix with the input.
 
 4. Run it and whistle:
-
+   ```
     make run
+   ```
 
-It will make a virtual MIDI source ("whistle-pitch"), which you can then pipe
+It will make a virtual MIDI source (`whistle-pitch`), which you can then pipe
 into a synthesizer.
 
 There's also a version with its own built-in bass synthesizer, which is a
