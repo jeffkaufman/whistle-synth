@@ -26,8 +26,9 @@ into a synthesizer.
 There's also a version with its own built-in bass synthesizer, which is a
 plgg-in version for a DAW (like Reaper):
 
-   source: https://github.com/jeffkaufman/iPlug2
-   mac vst: https://www.jefftk.com/BassWhistleVST3-v1.zip
+* source: https://github.com/jeffkaufman/iPlug2
+
+* mac vst: https://www.jefftk.com/BassWhistleVST3-v1.zip
 
 ## Microphone tips:
 
