@@ -263,6 +263,7 @@ int main(void)
     int current_note = -1;
     int good_samples = 0;
     int bad_samples = 0;
+    int good_run_length = 0;
 
     while(TRUE) {
       err = Pa_ReadStream( stream, sampleBlock, FRAMES_PER_BUFFER );
@@ -390,11 +391,19 @@ int main(void)
               good_samples = 0;
               bad_samples++;
             } else {
+              if (is_on) {
+                good_run_length++;
+              }
               good_samples++;
               bad_samples = 0;
             }
 
-            BOOL should_on = is_on ? bad_samples < 3 : good_samples > 1;
+            BOOL should_on =
+              is_on ? bad_samples < (good_run_length > 4 ? 3 : 1) : good_samples > 1;
+
+            if (!should_on) {
+              good_run_length = 0;
+            }
 
             if (should_on && chosen_note == -1) {
               // We can't detect a pitch right now, but we'd like to stay on
