@@ -1,13 +1,14 @@
 # Usage:
 
 1. Install portaudio:
-
+   ```
     $ wget http://www.portaudio.com/archives/pa_stable_v190600_20161030.tgz
     $ tar -xvzf pa_stable_v190600_20161030.tgz
     $ cd portaudio
     $ ./configure --disable-mac-universal
     $ make
     $ sudo make install
+   ```
 
 2. Build it:
 
