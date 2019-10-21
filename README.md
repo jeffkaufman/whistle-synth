@@ -52,3 +52,14 @@ plgg-in version for a DAW (like Reaper):
   trigger on noise then improve your microphone, your microphone technique, or
   your whistling technique.
 
+## To use with OSC
+
+1. Build liblo
+   ```
+   cd liblo-0.30/
+   ./configure
+   make
+   sudo make install
+   ```
+
+2. Run: `make run-osc`

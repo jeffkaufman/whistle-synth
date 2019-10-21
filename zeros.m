@@ -48,6 +48,10 @@
 #include <CoreAudio/HostTime.h>
 #import <Foundation/Foundation.h>
 
+#ifdef USE_OSC
+#include "lo/lo.h"
+#endif
+
 #define MIN_ENERGY      (0.00001)    // tweak this if it's over/undertriggering
 #define SAMPLE_RATE       (44100)    // if you change this, change MIN/MAX_INPUT_PERIOD too
 #define FRAMES_PER_BUFFER   (128)    // this is low, to minimize latency
@@ -131,11 +135,12 @@ void midi_bend(int bend, MIDIEndpointRef endpoint) {
 }
 
 void determine_note(float input_period_samples, int current_note,
-                    int* chosen_note, int* chosen_bend) {
+                    int* chosen_note, int* chosen_bend,
+                    float* chosen_frequency) {
   // input_period is in samples, convert it to hz
-  float input_period_hz = SAMPLE_RATE/input_period_samples;
+  *chosen_frequency = SAMPLE_RATE/input_period_samples;
 
-  float midi_note = 69 + 12 * log2(input_period_hz/440);
+  float midi_note = 69 + 12 * log2(*chosen_frequency/440);
 
   //if (current_note != -1) {
   //  printf("delta: %.2f\n", (midi_note - current_note));
@@ -168,15 +173,31 @@ float sine(float v) {
   return sin(v*M_PI*2);
 }
 
+#ifdef USE_OSC
+lo_address osc_address;
+#endif
+
+void send_osc(float v) {
+#ifdef USE_OSC
+    if (lo_send(osc_address, "/whistle-pitch", "f", v) == -1) {
+        printf("OSC error %d: %s\n", lo_address_errno(osc_address),
+               lo_address_errstr(osc_address));
+    }
+#endif
+}
+
 int main(void);
-int main(void)
-{
+int main(void) {
     PaStreamParameters inputParameters;
     PaStream *stream = NULL;
     PaError err;
     const PaDeviceInfo* inputInfo;
     float *sampleBlock = NULL;
     int numBytes;
+
+#ifdef USE_OSC
+    osc_address = lo_address_new(NULL, "7770");
+#endif
 
     MIDIClientRef midiclient;
     attempt(MIDIClientCreate(CFSTR("whistle-pitch"),
@@ -280,6 +301,7 @@ int main(void)
 
         int chosen_note = -1;
         int chosen_bend = -1;
+        float chosen_frequency = -1;
 
         if (positive) {
           if (sample < 0) {
@@ -377,7 +399,8 @@ int main(void)
                                    0.1*instantaneous_period);
                 }
 
-                determine_note(recent_period, current_note, &chosen_note, &chosen_bend);
+                determine_note(recent_period, current_note, &chosen_note,
+                               &chosen_bend, &chosen_frequency);
               } else {
                 chosen_note = -1;
               }
@@ -409,6 +432,7 @@ int main(void)
               // We can't detect a pitch right now, but we'd like to stay on
               // because we think this is probably a momentary blip.
             } else {
+
               BOOL note_changed = (current_note != chosen_note);
 
               //printf("cur=%d, chos=%d, is_on=%d, should_on=%d, note_changed=%d\n",
@@ -429,6 +453,9 @@ int main(void)
                 }
                 midi_bend(chosen_bend, endpoint);
                 current_note = chosen_note;
+                send_osc(chosen_frequency);
+              } else {
+                send_osc(0);
               }
             }
 
