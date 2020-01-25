@@ -114,13 +114,13 @@ int remap(int noteNo) {
 
 void midi_on(int noteNo, MIDIEndpointRef endpoint) {
   noteNo = remap(noteNo);
-  printf("on: %d\n", noteNo);
+  //printf("on: %d\n", noteNo);
   send_midi(0x90, noteNo, 100, endpoint);
 }
 
 void midi_off(int noteNo, MIDIEndpointRef endpoint) {
   noteNo = remap(noteNo);
-  printf("off: %d\n", noteNo);
+  //printf("off: %d\n", noteNo);
   send_midi(0x80, noteNo, 0, endpoint);
 }
 
@@ -167,6 +167,8 @@ void determine_note(float input_period_samples, int current_note,
 
   //printf("%.2f samples   %.2fhz  note=%d  bend=%.4f  intbend=%d\n", input_period_samples, input_period_hz,
   // *chosen_note, rough_bend, *chosen_bend);
+
+  //printf("%.2fhz\n", *chosen_frequency);
 }
 
 float sine(float v) {
