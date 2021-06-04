@@ -56,6 +56,24 @@ plug-in version for a DAW (like Reaper):
 
 It will detect pitches and generate audio.
 
+To run on boot, `/etc/systemd/system/pitch-detect.service` should have:
+
+```
+[Unit]
+Description=Pitch Detection and	Synthesis
+
+[Service]
+ExecStart=/home/pi/pitch-detect/zeros-linux
+Restart=always
+KillSignal=SIGQUIT
+Type=simple
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then `sudo systemctl enable pitch-detect` and `sudo systemctl daemon-reload`.
+
 ## Run
 
 1. Put on headphones, use a directional mic, or otherwise avoid letting the
