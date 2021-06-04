@@ -1,4 +1,8 @@
-zeros: zeros.m
+zeros-linux: zeros.c
+	gcc -lportaudio -lm \
+	  zeros.c -o zeros-linux -std=c99 -Wall
+
+zeros-m: zeros.m
 	gcc \
     -F/System/Library/PrivateFrameworks \
 	  -framework CoreMIDI \
@@ -6,7 +10,7 @@ zeros: zeros.m
     -framework CoreAudio \
     -framework Foundation \
 	  -lportaudio \
-	  zeros.m -o zeros -std=c99 -Wall
+	  zeros.m -o zeros-mac -std=c99 -Wall
 
 zeros-osc: zeros.m
 	gcc \
@@ -20,9 +24,11 @@ zeros-osc: zeros.m
 	  -DUSE_OSC \
 	  zeros.m -o zeros-osc -std=c99 -Wall
 
-run: zeros
-	./zeros
+run-linux: zeros-linux
+	./zeros-linux
 
 run-osc: zeros-osc
 	./zeros-osc
 
+run-mac: zeros-mac
+	./zeros-mac
