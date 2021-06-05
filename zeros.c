@@ -56,7 +56,7 @@
 #define SAMPLE_SILENCE  (0.0f)
 #define PRINTF_S_FORMAT "%.8f"
 
-#define GATE (14)
+#define GATE (15)
 #define RANGE_HIGH (14)
 #define RANGE_LOW (71)
 #define ACCURACY (1)
@@ -64,6 +64,9 @@
 #define RELEASE_SPEED (5.5)
 #define OCTAVE (2)
 #define SLIDE (4)
+#define ALPHA (0.1)
+#define VOLUME (0.9)
+#define MAX_AMPLITUDE (0.3)
 
 #define HISTORY_LENGTH (512)
 
@@ -104,8 +107,9 @@ struct Osc {
 #define V_SINE 0
 #define V_SINE_SAW 1
 #define V_SUPERSAW 2
+#define V_SINE_1_3 3
 
-#define VOICE V_SUPERSAW
+#define VOICE V_SINE_1_3
 
 #if VOICE == V_SINE
 #define N_OSCS (1)
@@ -138,6 +142,14 @@ struct Osc oscs[] =
   };
 #endif
 
+#if VOICE == V_SINE_1_3
+#define N_OSCS (2)
+struct Osc oscs[] =
+  {
+   {FALSE, 1, 0, 1, 40, 0.999, FALSE, 0},
+   {FALSE, 3, 0, 0.1, 40, 0.999, FALSE, 0},
+  };
+#endif
 
 
 float osc_next(struct Osc* osc, float goal_period, float ramp) {
@@ -187,6 +199,8 @@ struct pitch_detector {
   int on_count;
   int off_count;
 
+  float amp;
+
   BOOL is_on;
 
   float gate;
@@ -223,6 +237,8 @@ void populate_pd() {
 
   pd.on_count = 0;
   pd.off_count = 0;
+
+  pd.amp = 0;
 
   pd.is_on = FALSE;
 
@@ -294,6 +310,11 @@ float update(float s) {
             sample_max_loc = j;
           }
         }
+
+	//printf("raw amplitude: %.2f\n", sample_max - sample_min);
+	float amplitude = fmin(sample_max - sample_min, MAX_AMPLITUDE);
+	// low-pass it
+	pd.amp += 0.1 * (amplitude - pd.amp);
         
         /*
          * With a perfect sine wave centered on 0 and lined up with our
@@ -316,16 +337,22 @@ float update(float s) {
         error += (sample_min_loc - 3*pd.rough_input_period/4)*(sample_min_loc - 3*pd.rough_input_period/4);
 
         float rough_period_rms_energy = pd.rms_energy/pd.rough_input_period;
-        
+        /*
         if (rough_period_rms_energy < pd.gate) {
           ok = FALSE;
         } else if (error > 5 && rough_period_rms_energy < (10*pd.gate)) {
           ok = FALSE;
-        }
+	  }*/
+
+	if (amplitude < 0.001) {
+	  ok = FALSE;
+	} else if (amplitude < 0.01 && error > 2) {
+	  ok = FALSE;
+	}
       } else {
         ok = FALSE;
       }
-      
+
       // If we're off, require `accuracy` periods before turning on.  If we're fully on require
       // `accuracy` periods before turning off.  If we're in between, ignore accuracy and just
       // go with our current best guess.
@@ -361,6 +388,7 @@ float update(float s) {
       if (pd.on_count >= pd.accuracy) {
         pd.ramp_direction = 1;
         pd.samples_since_attack_began = 0;
+	pd.amp = 0;
       }
 
       if (ok) {
@@ -486,29 +514,36 @@ int main(void) {
   err = Pa_StartStream( stream );
   if( err != paNoError ) goto error1;
 
+  float output = 0;
   while(TRUE) {
     err = Pa_ReadStream( stream, sampleBlock, FRAMES_PER_BUFFER );
     if (err & paInputOverflow) {
       printf("ignoring input undeflow\n");
     } else if( err ) goto xrun;
     
+    float debug_max_output = 0;
     for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
       float sample = sampleBlock[i];
       
       float goal_period = update(sample);
-      sampleBlock[i] = 0;
       float vol = 0;
-
+      float val = 0;
       for (int j = 0; j < N_OSCS; j++) {
-	sampleBlock[i] += osc_next(&oscs[j], goal_period, pd.ramp) / 2;
+	val += osc_next(&oscs[j], goal_period, pd.ramp) / 2;
 	vol += oscs[j].vol;
       }
       if (vol < 0.000001) {
-	sampleBlock[i] = 0;
+	val = 0;
       } else {
-	sampleBlock[i] = sampleBlock[i]/vol;
+	val = val/vol;
       }
+
+      output += ALPHA * (val - output);
+      sampleBlock[i] = output * VOLUME * pd.amp / ALPHA ; // makeup gain
+      debug_max_output = fmax(debug_max_output, sampleBlock[i]);
     }
+
+    //printf("debugmax_output: %.2f\n", debug_max_output);
 
     err = Pa_WriteStream( stream, sampleBlock, FRAMES_PER_BUFFER );
     if (err & paOutputUnderflow) {
