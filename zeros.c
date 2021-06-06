@@ -46,7 +46,6 @@
 #include <string.h>
 #include "portaudio.h"
 
-#define MIN_ENERGY      (0.00001)    // tweak this if it's over/undertriggering
 #define SAMPLE_RATE       (44100)    // if you change this, change MIN/MAX_INPUT_PERIOD too
 #define FRAMES_PER_BUFFER   (128)    // this is low, to minimize latency
 
@@ -185,7 +184,6 @@ struct pitch_detector {
   BOOL positive;
   float previous_sample;
   float rough_input_period;
-  float rms_energy;
 
   // -1: ramp down
   //  1: ramp up
@@ -224,8 +222,6 @@ void populate_pd() {
   pd.previous_sample = 0;
   pd.rough_input_period = 40;
 
-  pd.rms_energy = 0;
-
   // -1: ramp down
   //  1: ramp up
   pd.ramp_direction = -1;
@@ -249,7 +245,6 @@ void populate_pd() {
 }
 
 float update(float s) {
-  pd.rms_energy += s*s;
   pd.hist[pd.hist_pos++] = s;
   pd.hist_pos = pd.hist_pos % RANGE_LOW;
 
@@ -336,14 +331,6 @@ float update(float s) {
         error += (sample_max_loc - pd.rough_input_period/4)*(sample_max_loc - pd.rough_input_period/4);
         error += (sample_min_loc - 3*pd.rough_input_period/4)*(sample_min_loc - 3*pd.rough_input_period/4);
 
-        float rough_period_rms_energy = pd.rms_energy/pd.rough_input_period;
-        /*
-        if (rough_period_rms_energy < pd.gate) {
-          ok = FALSE;
-        } else if (error > 5 && rough_period_rms_energy < (10*pd.gate)) {
-          ok = FALSE;
-	  }*/
-
 	if (amplitude < 0.001) {
 	  ok = FALSE;
 	} else if (amplitude < 0.01 && error > 2) {
@@ -405,7 +392,6 @@ float update(float s) {
       pd.positive = FALSE;
 
       pd.samples_since_last_crossing = -adjustment;
-      pd.rms_energy = 0;
     }
   } else {
     if (s > 0) {
