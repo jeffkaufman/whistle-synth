@@ -1,6 +1,5 @@
 zeros-linux: zeros.c
-	gcc -lportaudio -lm \
-	  zeros.c -o zeros-linux -std=c99 -Wall
+	gcc zeros.c -o zeros-linux -lportaudio -lm -std=c99 -Wall
 
 zeros-m: zeros.m
 	gcc \

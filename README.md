@@ -51,7 +51,7 @@ plug-in version for a DAW (like Reaper):
 
 2. Build it:
    ```
-    make zeros-mac
+    make zeros-linux
    ```
 
 It will detect pitches and generate audio.

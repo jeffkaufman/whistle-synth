@@ -55,19 +55,14 @@
 #define SAMPLE_SILENCE  (0.0f)
 #define PRINTF_S_FORMAT "%.8f"
 
-#define GATE (15)
 #define RANGE_HIGH (14)
 #define RANGE_LOW (71)
-#define ACCURACY (1)
-#define ATTACK_SPEED (3.5)
-#define RELEASE_SPEED (5.5)
-#define OCTAVE (2)
 #define SLIDE (4)
 #define ALPHA (0.1)
 #define VOLUME (0.9)
-#define MAX_AMPLITUDE (0.3)
+#define DURATION (3)
 
-#define HISTORY_LENGTH (512)
+#define HISTORY_LENGTH (8192)
 
 #define BOOL char
 #define TRUE 1
@@ -80,178 +75,158 @@ void die(char *errmsg) {
   exit(-1);
 }
 
-float sine_decimal(float x) {
-  x += 0.5;
-  x = x - (int)x;
-  return sin((x)*M_PI*2);
-}
-
-float saw_decimal(float x) {
-  x += 0.5;
-  x = x - (int)x;
-  return x*2 - 1;
-}
-
 struct Osc {
-  BOOL is_saw;
-  float tuning;
+  BOOL active;
+  float amp;
   float pos;
+  int samples;
+  float total_amplitude;
+  int duration;
+
+  BOOL is_square;
+  float speed;
+  float polarity;
   float vol;
-  float base_period;
-  float decay_rate;
-  BOOL is_on;
-  float decay_vol;
 };
 
-#define V_SINE 0
-#define V_SINE_SAW 1
-#define V_SUPERSAW 2
-#define V_SINE_1_3 3
+void osc_init(
+    struct Osc* osc, int cycles, float adjustment, float vol,
+    BOOL is_square, float speed, float cycle, int mod) {
+  osc->active = TRUE;
+  osc->pos = -adjustment;
+  osc->amp = 0;
+  osc->samples = 0;
+  osc->total_amplitude = 0;
+  osc->duration = DURATION;
 
-#define VOICE V_SINE_1_3
+  osc->is_square = is_square;
+  osc->speed = speed;
+  osc->vol = vol;
 
-#if VOICE == V_SINE
-#define N_OSCS (1)
-struct Osc oscs[] =
-  {
-   {FALSE, 1, 0, 1, 40, 0.999, FALSE, 0},
-  };
-#endif
-
-#if VOICE == V_SINE_SAW
-#define N_OSCS (2)
-struct Osc oscs[] =
-  {
-   {FALSE, 1, 0, 1, 40, 0.999, FALSE, 0},
-   {TRUE, 1, 0, 0.1, 40, 0.999, FALSE, 0},
-  };
-#endif
-
-#if VOICE == V_SUPERSAW
-#define N_OSCS (2)
-struct Osc oscs[] =
-  {
-   {TRUE, 1.003, 0, 1, 40, 0.999, FALSE, 0},
-   {TRUE, 1.002, 0, 1, 40, 0.999, FALSE, 0},
-   {TRUE, 1.001, 0, 1, 40, 0.999, FALSE, 0},
-   {TRUE, 1.000, 0, 1, 40, 0.999, FALSE, 0},
-   {TRUE, 0.999, 0, 1, 40, 0.999, FALSE, 0},
-   {TRUE, 0.998, 0, 1, 40, 0.999, FALSE, 0},
-   {TRUE, 0.997, 0, 1, 40, 0.999, FALSE, 0},
-  };
-#endif
-
-#if VOICE == V_SINE_1_3
-#define N_OSCS (2)
-struct Osc oscs[] =
-  {
-   {FALSE, 1, 0, 1, 40, 0.999, FALSE, 0},
-   {FALSE, 3, 0, 0.1, 40, 0.999, FALSE, 0},
-  };
-#endif
-
-
-float osc_next(struct Osc* osc, float goal_period, float ramp) {
-  BOOL was_on = osc->is_on;
-  osc->is_on = !!goal_period && ramp > 0.9;
-
-  if (osc->is_on) {
-    osc->decay_vol = 1;
-
-    if (was_on) {
-      // Already playing, move smoothly
-      osc->base_period = ((SLIDE-1)*osc->base_period + goal_period)/SLIDE;
-    } else {
-      // Note is starting, go directly there.
-      osc->pos = 0;
-      osc->base_period = goal_period;
-    }
-  } else {
-    osc->decay_vol *= osc->decay_rate;
-  }
-
-  float val = (osc->is_saw ? saw_decimal : sine_decimal)(osc->pos);
-  val *= osc->decay_vol * osc->vol;
-  osc->pos += osc->tuning/(osc->base_period*OCTAVE);
-  return val;
+  osc->polarity = ((int)(cycle * cycles)) % mod ? 1 : -1;
 }
 
-struct pitch_detector {
+#define V_W1 0
+#define VOICE V_W1
+
+#if VOICE == V_W1
+#define N_OSCS_PER_LAYER 2
+
+void init_oscs(
+    struct Osc* oscs_subset, // we use N_OSCS_PER_LAYER of these
+    int cycles, float adjustment) {
+  osc_init(oscs_subset,
+           cycles,
+           adjustment,
+           /*vol=*/ 1,
+           /*is_square=*/ FALSE,
+           /*speed=*/ 0.25,
+           /*cycle=*/ 0.25,
+           /*mod=*/ 2);
+  osc_init(oscs_subset + 1,
+           cycles,
+           adjustment,
+           /*vol=*/ 1,
+           /*is_square=*/ FALSE,
+           /*speed=*/ 0.125,
+           /*cycle=*/ 0.123,
+           /*mod=*/ 2);
+}
+
+#endif
+
+#define N_OSCS (N_OSCS_PER_LAYER*DURATION)
+struct Osc oscs[N_OSCS*DURATION];
+
+float get_hist(int);
+
+float osc_next(struct Osc* osc) {
+  if (!osc->active) {
+    return 0;
+  }
+
+  osc->samples++;
+
+  if (osc->duration > 0) {
+    osc->amp += 0.01 * (1 - osc->amp);
+  } else {
+    osc->amp *= 0.95;
+  }
+
+  float valA = get_hist((int)osc->pos);
+  float valB = get_hist((int)(osc->pos+1));
+  float amtA = osc->pos - (int)osc->pos;
+  float amtB = 1-amtA;
+
+  float val = valA*amtA + valB*amtB;
+  osc->total_amplitude += fabsf(val);
+  if (osc->is_square) {
+    val = val > 0 ? 1 : -1;
+    val *= (osc->total_amplitude / osc->samples);
+  }
+
+  osc->pos += osc->speed;
+  return osc->amp * val * osc->polarity * osc->vol;
+}
+
+void handle_cycle() {
+  for (int i = 0; i < N_OSCS; i++) {
+    if (oscs[i].active) {
+      if (oscs[i].duration > 0) {
+        oscs[i].duration--;
+      }
+      if (oscs[i].duration < 1 && oscs[i].amp < 0.001) {
+        oscs[i].active = FALSE;
+      }
+    }
+  }
+}
+
+struct Octaver {
   float hist[HISTORY_LENGTH];
   int hist_pos;
+  int cycles;
   float samples_since_last_crossing;
   float samples_since_attack_began;
   BOOL positive;
   float previous_sample;
   float rough_input_period;
-
-  // -1: ramp down
-  //  1: ramp up
-  float ramp_direction;
-
-  float ramp;
-
-  float current_volume;
-  float target_volume;
-
-  int on_count;
-  int off_count;
-
-  float amp;
-
-  BOOL is_on;
-
-  float gate;
-  int accuracy;
-  float attack_speed;
-  float release_speed;
 };
 
-struct pitch_detector pd;
+struct Octaver octaver;
 
-void populate_pd() {
+void init_octaver() {
   for (int i = 0; i < HISTORY_LENGTH; i++) {
-    pd.hist[i] = 0;
+    octaver.hist[i] = 0;
   }
-  pd.hist_pos = 0;
+  octaver.cycles = 0;
+  octaver.hist_pos = 0;
 
-  pd.samples_since_last_crossing = 0;
-  pd.samples_since_attack_began = 0;
+  octaver.samples_since_last_crossing = 0;
+  octaver.samples_since_attack_began = 0;
 
-  pd.positive = TRUE;
-  pd.previous_sample = 0;
-  pd.rough_input_period = 40;
+  octaver.positive = TRUE;
+  octaver.previous_sample = 0;
+  octaver.rough_input_period = 40;
+}
 
-  // -1: ramp down
-  //  1: ramp up
-  pd.ramp_direction = -1;
+void set_hist(float s) {
+  octaver.hist[octaver.hist_pos] = s;
+  octaver.hist_pos = (octaver.hist_pos + 1) % HISTORY_LENGTH;
+}
 
-  pd.ramp = 0;
-
-  pd.current_volume = 0;
-  pd.target_volume = 0;
-
-  pd.on_count = 0;
-  pd.off_count = 0;
-
-  pd.amp = 0;
-
-  pd.is_on = FALSE;
-
-  pd.gate = 1/exp(GATE);
-  pd.accuracy = ACCURACY;
-  pd.attack_speed = 1/exp(ATTACK_SPEED);
-  pd.release_speed = 1/exp(RELEASE_SPEED);
+float get_hist(int pos) {
+  return octaver.hist[
+    (HISTORY_LENGTH + octaver.hist_pos - pos) % HISTORY_LENGTH];
 }
 
 float update(float s) {
-  pd.hist[pd.hist_pos++] = s;
-  pd.hist_pos = pd.hist_pos % RANGE_LOW;
+  set_hist(s);
 
-  pd.samples_since_last_crossing++;
-  pd.samples_since_attack_began++;
+  octaver.samples_since_last_crossing++;
+  octaver.samples_since_attack_began++;
 
-  if (pd.positive) {
+  if (octaver.positive) {
     if (s < 0) {
       /*
        * Let's say we take samples at p and n:
@@ -278,149 +253,38 @@ float update(float s) {
        *     |n| + |p|       -n + p     p - n
        */
       float first_negative = s;
-      float last_positive = pd.previous_sample;
+      float last_positive = octaver.previous_sample;
       float adjustment = first_negative / (last_positive - first_negative);
       if (isnan(adjustment)) {
         adjustment = 0;
       }
-      pd.samples_since_last_crossing -= adjustment;
-      pd.rough_input_period = pd.samples_since_last_crossing;
+      octaver.samples_since_last_crossing -= adjustment;
+      octaver.rough_input_period = octaver.samples_since_last_crossing;
 
-      BOOL ok = TRUE;
-      float sample_max = 0;
-      float sample_min = 0;
-      
-      if (pd.rough_input_period > RANGE_HIGH &&
-          pd.rough_input_period < RANGE_LOW) {
-        float sample_max_loc = -1000;
-        float sample_min_loc = -1000;
-        for (int j = 0; j < pd.rough_input_period; j++) {
-          float histval = pd.hist[(RANGE_LOW + pd.hist_pos - j) %
-				    RANGE_LOW];
-          if (histval < sample_min) {
-            sample_min = histval;
-            sample_min_loc = j;
-          } else if (histval > sample_max) {
-            sample_max = histval;
-            sample_max_loc = j;
-          }
-        }
-
-	//printf("raw amplitude: %.2f\n", sample_max - sample_min);
-	float amplitude = fmin(sample_max - sample_min, MAX_AMPLITUDE);
-	// low-pass it
-	pd.amp += 0.1 * (amplitude - pd.amp);
-        
-        /*
-         * With a perfect sine wave centered on 0 and lined up with our
-         * sampling we'd expect:
-         *
-         * history[now] == 0                         (verified)
-         * history[now - input_period] == 0          (verified)
-         * history[now - input_period/2] == 0        (very likely)
-         * history[now - input_period/4] == max
-         * history[now - 3*input_period/4] == min
-         *
-         * Let's check if that's right, to within a sample or so.
-         */
-        float error = 0;
-        // You could make these better by finding the second
-        // highest/lowest values to figure out which direction the peak
-        // is off in, and adjusting.  Or construct a whole sine wave and
-        // see how well it fits history.
-        error += (sample_max_loc - pd.rough_input_period/4)*(sample_max_loc - pd.rough_input_period/4);
-        error += (sample_min_loc - 3*pd.rough_input_period/4)*(sample_min_loc - 3*pd.rough_input_period/4);
-
-	if (amplitude < 0.001) {
-	  ok = FALSE;
-	} else if (amplitude < 0.01 && error > 2) {
-	  ok = FALSE;
-	}
-      } else {
-        ok = FALSE;
+      if (octaver.rough_input_period > RANGE_HIGH &&
+          octaver.rough_input_period < RANGE_LOW) {
+        init_oscs(oscs + (octaver.cycles % DURATION), octaver.cycles, adjustment);
       }
 
-      // If we're off, require `accuracy` periods before turning on.  If we're fully on require
-      // `accuracy` periods before turning off.  If we're in between, ignore accuracy and just
-      // go with our current best guess.
+      octaver.cycles++;
+      handle_cycle();
 
-      BOOL currently_on = pd.ramp_direction > 0 && pd.ramp > .5;
-      BOOL currently_off = pd.ramp_direction < 0 && pd.ramp < 0.0001;
-
-      if (pd.is_on && currently_off) {
-        pd.is_on = FALSE;
-      } else if (!pd.is_on && currently_on) {
-        pd.is_on = TRUE;
-      }
-
-      if (currently_on) {
-        pd.on_count = 0;
-        if (ok) {
-          pd.off_count = 0;
-        } else {
-          pd.off_count++;
-        }
-      } else if (currently_off) {
-        pd.off_count = 0;
-        if (!ok) {
-          pd.on_count = 0;
-        } else {
-          pd.on_count++;
-        }
-      } else {
-        pd.off_count = 0;
-        pd.on_count = 0;
-      }
-
-      if (pd.on_count >= pd.accuracy) {
-        pd.ramp_direction = 1;
-        pd.samples_since_attack_began = 0;
-	pd.amp = 0;
-      }
-
-      if (ok) {
-        pd.target_volume = fmaxf(sample_max, -sample_min);
-        if (pd.target_volume > 1) {
-          pd.target_volume = 1;
-        }
-      }
-
-      if (pd.off_count >= pd.accuracy) {
-        pd.ramp_direction = -1;
-      }
-
-      pd.positive = FALSE;
-
-      pd.samples_since_last_crossing = -adjustment;
+      octaver.positive = FALSE;
+      octaver.samples_since_last_crossing = -adjustment;
     }
   } else {
     if (s > 0) {
-      pd.positive = TRUE;
+      octaver.positive = TRUE;
     }
   }
   
-  pd.previous_sample = s;
+  octaver.previous_sample = s;
 
-  if (pd.ramp_direction > 0) {
-    if (pd.ramp < 0.00001) {
-      pd.ramp = 0.00001;
-    }
-    pd.ramp *= (1 + pd.attack_speed);
-  } else if (pd.ramp_direction < 0) {
-    if (pd.samples_since_attack_began < 44000) {
-      pd.ramp *= (1 - pd.release_speed);
-    } else {
-      pd.ramp *= (1 - (pd.release_speed * 0.1));
-    }
+  float val = 0;
+  for (int i = 0 ; i < N_OSCS; i++) {
+    val += osc_next(&oscs[i]);
   }
-
-  if (pd.ramp > 1) {
-    pd.ramp = 1;
-  } else if (pd.ramp < 0.000001) {
-    pd.ramp = 0;
-  }
-
-  return pd.is_on ? pd.rough_input_period : 0;
+  return val * VOLUME;
 }
 
 int main(void) {
@@ -433,7 +297,7 @@ int main(void) {
   float *sampleBlock = NULL;
   int numBytes;
 
-  populate_pd();
+  init_octaver();
 
   err = Pa_Initialize();
   if( err != paNoError ) goto error2;
@@ -500,6 +364,10 @@ int main(void) {
   err = Pa_StartStream( stream );
   if( err != paNoError ) goto error1;
 
+  for (int i = 0; i < N_OSCS; i++) {
+    oscs[i].active = FALSE;
+  }
+
   float output = 0;
   while(TRUE) {
     err = Pa_ReadStream( stream, sampleBlock, FRAMES_PER_BUFFER );
@@ -507,29 +375,13 @@ int main(void) {
       printf("ignoring input undeflow\n");
     } else if( err ) goto xrun;
     
-    float debug_max_output = 0;
     for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
       float sample = sampleBlock[i];
       
-      float goal_period = update(sample);
-      float vol = 0;
-      float val = 0;
-      for (int j = 0; j < N_OSCS; j++) {
-	val += osc_next(&oscs[j], goal_period, pd.ramp) / 2;
-	vol += oscs[j].vol;
-      }
-      if (vol < 0.000001) {
-	val = 0;
-      } else {
-	val = val/vol;
-      }
-
+      float val = update(sample);
       output += ALPHA * (val - output);
-      sampleBlock[i] = output * VOLUME * pd.amp / ALPHA ; // makeup gain
-      debug_max_output = fmax(debug_max_output, sampleBlock[i]);
+      sampleBlock[i] = output * VOLUME / ALPHA ; // makeup gain
     }
-
-    //printf("debugmax_output: %.2f\n", debug_max_output);
 
     err = Pa_WriteStream( stream, sampleBlock, FRAMES_PER_BUFFER );
     if (err & paOutputUnderflow) {
