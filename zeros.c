@@ -58,7 +58,6 @@
 #define RANGE_HIGH (14)
 #define RANGE_LOW (71)
 #define SLIDE (4)
-#define ALPHA (0.1)
 #define VOLUME (0.9)
 #define DURATION (3)
 
@@ -75,6 +74,43 @@ void die(char *errmsg) {
   exit(-1);
 }
 
+struct Octaver {
+  float hist[HISTORY_LENGTH];
+  int hist_pos;
+  int cycles;
+  float samples_since_last_crossing;
+  float samples_since_attack_began;
+  BOOL positive;
+  float previous_sample;
+  float rough_input_period;
+};
+
+struct Octaver octaver;
+
+void init_octaver() {
+  for (int i = 0; i < HISTORY_LENGTH; i++) {
+    octaver.hist[i] = 0;
+  }
+  octaver.cycles = 0;
+  octaver.hist_pos = 0;
+
+  octaver.samples_since_last_crossing = 0;
+  octaver.samples_since_attack_began = 0;
+
+  octaver.positive = TRUE;
+  octaver.previous_sample = 0;
+  octaver.rough_input_period = 40;
+}
+
+void set_hist(float s) {
+  octaver.hist[octaver.hist_pos] = s;
+  octaver.hist_pos = (octaver.hist_pos + 1) % HISTORY_LENGTH;
+}
+
+float get_hist(int pos) {
+  return octaver.hist[
+    (HISTORY_LENGTH + octaver.hist_pos - pos) % HISTORY_LENGTH];
+}
 struct Osc {
   BOOL active;
   float amp;
@@ -93,52 +129,95 @@ void osc_init(
     struct Osc* osc, int cycles, float adjustment, float vol,
     BOOL is_square, float speed, float cycle, int mod) {
   osc->active = TRUE;
-  osc->pos = -adjustment;
   osc->amp = 0;
+  osc->pos = -adjustment;
   osc->samples = 0;
   osc->total_amplitude = 0;
   osc->duration = DURATION;
 
   osc->is_square = is_square;
   osc->speed = speed;
-  osc->vol = vol;
-
   osc->polarity = ((int)(cycle * cycles)) % mod ? 1 : -1;
+  osc->vol = vol;
+}
+
+void osc_diff(struct Osc* osc1, struct Osc* osc2) {
+  if (osc1->pos != osc2->pos) {
+    printf("pos mismatch %.5f %.5f\n", osc1->pos, osc2->pos);
+  }
 }
 
 #define V_W1 0
+#define V_W2 1
+#define V_S1 2
 #define VOICE V_W1
 
 #if VOICE == V_W1
 #define N_OSCS_PER_LAYER 2
+#define ALPHA (0.01)
+#endif
 
-void init_oscs(
-    struct Osc* oscs_subset, // we use N_OSCS_PER_LAYER of these
-    int cycles, float adjustment) {
-  osc_init(oscs_subset,
-           cycles,
-           adjustment,
-           /*vol=*/ 1,
-           /*is_square=*/ FALSE,
-           /*speed=*/ 0.25,
-           /*cycle=*/ 0.25,
-           /*mod=*/ 2);
-  osc_init(oscs_subset + 1,
-           cycles,
-           adjustment,
-           /*vol=*/ 1,
-           /*is_square=*/ FALSE,
-           /*speed=*/ 0.125,
-           /*cycle=*/ 0.123,
-           /*mod=*/ 2);
-}
+#if VOICE == V_W2
+#define ALPHA (0.1)
+#define N_OSCS_PER_LAYER 2
+#endif
 
+#if VOICE == V_S1
+#define ALPHA (0.1)
+#define N_OSCS_PER_LAYER 1
 #endif
 
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
-struct Osc oscs[N_OSCS*DURATION];
+struct Osc oscs[N_OSCS];
 
-float get_hist(int);
+void init_oscs(int cycles, float adjustment) {
+  int offset = (octaver.cycles % N_OSCS_PER_LAYER) * N_OSCS_PER_LAYER;
+
+  if (VOICE == V_W1) {
+    osc_init(&oscs[offset],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 1,
+	     /*is_square=*/ FALSE,
+	     /*speed=*/ 0.25,
+	     /*cycle=*/ 0.25,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset + 1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 1,
+	     /*is_square=*/ FALSE,
+	     /*speed=*/ 0.125,
+	     /*cycle=*/ 0.125,
+	     /*mod=*/ 2);
+  } else if (VOICE == V_W2) {
+    osc_init(&oscs[offset],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 1,
+	     /*is_square=*/ FALSE,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 3,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset + 1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 1,
+	     /*is_square=*/ FALSE,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 3,
+	     /*mod=*/ 2);
+  } else if (VOICE == V_S1) {
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 1,
+	     /*is_square=*/ FALSE,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 2);
+  }
+}
 
 float osc_next(struct Osc* osc) {
   if (!osc->active) {
@@ -182,43 +261,6 @@ void handle_cycle() {
   }
 }
 
-struct Octaver {
-  float hist[HISTORY_LENGTH];
-  int hist_pos;
-  int cycles;
-  float samples_since_last_crossing;
-  float samples_since_attack_began;
-  BOOL positive;
-  float previous_sample;
-  float rough_input_period;
-};
-
-struct Octaver octaver;
-
-void init_octaver() {
-  for (int i = 0; i < HISTORY_LENGTH; i++) {
-    octaver.hist[i] = 0;
-  }
-  octaver.cycles = 0;
-  octaver.hist_pos = 0;
-
-  octaver.samples_since_last_crossing = 0;
-  octaver.samples_since_attack_began = 0;
-
-  octaver.positive = TRUE;
-  octaver.previous_sample = 0;
-  octaver.rough_input_period = 40;
-}
-
-void set_hist(float s) {
-  octaver.hist[octaver.hist_pos] = s;
-  octaver.hist_pos = (octaver.hist_pos + 1) % HISTORY_LENGTH;
-}
-
-float get_hist(int pos) {
-  return octaver.hist[
-    (HISTORY_LENGTH + octaver.hist_pos - pos) % HISTORY_LENGTH];
-}
 
 float update(float s) {
   set_hist(s);
@@ -263,7 +305,7 @@ float update(float s) {
 
       if (octaver.rough_input_period > RANGE_HIGH &&
           octaver.rough_input_period < RANGE_LOW) {
-        init_oscs(oscs + (octaver.cycles % DURATION), octaver.cycles, adjustment);
+        init_oscs(octaver.cycles, adjustment);
       }
 
       octaver.cycles++;
