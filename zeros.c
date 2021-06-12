@@ -159,6 +159,7 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_W5 5
 #define V_W6 6
 #define V_W7 7
+
 #define VOICE V_W4
 
 #define N_OSCS_PER_LAYER 6
