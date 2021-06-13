@@ -160,13 +160,22 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_W6 6
 #define V_W7 7
 
-#define VOICE V_W7
+#define VOICE V_S1
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
 struct Osc oscs[N_OSCS];
 
 #define ALPHA (0.1)
+
+// in samples -- set to zero for off
+#define LESLIE_PERIOD 0 // 4096
+// in samples
+#define LESLIE_DEPTH 36
+#define LESLIE_SAMPLES (LESLIE_DEPTH*2)
+float sine_decimal(float v) {
+  return sin((v+0.5)*M_PI*2);
+}
 
 void init_oscs(int cycles, float adjustment) {
   int offset = (octaver.cycles % DURATION) * N_OSCS_PER_LAYER;
@@ -557,7 +566,16 @@ int main(void) {
     oscs[i].active = FALSE;
   }
 
+
+  float leslie_hist[LESLIE_SAMPLES];
+  for (int i = 0; i < LESLIE_SAMPLES; i++) {
+    leslie_hist[i] = 0;
+  }
+  int leslie_write_offset = 0;
+  float leslie_index = 0;
+  
   float output = 0;
+  
   while(TRUE) {
     err = Pa_ReadStream( stream, sampleBlock, FRAMES_PER_BUFFER );
     if (err & paInputOverflow) {
@@ -568,7 +586,24 @@ int main(void) {
       float sample = sampleBlock[i];
       float val = update(sample);
       output += ALPHA * (val - output);
-      sampleBlock[i] = output * VOLUME / ALPHA ; // makeup gain
+      float sample_out = output * VOLUME / ALPHA ; // makeup gain
+      
+      if (LESLIE_PERIOD > 0) {
+	leslie_hist[(leslie_write_offset++) % LESLIE_SAMPLES] = sample_out;
+	float leslie_read_pos =
+	  leslie_write_offset +
+	  LESLIE_DEPTH/2*(sine_decimal(leslie_index++/LESLIE_PERIOD)+1);
+	int leslie_read_posA = (int)leslie_read_pos;
+	int leslie_read_posB = (int)(leslie_read_pos+1);
+	float leslie_read_amtA = leslie_read_pos - leslie_read_posA;
+	float leslie_read_amtB = 1 - leslie_read_amtA;
+
+	sample_out =
+	  leslie_hist[leslie_read_posA % LESLIE_SAMPLES]*leslie_read_amtA +
+	  leslie_hist[leslie_read_posB % LESLIE_SAMPLES]*leslie_read_amtB;
+      }
+      
+      sampleBlock[i] = sample_out;
     }
 
     err = Pa_WriteStream( stream, sampleBlock, FRAMES_PER_BUFFER );
