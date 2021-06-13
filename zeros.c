@@ -160,7 +160,7 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_W6 6
 #define V_W7 7
 
-#define VOICE V_W4
+#define VOICE V_W7
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
@@ -352,48 +352,8 @@ void init_oscs(int cycles, float adjustment) {
 	     /*vol=*/ 1,
 	     /*is_square=*/ TRUE,
 	     /*speed=*/ 0.5,
-	     /*cycle=*/ 3,
-	     /*mod=*/ 2);
-    osc_init(&oscs[offset+1],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
-	     /*speed=*/ 2,
 	     /*cycle=*/ 1,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+2],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
-	     /*speed=*/ 3,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+3],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
-	     /*speed=*/ 4,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+4],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
-	     /*speed=*/ 5,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+5],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
-	     /*speed=*/ 6,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
+	     /*mod=*/ 2);
   } else if (VOICE == V_S1) {
     osc_init(&oscs[offset+0],
 	     cycles,
