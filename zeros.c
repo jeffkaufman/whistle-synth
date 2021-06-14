@@ -140,7 +140,6 @@ void osc_init(
   osc->total_amplitude = 0;
   osc->duration = DURATION;
 
-  osc->lfo_pos = 0;
   osc->lfo_speed = lfo_speed;
   osc->lfo_vol = lfo_vol;
 
@@ -169,7 +168,7 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_W6 6
 #define V_W7 7
 
-#define VOICE V_S1
+#define VOICE V_W7
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
@@ -368,54 +367,84 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
+	     /*vol=*/ 0.5,
+	     /*is_square=*/ FALSE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.5,
-	     /*cycle=*/ 3,
+	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
     osc_init(&oscs[offset+1],
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 1,
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 3,
+	     /*lfo_speed=*/ 9000,
+	     /*lfo_vol=*/ 0.5,
+	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+2],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 5,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+3],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 7,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
+	     /*mod=*/ 2);
   } else if (VOICE == V_W7) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
+	     /*vol=*/ 0.5,
+	     /*is_square=*/ FALSE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
+    osc_init(&oscs[offset+1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 1,
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 9000,
+	     /*lfo_vol=*/ 0.5,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+2],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.1,
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 1234,
+	     /*lfo_vol=*/ 1,
+	     /*speed=*/ 2,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 0);
+    osc_init(&oscs[offset+3],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.1,
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 995,
+	     /*lfo_vol=*/ 1,
+	     /*speed=*/ 3,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 0);
+    osc_init(&oscs[offset+4],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.5,
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 15234,
+	     /*lfo_vol=*/ 1,
+	     /*speed=*/ 2.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 0);
+    osc_init(&oscs[offset+5],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.5,
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 14267,
+	     /*lfo_vol=*/ 1,
+	     /*speed=*/ 3.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 0);
   } else if (VOICE == V_S1) {
     osc_init(&oscs[offset+0],
 	     cycles,
@@ -459,8 +488,9 @@ float osc_next(struct Osc* osc) {
   val = osc->amp * val * osc->polarity * osc->vol;
 
   if (osc->lfo_vol > 0) {
+    //printf("%.2f %.2f\n", osc->lfo_pos, sine_decimal(osc->lfo_pos));
     val =
-      val*sine_decimal(osc->lfo_pos)*osc->lfo_vol +
+      val*(sine_decimal(osc->lfo_pos)+1)*osc->lfo_vol +
       val*(1-osc->lfo_vol);    
     osc->lfo_pos += (1/osc->lfo_speed);
   }
@@ -627,6 +657,7 @@ int main(void) {
 
   for (int i = 0; i < N_OSCS; i++) {
     oscs[i].active = FALSE;
+    oscs[i].lfo_pos = 0;
   }
 
 
