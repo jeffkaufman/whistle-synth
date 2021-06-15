@@ -92,14 +92,12 @@ void update_duration(float sample) {
     duration_hist[(++duration_pos) % DURATION_BLOCKS] = val;
 
     duration_val = 0;
-    for (int i = 1; i < DURATION_BLOCKS; i++) {
-      float block_min = -1;
-      for (int j = 0; j < i; j++) {
-	float histval =
-	  duration_hist[(DURATION_BLOCKS + duration_pos - j)%DURATION_BLOCKS];
-	if (block_min < 0 || histval < block_min) {
-	  block_min = histval;
-	}
+    float block_min = -1;
+    for (int i = 0; i < DURATION_BLOCKS; i++) {
+      float histval =
+	duration_hist[(DURATION_BLOCKS + duration_pos - i)%DURATION_BLOCKS];
+      if (block_min < 0 || histval < block_min) {
+	block_min = histval;
       }
       duration_val += block_min;
     }
