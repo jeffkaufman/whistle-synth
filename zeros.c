@@ -67,12 +67,46 @@
 #define TRUE 1
 #define FALSE 0
 
+#define DURATION_UNITS (400) // samples
+#define DURATION_BLOCKS (100) // in DURATION_UNITS
+
 /*******************************************************************/
 
 void die(char *errmsg) {
   printf("%s\n",errmsg);
   exit(-1);
 }
+
+float duration_hist[DURATION_BLOCKS];
+int duration_pos = 0;
+float duration_current_total = 0;
+int duration_current_count = 0;
+float duration_val = 0;
+void update_duration(float sample) {
+  duration_current_total += fabs(sample);
+  duration_current_count++;
+  if (duration_current_count > DURATION_UNITS) {
+    float val = duration_current_total / duration_current_count;
+    duration_current_total = 0;
+    duration_current_count = 0;
+    duration_hist[(++duration_pos) % DURATION_BLOCKS] = val;
+
+    duration_val = 0;
+    for (int i = 1; i < DURATION_BLOCKS; i++) {
+      float block_min = -1;
+      for (int j = 0; j < i; j++) {
+	float histval =
+	  duration_hist[(DURATION_BLOCKS + duration_pos - j)%DURATION_BLOCKS];
+	if (block_min < 0 || histval < block_min) {
+	  block_min = histval;
+	}
+      }
+      duration_val += block_min;
+    }
+    duration_val = duration_val/DURATION_BLOCKS;
+  }
+}
+   
 
 struct Octaver {
   float hist[HISTORY_LENGTH];
@@ -388,8 +422,8 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.5,
-	     /*is_square=*/ FALSE,
+	     /*vol=*/ 1 - (duration_val * 200),
+	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.5,
@@ -398,7 +432,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+1],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 1,
+	     /*vol=*/ duration_val * 100,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 9000,
 	     /*lfo_vol=*/ 0.5,
@@ -408,7 +442,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+2],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.1,
+	     /*vol=*/ duration_val * 10,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 1234,
 	     /*lfo_vol=*/ 1,
@@ -418,7 +452,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+3],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.1,
+	     /*vol=*/ duration_val * 10,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 995,
 	     /*lfo_vol=*/ 1,
@@ -428,7 +462,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+4],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.5,
+	     /*vol=*/ duration_val * 100,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 15234,
 	     /*lfo_vol=*/ 1,
@@ -438,7 +472,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+5],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.5,
+             /*vol=*/ duration_val * 100,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 14267,
 	     /*lfo_vol=*/ 1,
@@ -513,6 +547,7 @@ void handle_cycle() {
 
 float update(float s) {
   set_hist(s);
+  update_duration(s);
 
   octaver.samples_since_last_crossing++;
   octaver.samples_since_attack_began++;
@@ -658,6 +693,10 @@ int main(void) {
   for (int i = 0; i < N_OSCS; i++) {
     oscs[i].active = FALSE;
     oscs[i].lfo_pos = 0;
+  }
+
+  for (int i = 0; i < DURATION_BLOCKS; i++) {
+    duration_hist[i] = 0;
   }
 
 
