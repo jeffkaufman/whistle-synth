@@ -193,10 +193,11 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 
 #define V_SIMPLE_SINE 0
 #define V_BASS_CLARINET 1
-#define V_SIMPLE_SQUARE 3
-#define V_MAIN_LEAD 7
+#define V_SIMPLE_SQUARE 2
+#define V_MAIN_LEAD 3
+#define V_MAIN_BASS 4
 
-#define VOICE V_MAIN_LEAD
+#define VOICE V_MAIN_BASS
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
@@ -320,6 +321,69 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 3.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 0);
+  } else if (VOICE == V_MAIN_BASS) {
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 1 - (duration_val * 200),
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 0,
+	     /*lfo_vol=*/ 0,
+	     /*speed=*/ 0.25,
+	     /*cycle=*/ 0.25,
+	     /*mod=*/ 4);
+    #if 0
+    osc_init(&oscs[offset+1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ duration_val * 100,
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 9000,
+	     /*lfo_vol=*/ 0.5,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+2],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ duration_val * 10,
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 1234,
+	     /*lfo_vol=*/ 1,
+	     /*speed=*/ 2,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 0);
+    osc_init(&oscs[offset+3],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ duration_val * 10,
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 995,
+	     /*lfo_vol=*/ 1,
+	     /*speed=*/ 3,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 0);
+    osc_init(&oscs[offset+4],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ duration_val * 100,
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 15234,
+	     /*lfo_vol=*/ 1,
+	     /*speed=*/ 2.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 0);
+    osc_init(&oscs[offset+5],
+	     cycles,
+	     adjustment,
+             /*vol=*/ duration_val * 100,
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 14267,
+	     /*lfo_vol=*/ 1,
+	     /*speed=*/ 3.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 0);
+    #endif
   }
 }
 
