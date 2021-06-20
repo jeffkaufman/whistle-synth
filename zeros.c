@@ -191,16 +191,12 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
   }
 }
 
-#define V_S1 0
-#define V_W1 1
-#define V_W2 2
-#define V_W3 3
-#define V_W4 4
-#define V_W5 5
-#define V_W6 6
-#define V_W7 7
+#define V_SIMPLE_SINE 0
+#define V_BASS_CLARINET 1
+#define V_SIMPLE_SQUARE 3
+#define V_MAIN_LEAD 7
 
-#define VOICE V_W7
+#define VOICE V_MAIN_LEAD
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
@@ -220,7 +216,29 @@ float sine_decimal(float v) {
 void init_oscs(int cycles, float adjustment) {
   int offset = (octaver.cycles % DURATION) * N_OSCS_PER_LAYER;
   
-  if (VOICE == V_W1) {
+  if (VOICE == V_SIMPLE_SINE) {
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 1,
+	     /*is_square=*/ FALSE,
+	     /*lfo_speed=*/ 0,
+	     /*lfo_vol=*/ 0,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 2);
+  } else if (VOICE == V_SIMPLE_SQUARE) {
+    osc_init(&oscs[offset],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 1,
+	     /*is_square=*/ TRUE,
+	     /*lfo_speed=*/ 0,
+	     /*lfo_vol=*/ 0,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 3,
+	     /*mod=*/ 2);
+  } else if (VOICE == V_BASS_CLARINET) {
     osc_init(&oscs[offset],
 	     cycles,
 	     adjustment,
@@ -241,182 +259,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 0.125,
 	     /*cycle=*/ 0.125,
 	     /*mod=*/ 2);
-  } else if (VOICE == V_W2) {
-    osc_init(&oscs[offset],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 3,
-	     /*mod=*/ 2);
-    osc_init(&oscs[offset + 1],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 3,
-	     /*mod=*/ 2);
-  } else if (VOICE == V_W3) {
-    osc_init(&oscs[offset],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 3,
-	     /*mod=*/ 2);
-  } else if (VOICE == V_W4) {
-    osc_init(&oscs[offset+0],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 3,
-	     /*mod=*/ 2);
-    osc_init(&oscs[offset+1],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 2,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+2],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 3,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+3],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 4,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+4],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 5,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+5],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 6,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-  } else if (VOICE == V_W5) {
-    osc_init(&oscs[offset+0],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.25,
-	     /*cycle=*/ 0.25,
-	     /*mod=*/ 2);
-    osc_init(&oscs[offset+1],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 2,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+2],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 3,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+3],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 4,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+4],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 5,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-    osc_init(&oscs[offset+5],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 6,
-	     /*cycle=*/ 2,
-	     /*mod=*/ 0);
-  } else if (VOICE == V_W6) {
-    osc_init(&oscs[offset+0],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 0.5,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 2);
-    osc_init(&oscs[offset+1],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 9000,
-	     /*lfo_vol=*/ 0.5,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 2);
-  } else if (VOICE == V_W7) {
+  } else if (VOICE == V_MAIN_LEAD) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -477,17 +320,6 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 3.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 0);
-  } else if (VOICE == V_S1) {
-    osc_init(&oscs[offset+0],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 2);
   }
 }
 
