@@ -198,7 +198,7 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_MAIN_LEAD 5
 #define V_MAIN_BASS 6
 
-#define VOICE 3
+#define VOICE 6
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
@@ -349,75 +349,43 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 1,
-	     /*is_square=*/ FALSE,
+	     /*vol=*/ 0.3,
+	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 0.5,
-	     /*mod=*/ 4);
-    #if 0
-    osc_init(&oscs[offset+0],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 0.2,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
-	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.25,
-	     /*cycle=*/ 0.25,
-	     /*mod=*/ 4);
+	     /*speed=*/ 0.9,
+	     /*cycle=*/ 0.0625,
+	     /*mod=*/ 2);
     osc_init(&oscs[offset+1],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.3,
+	     /*vol=*/ 0.05,
 	     /*is_square=*/ FALSE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 0.5,
-	     /*mod=*/ 4);
+	     /*speed=*/ 0.83,
+	     /*cycle=*/ 0.25,
+	     /*mod=*/ 2);
     osc_init(&oscs[offset+2],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.1,
-	     /*is_square=*/ FALSE,
+	     /*vol=*/ 0.05 + duration_val * 12,
+	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.5,
+	     /*speed=*/ 2,
 	     /*cycle=*/ 0.5,
 	     /*mod=*/ 2);
     osc_init(&oscs[offset+3],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.6,
+	     /*vol=*/ 0.05 + duration_val * 12,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.25,
-	     /*cycle=*/ 0.5,
-	     /*mod=*/ 8);
-    osc_init(&oscs[offset+4],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ duration_val*25,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 8730,
-	     /*lfo_vol=*/ 0.5,
-	     /*speed=*/ 0.5,
+	     /*speed=*/ 1,
 	     /*cycle=*/ 3,
-	     /*mod=*/ 2);
-    osc_init(&oscs[offset+5],
-	     cycles,
-	     adjustment,
-             /*vol=*/ duration_val*12,
-	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 9000,
-	     /*lfo_vol=*/ 0.5,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 5,
-	     /*mod=*/ 2);
-    #endif
+	     /*mod=*/ 0);
   }
 }
 
