@@ -192,18 +192,31 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 }
 
 #define V_SIMPLE_SINE 0
-#define V_BASS_CLARINET 1
-#define V_SIMPLE_SQUARE 2
-#define V_MAIN_LEAD 3
-#define V_MAIN_BASS 4
+#define V_SIMPLE_SQUARE 1
+#define V_BASS_CLARINET 2
+#define V_VIOLA 3
+#define V_MAIN_LEAD 5
+#define V_MAIN_BASS 6
 
-#define VOICE V_MAIN_BASS
+#define VOICE 3
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
 struct Osc oscs[N_OSCS];
 
 #define ALPHA (0.1)
+
+#if VOICE == V_MAIN_BASS
+#define ALPHA (0.01)
+#endif
+
+#if VOICE == V_BASS_CLARINET
+#define ALPHA (0.01)
+#endif
+
+#if VOICE == V_VIOLA
+#define ALPHA (0.01)
+#endif
 
 // in samples -- set to zero for off
 #define LESLIE_PERIOD 0 // 4096
@@ -243,7 +256,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 1,
+	     /*vol=*/ 0.4,
 	     /*is_square=*/ FALSE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
@@ -253,13 +266,24 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset + 1],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 1,
+	     /*vol=*/ 0.7,
 	     /*is_square=*/ FALSE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.125,
 	     /*cycle=*/ 0.125,
 	     /*mod=*/ 2);
+  } else if (VOICE == V_VIOLA) {
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.5,
+	     /*is_square=*/ FALSE,
+	     /*lfo_speed=*/ 0,
+	     /*lfo_vol=*/ 0,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 0.5,
+	     /*mod=*/ 4);
   } else if (VOICE == V_MAIN_LEAD) {
     osc_init(&oscs[offset+0],
 	     cycles,
@@ -325,64 +349,74 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 1 - (duration_val * 200),
-	     /*is_square=*/ TRUE,
+	     /*vol=*/ 1,
+	     /*is_square=*/ FALSE,
+	     /*lfo_speed=*/ 0,
+	     /*lfo_vol=*/ 0,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 0.5,
+	     /*mod=*/ 4);
+    #if 0
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.2,
+	     /*is_square=*/ FALSE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.25,
 	     /*cycle=*/ 0.25,
 	     /*mod=*/ 4);
-    #if 0
     osc_init(&oscs[offset+1],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ duration_val * 100,
-	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 9000,
-	     /*lfo_vol=*/ 0.5,
+	     /*vol=*/ 0.3,
+	     /*is_square=*/ FALSE,
+	     /*lfo_speed=*/ 0,
+	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.5,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 2);
+	     /*cycle=*/ 0.5,
+	     /*mod=*/ 4);
     osc_init(&oscs[offset+2],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ duration_val * 10,
-	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 1234,
-	     /*lfo_vol=*/ 1,
-	     /*speed=*/ 2,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 0);
+	     /*vol=*/ 0.1,
+	     /*is_square=*/ FALSE,
+	     /*lfo_speed=*/ 0,
+	     /*lfo_vol=*/ 0,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 0.5,
+	     /*mod=*/ 2);
     osc_init(&oscs[offset+3],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ duration_val * 10,
+	     /*vol=*/ 0.6,
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 995,
-	     /*lfo_vol=*/ 1,
-	     /*speed=*/ 3,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 0);
+	     /*lfo_speed=*/ 0,
+	     /*lfo_vol=*/ 0,
+	     /*speed=*/ 0.25,
+	     /*cycle=*/ 0.5,
+	     /*mod=*/ 8);
     osc_init(&oscs[offset+4],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ duration_val * 100,
-	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 15234,
-	     /*lfo_vol=*/ 1,
-	     /*speed=*/ 2.5,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 0);
+	     /*vol=*/ duration_val*25,
+	     /*is_square=*/ FALSE,
+	     /*lfo_speed=*/ 8730,
+	     /*lfo_vol=*/ 0.5,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 3,
+	     /*mod=*/ 2);
     osc_init(&oscs[offset+5],
 	     cycles,
 	     adjustment,
-             /*vol=*/ duration_val * 100,
-	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 14267,
-	     /*lfo_vol=*/ 1,
-	     /*speed=*/ 3.5,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 0);
+             /*vol=*/ duration_val*12,
+	     /*is_square=*/ FALSE,
+	     /*lfo_speed=*/ 9000,
+	     /*lfo_vol=*/ 0.5,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 5,
+	     /*mod=*/ 2);
     #endif
   }
 }
