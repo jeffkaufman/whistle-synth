@@ -58,7 +58,7 @@
 #define RANGE_HIGH (14)
 #define RANGE_LOW (71)
 #define SLIDE (4)
-#define VOLUME (0.9)
+#define VOLUME (0.7)
 #define DURATION (3)
 
 #define HISTORY_LENGTH (8192)
@@ -195,10 +195,10 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_SIMPLE_SQUARE 1
 #define V_BASS_CLARINET 2
 #define V_VIOLA 3
-#define V_MAIN_LEAD 5
-#define V_MAIN_BASS 6
+#define V_MAIN_LEAD 4
+#define V_MAIN_BASS 5
 
-int voice = V_MAIN_LEAD;
+int voice = 3;
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
@@ -223,7 +223,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 1,
+	     /*vol=*/ 0.5,
 	     /*is_square=*/ FALSE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
@@ -234,7 +234,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 1,
+	     /*vol=*/ 0.5,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
@@ -266,18 +266,18 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.5,
+	     /*vol=*/ 0.3,
 	     /*is_square=*/ FALSE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
-	     /*speed=*/ 0.5,
+	     /*speed=*/ 0.7,
 	     /*cycle=*/ 0.5,
 	     /*mod=*/ 4);
   } else if (voice == V_MAIN_LEAD) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 1 - (duration_val * 200),
+	     /*vol=*/ 0.5 - (duration_val * 100),
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
@@ -287,7 +287,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+1],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ duration_val * 100,
+	     /*vol=*/ duration_val * 50,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 9000,
 	     /*lfo_vol=*/ 0.5,
@@ -297,7 +297,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+2],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ duration_val * 10,
+	     /*vol=*/ duration_val * 5,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 1234,
 	     /*lfo_vol=*/ 1,
@@ -307,7 +307,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+3],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ duration_val * 10,
+	     /*vol=*/ duration_val * 5,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 995,
 	     /*lfo_vol=*/ 1,
@@ -317,7 +317,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+4],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ duration_val * 100,
+	     /*vol=*/ duration_val * 50,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 15234,
 	     /*lfo_vol=*/ 1,
@@ -327,7 +327,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+5],
 	     cycles,
 	     adjustment,
-             /*vol=*/ duration_val * 100,
+             /*vol=*/ duration_val * 50,
 	     /*is_square=*/ TRUE,
 	     /*lfo_speed=*/ 14267,
 	     /*lfo_vol=*/ 1,
@@ -609,7 +609,7 @@ int main(void) {
       float val = update(sample);
 
       output += alpha * (val - output);
-      float sample_out = output * VOLUME / alpha ; // makeup gain
+      float sample_out = output / alpha ; // makeup gain
       
       if (LESLIE_PERIOD > 0) {
 	leslie_hist[(leslie_write_offset++) % LESLIE_SAMPLES] = sample_out;
