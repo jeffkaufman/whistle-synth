@@ -161,12 +161,13 @@ struct Osc {
   float lfo_pos;
   float lfo_rate;
   float lfo_amplitude;
+  BOOL lfo_is_volume;  // either affects volume or speed
 };
 
 void osc_init(
     struct Osc* osc, int cycles, float adjustment, float vol,
     BOOL is_square, float lfo_rate, float lfo_amplitude,
-    float speed, float cycle, int mod) {
+    BOOL lfo_is_volume, float speed, float cycle, int mod) {
   osc->active = TRUE;
   osc->amp = 0;
   osc->pos = -adjustment;
@@ -176,6 +177,7 @@ void osc_init(
 
   osc->lfo_rate = lfo_rate;
   osc->lfo_amplitude = lfo_amplitude;
+  osc->lfo_is_volume = lfo_is_volume;
 
   osc->is_square = is_square;
   osc->speed = speed;
@@ -229,6 +231,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ FALSE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
@@ -240,6 +243,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ TRUE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 3,
 	     /*mod=*/ 2);
@@ -251,6 +255,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ FALSE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.25,
 	     /*cycle=*/ 0.25,
 	     /*mod=*/ 2);
@@ -261,6 +266,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ FALSE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.125,
 	     /*cycle=*/ 0.125,
 	     /*mod=*/ 2);
@@ -270,9 +276,10 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ 0.3,
 	     /*is_square=*/ FALSE,
-	     /*lfo_rate=*/ 0,
-	     /*lfo_amplitude=*/ 0,
-	     /*speed=*/ 0.7,
+	     /*lfo_rate=*/ 3000,
+	     /*lfo_amplitude=*/ 0.1,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 0.75,
 	     /*cycle=*/ 0.5,
 	     /*mod=*/ 4);
   } else if (voice == V_MAIN_LEAD) {
@@ -283,6 +290,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ TRUE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
@@ -293,6 +301,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ TRUE,
 	     /*lfo_rate=*/ 9000,
 	     /*lfo_amplitude=*/ 0.5,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
@@ -303,6 +312,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ TRUE,
 	     /*lfo_rate=*/ 1234,
 	     /*lfo_amplitude=*/ 1,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 2,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 0);
@@ -313,6 +323,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ TRUE,
 	     /*lfo_rate=*/ 995,
 	     /*lfo_amplitude=*/ 1,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 3,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 0);
@@ -323,6 +334,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ TRUE,
 	     /*lfo_rate=*/ 15234,
 	     /*lfo_amplitude=*/ 1,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 2.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 0);
@@ -333,6 +345,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ TRUE,
 	     /*lfo_rate=*/ 14267,
 	     /*lfo_amplitude=*/ 1,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 3.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 0);
@@ -344,6 +357,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ TRUE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.9,
 	     /*cycle=*/ 0.0625,
 	     /*mod=*/ 2);
@@ -354,6 +368,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ FALSE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.83,
 	     /*cycle=*/ 0.25,
 	     /*mod=*/ 2);
@@ -364,6 +379,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ TRUE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 2,
 	     /*cycle=*/ 0.5,
 	     /*mod=*/ 2);
@@ -374,6 +390,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*is_square=*/ TRUE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 1,
 	     /*cycle=*/ 3,
 	     /*mod=*/ 0);
@@ -410,9 +427,12 @@ float osc_next(struct Osc* osc) {
 
   if (osc->lfo_amplitude > 0) {
     //printf("%.2f %.2f\n", osc->lfo_pos, sine_decimal(osc->lfo_pos));
-    val =
-      val*(sine_decimal(osc->lfo_pos)+1)*osc->lfo_amplitude +
-      val*(1-osc->lfo_amplitude);    
+    float lfo_amount = (sine_decimal(osc->lfo_pos)+1)*osc->lfo_amplitude;
+    if (osc->lfo_is_volume) {
+      val = val*lfo_amount + val*(1-osc->lfo_amplitude);
+    } else {
+      osc->pos += lfo_amount;
+    }
     osc->lfo_pos += (1/osc->lfo_rate);
   }
   return val;
