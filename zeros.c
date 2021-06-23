@@ -198,25 +198,14 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_MAIN_LEAD 5
 #define V_MAIN_BASS 6
 
-#define VOICE 5
+int voice = V_MAIN_LEAD;
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
 struct Osc oscs[N_OSCS];
 
-#define ALPHA (0.1)
-
-#if VOICE == V_MAIN_BASS
-#define ALPHA (0.01)
-#endif
-
-#if VOICE == V_BASS_CLARINET
-#define ALPHA (0.01)
-#endif
-
-#if VOICE == V_VIOLA
-#define ALPHA (0.01)
-#endif
+#define ALPHA_HIGH (0.1)
+#define ALPHA_LOW (0.01)
 
 // in samples -- set to zero for off
 #define LESLIE_PERIOD 0 // 4096
@@ -230,7 +219,7 @@ float sine_decimal(float v) {
 void init_oscs(int cycles, float adjustment) {
   int offset = (octaver.cycles % DURATION) * N_OSCS_PER_LAYER;
   
-  if (VOICE == V_SIMPLE_SINE) {
+  if (voice == V_SIMPLE_SINE) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -241,7 +230,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
-  } else if (VOICE == V_SIMPLE_SQUARE) {
+  } else if (voice == V_SIMPLE_SQUARE) {
     osc_init(&oscs[offset],
 	     cycles,
 	     adjustment,
@@ -252,7 +241,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 3,
 	     /*mod=*/ 2);
-  } else if (VOICE == V_BASS_CLARINET) {
+  } else if (voice == V_BASS_CLARINET) {
     osc_init(&oscs[offset],
 	     cycles,
 	     adjustment,
@@ -273,7 +262,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 0.125,
 	     /*cycle=*/ 0.125,
 	     /*mod=*/ 2);
-  } else if (VOICE == V_VIOLA) {
+  } else if (voice == V_VIOLA) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -284,7 +273,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 0.5,
 	     /*mod=*/ 4);
-  } else if (VOICE == V_MAIN_LEAD) {
+  } else if (voice == V_MAIN_LEAD) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -345,7 +334,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 3.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 0);
-  } else if (VOICE == V_MAIN_BASS) {
+  } else if (voice == V_MAIN_BASS) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -610,12 +599,17 @@ int main(void) {
     if (err & paInputOverflow) {
       printf("ignoring input undeflow\n");
     } else if( err ) goto xrun;
+
+    float alpha = (voice == V_MAIN_BASS ||
+		   voice == V_BASS_CLARINET || 
+		   voice == V_VIOLA) ? ALPHA_LOW : ALPHA_HIGH;
     
     for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
       float sample = sampleBlock[i];
       float val = update(sample);
-      output += ALPHA * (val - output);
-      float sample_out = output * VOLUME / ALPHA ; // makeup gain
+
+      output += alpha * (val - output);
+      float sample_out = output * VOLUME / alpha ; // makeup gain
       
       if (LESLIE_PERIOD > 0) {
 	leslie_hist[(leslie_write_offset++) % LESLIE_SAMPLES] = sample_out;
