@@ -198,7 +198,7 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_MAIN_LEAD 5
 #define V_MAIN_BASS 6
 
-#define VOICE 6
+#define VOICE 5
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
@@ -256,7 +256,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.4,
+	     /*vol=*/ 0.2,
 	     /*is_square=*/ FALSE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
@@ -266,7 +266,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset + 1],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.7,
+	     /*vol=*/ 0.2,
 	     /*is_square=*/ FALSE,
 	     /*lfo_speed=*/ 0,
 	     /*lfo_vol=*/ 0,
