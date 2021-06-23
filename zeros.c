@@ -157,13 +157,13 @@ struct Osc {
   float vol;
 
   float lfo_pos;
-  float lfo_speed;
+  float lfo_rate;
   float lfo_vol;
 };
 
 void osc_init(
     struct Osc* osc, int cycles, float adjustment, float vol,
-    BOOL is_square, float lfo_speed, float lfo_vol,
+    BOOL is_square, float lfo_rate, float lfo_vol,
     float speed, float cycle, int mod) {
   osc->active = TRUE;
   osc->amp = 0;
@@ -172,7 +172,7 @@ void osc_init(
   osc->total_amplitude = 0;
   osc->duration = DURATION;
 
-  osc->lfo_speed = lfo_speed;
+  osc->lfo_rate = lfo_rate;
   osc->lfo_vol = lfo_vol;
 
   osc->is_square = is_square;
@@ -225,7 +225,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ 0.5,
 	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
+	     /*lfo_rate=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
@@ -236,7 +236,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ 0.5,
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 0,
+	     /*lfo_rate=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 3,
@@ -247,7 +247,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ 0.2,
 	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
+	     /*lfo_rate=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.25,
 	     /*cycle=*/ 0.25,
@@ -257,7 +257,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ 0.2,
 	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
+	     /*lfo_rate=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.125,
 	     /*cycle=*/ 0.125,
@@ -268,7 +268,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ 0.3,
 	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
+	     /*lfo_rate=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.7,
 	     /*cycle=*/ 0.5,
@@ -279,7 +279,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ 0.5 - (duration_val * 100),
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 0,
+	     /*lfo_rate=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
@@ -289,7 +289,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ duration_val * 50,
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 9000,
+	     /*lfo_rate=*/ 9000,
 	     /*lfo_vol=*/ 0.5,
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
@@ -299,7 +299,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ duration_val * 5,
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 1234,
+	     /*lfo_rate=*/ 1234,
 	     /*lfo_vol=*/ 1,
 	     /*speed=*/ 2,
 	     /*cycle=*/ 1,
@@ -309,7 +309,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ duration_val * 5,
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 995,
+	     /*lfo_rate=*/ 995,
 	     /*lfo_vol=*/ 1,
 	     /*speed=*/ 3,
 	     /*cycle=*/ 1,
@@ -319,7 +319,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ duration_val * 50,
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 15234,
+	     /*lfo_rate=*/ 15234,
 	     /*lfo_vol=*/ 1,
 	     /*speed=*/ 2.5,
 	     /*cycle=*/ 1,
@@ -329,7 +329,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
              /*vol=*/ duration_val * 50,
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 14267,
+	     /*lfo_rate=*/ 14267,
 	     /*lfo_vol=*/ 1,
 	     /*speed=*/ 3.5,
 	     /*cycle=*/ 1,
@@ -340,7 +340,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ 0.15,
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 0,
+	     /*lfo_rate=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.9,
 	     /*cycle=*/ 0.0625,
@@ -350,7 +350,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ 0.03,
 	     /*is_square=*/ FALSE,
-	     /*lfo_speed=*/ 0,
+	     /*lfo_rate=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 0.83,
 	     /*cycle=*/ 0.25,
@@ -360,7 +360,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ 0.05 + duration_val * 12,
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 0,
+	     /*lfo_rate=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 2,
 	     /*cycle=*/ 0.5,
@@ -370,7 +370,7 @@ void init_oscs(int cycles, float adjustment) {
 	     adjustment,
 	     /*vol=*/ 0.05 + duration_val * 12,
 	     /*is_square=*/ TRUE,
-	     /*lfo_speed=*/ 0,
+	     /*lfo_rate=*/ 0,
 	     /*lfo_vol=*/ 0,
 	     /*speed=*/ 1,
 	     /*cycle=*/ 3,
@@ -411,7 +411,7 @@ float osc_next(struct Osc* osc) {
     val =
       val*(sine_decimal(osc->lfo_pos)+1)*osc->lfo_vol +
       val*(1-osc->lfo_vol);    
-    osc->lfo_pos += (1/osc->lfo_speed);
+    osc->lfo_pos += (1/osc->lfo_rate);
   }
   return val;
 }
