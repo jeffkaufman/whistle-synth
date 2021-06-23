@@ -69,6 +69,7 @@
 
 #define DURATION_UNITS (400) // samples
 #define DURATION_BLOCKS (100) // in DURATION_UNITS
+#define DURATION_MAX_VAL (0.04)
 
 /*******************************************************************/
 
@@ -101,7 +102,8 @@ void update_duration(float sample) {
       }
       duration_val += block_min;
     }
-    duration_val = duration_val/DURATION_BLOCKS;
+    duration_val = fminf(duration_val/DURATION_BLOCKS, DURATION_MAX_VAL);
+    //printf("%.2f\n", duration_val);
   }
 }
    
@@ -621,12 +623,13 @@ int main(void) {
 	float leslie_read_amtA = leslie_read_pos - leslie_read_posA;
 	float leslie_read_amtB = 1 - leslie_read_amtA;
 
-	sample_out =
+	sample_out = 
 	  leslie_hist[leslie_read_posA % LESLIE_SAMPLES]*leslie_read_amtA +
 	  leslie_hist[leslie_read_posB % LESLIE_SAMPLES]*leslie_read_amtB;
       }
-      
-      sampleBlock[i] = sample_out;
+
+      // clip it, so we never wrap -- wrapping sounds horrible
+      sampleBlock[i] = fmaxf(-1, fminf(1, sample_out));
     }
 
     err = Pa_WriteStream( stream, sampleBlock, FRAMES_PER_BUFFER );
