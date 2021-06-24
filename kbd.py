@@ -1,6 +1,8 @@
 import evdev # sudo apt install python3-evdev
 import glob
 import time
+import os
+current_voice_fname = os.path.join(os.path.dirname(__file__), "current-voice")
 
 def find_keyboard():
     keyboards = glob.glob("/dev/input/by-id/*kbd")
@@ -18,6 +20,17 @@ def run(device_id):
                 handle_key(event.keycode)
 
 def handle_key(keycode):
+    keys = {
+        'KEY_0': 0,
+        'KEY_1': 1,
+        'KEY_2': 2,
+        'KEY_3': 3,
+        'KEY_4': 4,
+        'KEY_5': 5,
+    }
+    if keycode in keys:
+        with open(current_voice_fname, 'w') as outf:
+            outf.write(str(keys[keycode]))
     print(keycode)
                 
 def start():

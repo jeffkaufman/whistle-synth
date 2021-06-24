@@ -539,7 +539,11 @@ void* update_voice(void* ignored) {
       bytesRead = 15;
     }
     buf[bytesRead] = '\0';
-    voice = atoi(buf);
+    int new_voice = atoi(buf);
+    if (voice != new_voice) {
+      printf("%d -> %d\n", voice, new_voice);
+      voice = new_voice;
+    }
     sleep(1);
   }
 }
