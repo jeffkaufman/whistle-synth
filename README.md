@@ -72,7 +72,25 @@ Type=simple
 WantedBy=multi-user.target
 ```
 
-Then `sudo systemctl enable pitch-detect` and `sudo systemctl daemon-reload`.
+And `/etc/systemd/system/pitch-detect-kbd.service` should have:
+
+```
+[Unit]
+Description=Keyboard Control for Pitch Synthesis
+
+[Service]
+ExecStart=/usr/bin/python3 /home/pi/pitch-detect/kbd.py
+Restart=always
+KillSignal=SIGQUIT
+Type=simple
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then `sudo systemctl enable pitch-detect`,
+`sudo systemctl enable pitch-detect-kbd` and
+`sudo systemctl daemon-reload`.
 
 ## Run
 
