@@ -44,6 +44,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
+#include <unistd.h>
 #include "portaudio.h"
 
 #define SAMPLE_RATE       (44100)    // if you change this, change MIN/MAX_INPUT_PERIOD too
@@ -201,8 +203,9 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_VIOLA 3
 #define V_MAIN_LEAD 4
 #define V_MAIN_BASS 5
+#define N_VOICES 6
 
-int voice = 3;
+unsigned char voice = 5;
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
@@ -520,7 +523,33 @@ float update(float s) {
   return val * VOLUME;
 }
 
-int main(void) {
+char* current_voice_filename = NULL;
+void* update_voice(void* ignored) {
+  FILE* current_voice_file = fopen(current_voice_filename, "r");
+  if (!current_voice_file) {
+    perror("can't open voice file");
+    exit(-1);
+  }
+
+  char buf[16];
+  while (1) {
+    rewind(current_voice_file);
+    int bytesRead = fread(buf, 1, 16, current_voice_file);
+    if (bytesRead > 15) {
+      bytesRead = 15;
+    }
+    buf[bytesRead] = '\0';
+    voice = atoi(buf);
+    sleep(1);
+  }
+}
+
+pthread_t voice_thread;
+void start_voice_thread() {
+  pthread_create(&voice_thread, NULL, &update_voice, NULL);
+}
+
+int start_audio() {
   PaStreamParameters inputParameters;
   PaStreamParameters outputParameters;
   PaStream *stream = NULL;
@@ -529,7 +558,7 @@ int main(void) {
   const PaDeviceInfo* outputInfo;
   float *sampleBlock = NULL;
   int numBytes;
-
+  
   init_octaver();
 
   err = Pa_Initialize();
@@ -683,5 +712,15 @@ xrun:
   fprintf( stderr, "Error number: %d\n", err );
   fprintf( stderr, "Error message: %s\n", Pa_GetErrorText( err ) );
   return -1;
+}
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    printf("usage: %s /path/to/voice/file\n", argv[0]);
+    return -1;
+  }
+  current_voice_filename = argv[1];
+  start_voice_thread(current_voice_filename);
+  return start_audio();
 }
 

@@ -1,5 +1,5 @@
 zeros-linux: zeros.c
-	gcc zeros.c -o zeros-linux -lportaudio -lm -std=c99 -Wall
+	gcc zeros.c -o zeros-linux -lportaudio -lm -pthread -std=c99 -Wall
 
 zeros-m: zeros.m
 	gcc \
@@ -24,7 +24,7 @@ zeros-osc: zeros.m
 	  zeros.m -o zeros-osc -std=c99 -Wall
 
 run-linux: zeros-linux
-	./zeros-linux
+	./zeros-linux $(CURDIR)/current-voice
 
 run-osc: zeros-osc
 	./zeros-osc
