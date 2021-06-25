@@ -27,6 +27,13 @@ def handle_key(keycode):
         'KEY_3': 3,
         'KEY_4': 4,
         'KEY_5': 5,
+
+        'KEY_KP0': 0,
+        'KEY_KP1': 1,
+        'KEY_KP2': 2,
+        'KEY_KP3': 3,
+        'KEY_KP4': 4,
+        'KEY_KP5': 5,
     }
     if keycode in keys:
         with open(current_voice_fname, 'w') as outf:
