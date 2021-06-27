@@ -199,11 +199,12 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 
 #define V_SIMPLE_SINE 0
 #define V_SIMPLE_SQUARE 1
-#define V_BASS_CLARINET 2
+#define V_MAIN_LEAD 2
 #define V_VIOLA 3
-#define V_MAIN_LEAD 4
-#define V_MAIN_BASS 5
-#define N_VOICES 6
+#define V_CELLO 4
+#define V_BASS_CLARINET 5
+#define V_MAIN_BASS 6
+#define N_VOICES 7
 
 unsigned char voice = 5;
 
@@ -273,18 +274,62 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 0.125,
 	     /*cycle=*/ 0.125,
 	     /*mod=*/ 2);
-  } else if (voice == V_VIOLA) {
+  } else if (voice == V_CELLO) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.15,
+	     /*vol=*/ 0.05,
 	     /*is_square=*/ FALSE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ FALSE,
-	     /*speed=*/ 0.5,
+	     /*speed=*/ 1.2,
+	     /*cycle=*/ 0.75,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.05,
+	     /*is_square=*/ FALSE,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 1.1,
 	     /*cycle=*/ 0.5,
-	     /*mod=*/ 4);
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+2],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.1,
+	     /*is_square=*/ FALSE,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.9,
+	     /*cycle=*/ 0.25,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+3],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.003,
+	     /*is_square=*/ FALSE,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 3,
+	     /*cycle=*/ 3,
+	     /*mod=*/ 0);
+    osc_init(&oscs[offset+4],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.003,
+	     /*is_square=*/ FALSE,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 5,
+	     /*cycle=*/ 5,
+	     /*mod=*/ 0);
   } else if (voice == V_MAIN_LEAD) {
     osc_init(&oscs[offset+0],
 	     cycles,
@@ -679,7 +724,8 @@ int start_audio() {
 
     float alpha = (voice == V_MAIN_BASS ||
 		   voice == V_BASS_CLARINET || 
-		   voice == V_VIOLA) ? ALPHA_LOW : ALPHA_HIGH;
+		   voice == V_VIOLA || 
+		   voice == V_CELLO) ? ALPHA_LOW : ALPHA_HIGH;
     
     for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
       float sample = sampleBlock[i];
