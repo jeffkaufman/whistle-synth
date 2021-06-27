@@ -197,10 +197,10 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
   }
 }
 
-#define V_SIMPLE_SINE 0
-#define V_SIMPLE_SQUARE 1
-#define V_MAIN_LEAD 2
-#define V_VIOLA 3
+#define V_SOPRANO_RECORDER 0
+#define V_SIMPLE_LEAD 1
+#define V_RESPONSIVE_LEAD 2
+#define V_BASS_RECORDER 3
 #define V_CELLO 4
 #define V_BASS_CLARINET 5
 #define V_MAIN_BASS 6
@@ -213,6 +213,7 @@ unsigned char voice = 5;
 struct Osc oscs[N_OSCS];
 
 #define ALPHA_HIGH (0.1)
+#define ALPHA_MEDIUM (0.03)
 #define ALPHA_LOW (0.01)
 
 // in samples -- set to zero for off
@@ -227,7 +228,7 @@ float sine_decimal(float v) {
 void init_oscs(int cycles, float adjustment) {
   int offset = (octaver.cycles % DURATION) * N_OSCS_PER_LAYER;
   
-  if (voice == V_SIMPLE_SINE) {
+  if (voice == V_SOPRANO_RECORDER) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -239,7 +240,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
-  } else if (voice == V_SIMPLE_SQUARE) {
+  } else if (voice == V_SIMPLE_LEAD) {
     osc_init(&oscs[offset],
 	     cycles,
 	     adjustment,
@@ -273,6 +274,18 @@ void init_oscs(int cycles, float adjustment) {
 	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.125,
 	     /*cycle=*/ 0.125,
+	     /*mod=*/ 2);
+  } else if (voice == V_BASS_RECORDER) {
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.4,
+	     /*is_square=*/ FALSE,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.9,
+	     /*cycle=*/ 0.5,
 	     /*mod=*/ 2);
   } else if (voice == V_CELLO) {
     osc_init(&oscs[offset+0],
@@ -330,7 +343,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 5,
 	     /*cycle=*/ 5,
 	     /*mod=*/ 0);
-  } else if (voice == V_MAIN_LEAD) {
+  } else if (voice == V_RESPONSIVE_LEAD) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -722,10 +735,14 @@ int start_audio() {
       printf("ignoring input undeflow\n");
     } else if( err ) goto xrun;
 
-    float alpha = (voice == V_MAIN_BASS ||
-		   voice == V_BASS_CLARINET || 
-		   voice == V_VIOLA || 
-		   voice == V_CELLO) ? ALPHA_LOW : ALPHA_HIGH;
+    float alpha = ALPHA_HIGH;
+    if (voice == V_BASS_RECORDER) {
+      alpha = ALPHA_MEDIUM;
+    } else if (voice == V_MAIN_BASS ||
+	       voice == V_BASS_CLARINET || 
+	       voice == V_CELLO) {
+      alpha = ALPHA_LOW;
+    }
     
     for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
       float sample = sampleBlock[i];
