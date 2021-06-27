@@ -198,12 +198,12 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 }
 
 #define V_SOPRANO_RECORDER 0
-#define V_SIMPLE_LEAD 1
-#define V_RESPONSIVE_LEAD 2
-#define V_BASS_RECORDER 3
+#define V_BASS_RECORDER 1
+#define V_SIMPLE_LEAD 2
+#define V_RESPONSIVE_LEAD 3
 #define V_CELLO 4
 #define V_BASS_CLARINET 5
-#define V_MAIN_BASS 6
+#define V_RESPONSIVE_BASS 6
 #define N_VOICES 7
 
 unsigned char voice = 5;
@@ -410,7 +410,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 3.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 0);
-  } else if (voice == V_MAIN_BASS) {
+  } else if (voice == V_RESPONSIVE_BASS) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -738,7 +738,7 @@ int start_audio() {
     float alpha = ALPHA_HIGH;
     if (voice == V_BASS_RECORDER) {
       alpha = ALPHA_MEDIUM;
-    } else if (voice == V_MAIN_BASS ||
+    } else if (voice == V_RESPONSIVE_BASS ||
 	       voice == V_BASS_CLARINET || 
 	       voice == V_CELLO) {
       alpha = ALPHA_LOW;
