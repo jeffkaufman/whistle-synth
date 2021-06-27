@@ -277,12 +277,12 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.3,
+	     /*vol=*/ 0.15,
 	     /*is_square=*/ FALSE,
-	     /*lfo_rate=*/ 3000,
-	     /*lfo_amplitude=*/ 0.1,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ FALSE,
-	     /*speed=*/ 0.75,
+	     /*speed=*/ 0.5,
 	     /*cycle=*/ 0.5,
 	     /*mod=*/ 4);
   } else if (voice == V_MAIN_LEAD) {
@@ -356,7 +356,7 @@ void init_oscs(int cycles, float adjustment) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.25,
+	     /*vol=*/ 0.25 - (duration_val*12),
 	     /*is_square=*/ TRUE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
@@ -397,6 +397,28 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 1,
 	     /*cycle=*/ 3,
 	     /*mod=*/ 0);
+    osc_init(&oscs[offset+4],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ duration_val * 12,
+	     /*is_square=*/ TRUE,
+	     /*lfo_rate=*/ 40000,
+	     /*lfo_amplitude=*/ 0.2,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 1.3,
+	     /*cycle=*/ 0.125,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+5],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ duration_val * 12,
+	     /*is_square=*/ TRUE,
+	     /*lfo_rate=*/ 22345,
+	     /*lfo_amplitude=*/ 0.1,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 0.8,
+	     /*cycle=*/ 0.125,
+	     /*mod=*/ 2);
   }
 }
 
