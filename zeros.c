@@ -57,8 +57,10 @@
 #define SAMPLE_SILENCE  (0.0f)
 #define PRINTF_S_FORMAT "%.8f"
 
-#define RANGE_HIGH (14)
-#define RANGE_LOW (71)
+#define WHISTLE_RANGE_HIGH (14)
+#define VOCAL_RANGE_HIGH (80)
+#define WHISTLE_RANGE_LOW (75)
+#define VOCAL_RANGE_LOW (300)
 #define SLIDE (4)
 #define VOLUME (0.7)
 #define DURATION (3)
@@ -204,7 +206,9 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_CELLO 4
 #define V_BASS_CLARINET 5
 #define V_RESPONSIVE_BASS 6
-#define N_VOICES 7
+#define V_VOCAL_1 7
+#define V_VOCAL_2 8
+#define N_VOICES 9
 
 unsigned char voice = 5;
 
@@ -228,11 +232,11 @@ float sine_decimal(float v) {
 void init_oscs(int cycles, float adjustment) {
   int offset = (octaver.cycles % DURATION) * N_OSCS_PER_LAYER;
   
-  if (voice == V_SOPRANO_RECORDER) {
+  if (voice == V_SOPRANO_RECORDER || voice == V_VOCAL_1) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.5,
+	     /*vol=*/ voice == V_SOPRANO_RECORDER ? 0.5 : 0.2,
 	     /*is_square=*/ FALSE,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
@@ -275,7 +279,7 @@ void init_oscs(int cycles, float adjustment) {
 	     /*speed=*/ 0.125,
 	     /*cycle=*/ 0.125,
 	     /*mod=*/ 2);
-  } else if (voice == V_BASS_RECORDER) {
+  } else if (voice == V_BASS_RECORDER || voice == V_VOCAL_2) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -542,6 +546,14 @@ float update(float s) {
   octaver.samples_since_last_crossing++;
   octaver.samples_since_attack_began++;
 
+  int range_high = WHISTLE_RANGE_HIGH;
+  int range_low = WHISTLE_RANGE_LOW;
+  if (voice == V_VOCAL_1 ||
+      voice == V_VOCAL_2) {
+    range_high = VOCAL_RANGE_HIGH;
+    range_low = VOCAL_RANGE_LOW;
+  }
+  
   if (octaver.positive) {
     if (s < 0) {
       /*
@@ -577,8 +589,8 @@ float update(float s) {
       octaver.samples_since_last_crossing -= adjustment;
       octaver.rough_input_period = octaver.samples_since_last_crossing;
 
-      if (octaver.rough_input_period > RANGE_HIGH &&
-          octaver.rough_input_period < RANGE_LOW) {
+      if (octaver.rough_input_period > range_high &&
+          octaver.rough_input_period < range_low) {
         init_oscs(octaver.cycles, adjustment);
       }
 

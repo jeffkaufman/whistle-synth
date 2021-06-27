@@ -20,7 +20,7 @@ def run(device_id):
                 handle_key(event.keycode)
 
 keys = {}
-for i in range(7):
+for i in range(10):
     keys['KEY_%s' % i] = i
     keys['KEY_KP%s' % i] = i
     
