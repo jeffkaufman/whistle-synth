@@ -19,22 +19,12 @@ def run(device_id):
             if event.keystate == 1: # keydown
                 handle_key(event.keycode)
 
+keys = {}
+for i in range(7):
+    keys['KEY_%s' % i] = i
+    keys['KEY_KP%s' % i] = i
+    
 def handle_key(keycode):
-    keys = {
-        'KEY_0': 0,
-        'KEY_1': 1,
-        'KEY_2': 2,
-        'KEY_3': 3,
-        'KEY_4': 4,
-        'KEY_5': 5,
-
-        'KEY_KP0': 0,
-        'KEY_KP1': 1,
-        'KEY_KP2': 2,
-        'KEY_KP3': 3,
-        'KEY_KP4': 4,
-        'KEY_KP5': 5,
-    }
     if keycode in keys:
         with open(current_voice_fname, 'w') as outf:
             outf.write(str(keys[keycode]))
