@@ -71,6 +71,10 @@
 #define TRUE 1
 #define FALSE 0
 
+#define OSC_NAT 0
+#define OSC_SQR 1
+#define OSC_SIN 2
+
 #define DURATION_UNITS (400) // samples
 #define DURATION_BLOCKS (100) // in DURATION_UNITS
 #define DURATION_MAX_VAL (0.04)
@@ -149,6 +153,7 @@ float get_hist(int pos) {
   return octaver.hist[
     (HISTORY_LENGTH + octaver.hist_pos - pos) % HISTORY_LENGTH];
 }
+
 struct Osc {
   BOOL active;
   float amp;
@@ -157,7 +162,7 @@ struct Osc {
   float total_amplitude;
   int duration;
 
-  BOOL is_square;
+  int mode;
   float speed;
   float polarity;
   float vol;
@@ -166,12 +171,15 @@ struct Osc {
   float lfo_rate;
   float lfo_amplitude;
   BOOL lfo_is_volume;  // either affects volume or speed
+
+  float rough_input_period;
 };
 
 void osc_init(
     struct Osc* osc, int cycles, float adjustment, float vol,
-    BOOL is_square, float lfo_rate, float lfo_amplitude,
+    int mode, float lfo_rate, float lfo_amplitude,
     BOOL lfo_is_volume, float speed, float cycle, int mod) {
+
   osc->active = TRUE;
   osc->amp = 0;
   osc->pos = -adjustment;
@@ -183,7 +191,7 @@ void osc_init(
   osc->lfo_amplitude = lfo_amplitude;
   osc->lfo_is_volume = lfo_is_volume;
 
-  osc->is_square = is_square;
+  osc->mode = mode;
   osc->speed = speed;
   if (mod == 0) {
     osc->polarity = 1;
@@ -191,6 +199,8 @@ void osc_init(
     osc->polarity = ((int)(cycle * cycles)) % mod ? 1 : -1;
   }
   osc->vol = vol;
+
+  osc->rough_input_period = octaver.rough_input_period;
 }
 
 void osc_diff(struct Osc* osc1, struct Osc* osc2) {
@@ -200,11 +210,11 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 }
 
 #define V_SOPRANO_RECORDER 0
-#define V_BASS_RECORDER 1
+#define V_RESPONSIVE_LEAD 1
 #define V_SIMPLE_LEAD 2
-#define V_RESPONSIVE_LEAD 3
-#define V_CELLO 4
-#define V_BASS_CLARINET 5
+#define V_CLARINET 3
+#define V_BASS_CLARINET 4
+#define V_EBASS 5
 #define V_RESPONSIVE_BASS 6
 #define V_VOCAL_1 7
 #define V_VOCAL_2 8
@@ -229,15 +239,16 @@ float sine_decimal(float v) {
   return sin((v+0.5)*M_PI*2);
 }
 
-void init_oscs(int cycles, float adjustment) {
-  int offset = (octaver.cycles % DURATION) * N_OSCS_PER_LAYER;
+void init_oscs(float adjustment) {
+  int cycles = octaver.cycles;
+  int offset = (cycles % DURATION) * N_OSCS_PER_LAYER;
   
-  if (voice == V_SOPRANO_RECORDER || voice == V_VOCAL_1) {
+  if (voice == V_SOPRANO_RECORDER) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ voice == V_SOPRANO_RECORDER ? 0.5 : 0.2,
-	     /*is_square=*/ FALSE,
+	     /*vol=*/ voice == 0.5,
+	     /*mode=*/ OSC_NAT,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
@@ -249,7 +260,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 0.5,
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
@@ -261,7 +272,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 0.4,
-	     /*is_square=*/ FALSE,
+	     /*mode=*/ OSC_NAT,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
@@ -272,87 +283,166 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 0.4,
-	     /*is_square=*/ FALSE,
+	     /*mode=*/ OSC_NAT,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.125,
 	     /*cycle=*/ 0.125,
 	     /*mod=*/ 2);
-  } else if (voice == V_BASS_RECORDER || voice == V_VOCAL_2) {
+  } else if (voice == V_VOCAL_1) {
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ voice == 0.2,
+	     /*mode=*/ OSC_NAT,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 2);
+  } else if (voice == V_VOCAL_2) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 0.4,
-	     /*is_square=*/ FALSE,
+	     /*mode=*/ OSC_NAT,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
-	     /*speed=*/ 0.9,
+	     /*speed=*/ 0.5,
 	     /*cycle=*/ 0.5,
 	     /*mod=*/ 2);
-  } else if (voice == V_CELLO) {
+  } else if (voice == V_CLARINET) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.05,
-	     /*is_square=*/ FALSE,
+	     /*vol=*/ 0.2,
+	     /*mode=*/ OSC_SIN,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
-	     /*lfo_is_volume*/ FALSE,
-	     /*speed=*/ 1.2,
-	     /*cycle=*/ 0.75,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 1.0/4,
+	     /*cycle=*/ 1.0/2,
 	     /*mod=*/ 2);
     osc_init(&oscs[offset+1],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.05,
-	     /*is_square=*/ FALSE,
+	     /*vol=*/ 0.2,
+	     /*mode=*/ OSC_SIN,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
-	     /*speed=*/ 1.1,
-	     /*cycle=*/ 0.5,
+	     /*speed=*/ 3.0/4,
+	     /*cycle=*/ 3.0/2,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+2],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.2,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 5.0/4,
+	     /*cycle=*/ 5.0/2,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+3],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.2,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 7.0/4,
+	     /*cycle=*/ 7.0/2,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+4],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.2,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 9.0/4,
+	     /*cycle=*/ 9.0/2,
+	     /*mod=*/ 2);
+  } else if (voice == V_EBASS) {
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.1,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 1.0/32,
+	     /*cycle=*/ 1.0/8,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.1,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 2.0/32,
+	     /*cycle=*/ 2.0/8,
 	     /*mod=*/ 2);
     osc_init(&oscs[offset+2],
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 0.1,
-	     /*is_square=*/ FALSE,
+	     /*mode=*/ OSC_SIN,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
-	     /*lfo_is_volume*/ TRUE,
-	     /*speed=*/ 0.9,
-	     /*cycle=*/ 0.25,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 3.0/32,
+	     /*cycle=*/ 3.0/8,
 	     /*mod=*/ 2);
     osc_init(&oscs[offset+3],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.003,
-	     /*is_square=*/ FALSE,
+	     /*vol=*/ 0.1,
+	     /*mode=*/ OSC_SIN,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ FALSE,
-	     /*speed=*/ 3,
-	     /*cycle=*/ 3,
-	     /*mod=*/ 0);
+	     /*speed=*/ 4.0/32,
+	     /*cycle=*/ 4.0/8,
+	     /*mod=*/ 2);
     osc_init(&oscs[offset+4],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.003,
-	     /*is_square=*/ FALSE,
+	     /*vol=*/ 0.05,
+	     /*mode=*/ OSC_SIN,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ FALSE,
-	     /*speed=*/ 5,
-	     /*cycle=*/ 5,
-	     /*mod=*/ 0);
+	     /*speed=*/ 5.0/32,
+	     /*cycle=*/ 5.0/8,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+5],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.05,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 6.0/32,
+	     /*cycle=*/ 6.0/8,
+	     /*mod=*/ 2);
   } else if (voice == V_RESPONSIVE_LEAD) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 0.5 - (duration_val * 100),
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
@@ -363,7 +453,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ duration_val * 50,
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 9000,
 	     /*lfo_amplitude=*/ 0.5,
 	     /*lfo_is_volume*/ TRUE,
@@ -374,7 +464,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ duration_val * 5,
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 1234,
 	     /*lfo_amplitude=*/ 1,
 	     /*lfo_is_volume*/ TRUE,
@@ -385,7 +475,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ duration_val * 5,
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 995,
 	     /*lfo_amplitude=*/ 1,
 	     /*lfo_is_volume*/ TRUE,
@@ -396,7 +486,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ duration_val * 50,
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 15234,
 	     /*lfo_amplitude=*/ 1,
 	     /*lfo_is_volume*/ TRUE,
@@ -407,7 +497,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
              /*vol=*/ duration_val * 50,
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 14267,
 	     /*lfo_amplitude=*/ 1,
 	     /*lfo_is_volume*/ TRUE,
@@ -419,7 +509,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 0.25 - (duration_val*12),
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
@@ -430,7 +520,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 0.03,
-	     /*is_square=*/ FALSE,
+	     /*mode=*/ OSC_NAT,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
@@ -441,7 +531,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 0.05 + duration_val * 12,
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
@@ -452,7 +542,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 0.05 + duration_val * 12,
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
@@ -463,7 +553,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ duration_val * 12,
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 40000,
 	     /*lfo_amplitude=*/ 0.2,
 	     /*lfo_is_volume*/ FALSE,
@@ -474,7 +564,7 @@ void init_oscs(int cycles, float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ duration_val * 12,
-	     /*is_square=*/ TRUE,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 22345,
 	     /*lfo_amplitude=*/ 0.1,
 	     /*lfo_is_volume*/ FALSE,
@@ -504,8 +594,12 @@ float osc_next(struct Osc* osc) {
 
   float val = valA*amtA + valB*amtB;
   osc->total_amplitude += fabsf(val);
-  if (osc->is_square) {
-    val = val > 0 ? 1 : -1;
+  if (osc->mode != OSC_NAT) {
+    if (osc->mode == OSC_SQR) {
+      val = val > 0 ? 1 : -1;
+    } else if (osc->mode == OSC_SIN) {
+      val = sine_decimal(osc->pos / osc->rough_input_period);
+    }
     val *= (osc->total_amplitude / osc->samples);
   }
 
@@ -591,7 +685,7 @@ float update(float s) {
 
       if (octaver.rough_input_period > range_high &&
           octaver.rough_input_period < range_low) {
-        init_oscs(octaver.cycles, adjustment);
+        init_oscs(adjustment);
       }
 
       octaver.cycles++;
@@ -748,11 +842,11 @@ int start_audio() {
     } else if( err ) goto xrun;
 
     float alpha = ALPHA_HIGH;
-    if (voice == V_BASS_RECORDER) {
+    if (voice == V_CLARINET) {
       alpha = ALPHA_MEDIUM;
     } else if (voice == V_RESPONSIVE_BASS ||
 	       voice == V_BASS_CLARINET || 
-	       voice == V_CELLO) {
+	       voice == V_EBASS) {
       alpha = ALPHA_LOW;
     }
     
