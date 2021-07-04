@@ -58,7 +58,7 @@
 #define PRINTF_S_FORMAT "%.8f"
 
 #define WHISTLE_RANGE_HIGH (14)
-#define VOCAL_RANGE_HIGH (80)
+#define VOCAL_RANGE_HIGH (50)
 #define WHISTLE_RANGE_LOW (75)
 #define VOCAL_RANGE_LOW (300)
 #define SLIDE (4)
