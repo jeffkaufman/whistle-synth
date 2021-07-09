@@ -78,6 +78,15 @@ expect whistling; 7 and 8 singing.
 
 * You want to be as close to the microphone as you can bear.
 
+## Raspberry PI Setup
+
+1. Install Raspberry Pi Os Lite (we don't want the desktop environment)
+1. `sudo apt-get update`
+1. `sudo apt-get upgrade`
+1. `sudo raspi-config`
+1. "Interface Options"
+1. "Enable SSH"
+
 ## Obsolete
 
 ### Mac
