@@ -2,9 +2,9 @@
 
 ## Build
 
-1. Install portaudio:
+1. Install dependencies:
    ```
-   sudo apt install portaudio19-dev
+   sudo apt install portaudio19-dev python3-evdev
    ```
 
 2. Build it:
@@ -96,6 +96,11 @@ expect whistling; 7 and 8 singing.
 1. `alsamixer`
     1. select sound card "USB Audio Device"
     1. Set Speaker and Mic to 83% volume
+
+### Future
+
+Look into low-latency options.  See http://tedfelix.com/linux/linux-midi.html
+and https://wiki.linuxaudio.org/wiki/raspberrypi
 
 ## Obsolete
 
