@@ -83,19 +83,19 @@ expect whistling; 7 and 8 singing.
 1. Install Raspberry Pi Os Lite (we don't want the desktop environment)
 1. `sudo apt-get update && sudo apt-get upgrade`
 1. `sudo raspi-config`
-  1. "Interface Options"
-    1. "Enable SSH"
-  1. "Localisation Options"
-    1. "WLAN Country"
-  1. "System Options"
-    1. "Wireless LAN"
+    1. "Interface Options"
+        1. "Enable SSH"
+    1. "Localisation Options"
+        1. "WLAN Country"
+    1. "System Options"
+        1. "Wireless LAN"
 1. Add regular public key to `~/.ssh/authorized_keys`
 1. Change default password (`passwd`) 
 1. `sudo apt install git emacs`
 1. https://www.jefftk.com/p/you-should-be-logging-shell-history
 1. `alsamixer`
-  1. select sound card "USB Audio Device"
-  1. Set Speaker and Mic to 83% volume
+    1. select sound card "USB Audio Device"
+    1. Set Speaker and Mic to 83% volume
 
 ## Obsolete
 
