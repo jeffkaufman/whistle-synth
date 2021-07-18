@@ -211,16 +211,14 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 
 #define V_SOPRANO_RECORDER 0
 #define V_RESPONSIVE_LEAD 1
-#define V_SIMPLE_LEAD 2
-#define V_CLARINET 3
-#define V_BASS_CLARINET 4
-#define V_EBASS 5
-#define V_RESPONSIVE_BASS 6
-#define V_VOCAL_1 7
-#define V_VOCAL_2 8
-#define N_VOICES 9
+#define V_CLARINET 2
+#define V_BASS_CLARINET 3
+#define V_EBASS 4
+#define V_RESPONSIVE_BASS 5
+#define V_VOCAL_2 6
+#define N_VOICES (V_VOCAL_2+1)
 
-unsigned char voice = 5;
+unsigned char voice = V_EBASS;
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
@@ -255,18 +253,6 @@ void init_oscs(float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
-  } else if (voice == V_SIMPLE_LEAD) {
-    osc_init(&oscs[offset],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 0.5,
-	     /*mode=*/ OSC_SQR,
-	     /*lfo_rate=*/ 0,
-	     /*lfo_amplitude=*/ 0,
-	     /*lfo_is_volume*/ TRUE,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 3,
-	     /*mod=*/ 2);
   } else if (voice == V_BASS_CLARINET) {
     osc_init(&oscs[offset],
 	     cycles,
@@ -289,18 +275,6 @@ void init_oscs(float adjustment) {
 	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.125,
 	     /*cycle=*/ 0.125,
-	     /*mod=*/ 2);
-  } else if (voice == V_VOCAL_1) {
-    osc_init(&oscs[offset+0],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 0.2,
-	     /*mode=*/ OSC_NAT,
-	     /*lfo_rate=*/ 0,
-	     /*lfo_amplitude=*/ 0,
-	     /*lfo_is_volume*/ TRUE,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
   } else if (voice == V_VOCAL_2) {
     osc_init(&oscs[offset+0],
@@ -642,8 +616,7 @@ float update(float s) {
 
   int range_high = WHISTLE_RANGE_HIGH;
   int range_low = WHISTLE_RANGE_LOW;
-  if (voice == V_VOCAL_1 ||
-      voice == V_VOCAL_2) {
+  if (voice == V_VOCAL_2) {
     range_high = VOCAL_RANGE_HIGH;
     range_low = VOCAL_RANGE_LOW;
   }
@@ -730,7 +703,7 @@ void* update_voice(void* ignored) {
       printf("%d -> %d\n", voice, new_voice);
       voice = new_voice;
     }
-    sleep(1);
+    usleep(50000 /* 50ms in us */);
   }
 }
 
