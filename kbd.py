@@ -2,7 +2,7 @@ import evdev # sudo apt install python3-evdev
 import glob
 import time
 import os
-current_voice_fname = os.path.join(os.path.dirname(__file__), "current-voice")
+whistle_voice_fname = os.path.join(os.path.dirname(__file__), "current-voice")
 
 def find_keyboard():
     keyboards = glob.glob("/dev/input/by-id/*kbd")
@@ -19,16 +19,22 @@ def run(device_id):
             if event.keystate == 1: # keydown
                 handle_key(event.keycode)
 
-keys = {}
-for i in range(10):
-    keys['KEY_%s' % i] = i
-    keys['KEY_KP%s' % i] = i
+whistle_voice_keys = {
+    'KEY_NUMLOCK': 0,
+    'KEY_KPSLASH': 1,
+    'KEY_KPASTERISK': 2,
+    'KEY_KPMINUS': 3,
+    'KEY_KPPLUS': 4,
+    'KEY_BACKSPACE': 5,
+    'KEY_KPDOT': 6
+}
     
 def handle_key(keycode):
-    if keycode in keys:
-        with open(current_voice_fname, 'w') as outf:
-            outf.write(str(keys[keycode]))
-    print(keycode)
+    if keycode in whistle_voice_keys:
+        with open(whistle_voice_fname, 'w') as outf:
+            outf.write(str(whistle_voice_keys[keycode]))
+    else:
+        print(keycode)
                 
 def start():
     device_id = find_keyboard()
