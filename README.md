@@ -38,7 +38,7 @@ To support changing voices while headless,
 Description=Keyboard Control for Pitch Synthesis
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/pitch-detect/kbd.py
+ExecStart=/usr/bin/python3 /home/pi/pitch-detect/kbd.py /home/pi/pitch-detect/current-voice /home/pi/jammer/kbd-config
 Restart=always
 KillSignal=SIGQUIT
 Type=simple
