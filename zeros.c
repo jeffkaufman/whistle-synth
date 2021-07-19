@@ -888,7 +888,7 @@ int main(int argc, char** argv) {
     return -1;
   }
   current_voice_filename = argv[1];
-  start_voice_thread(current_voice_filename);
+  start_voice_thread();
   return start_audio();
 }
 

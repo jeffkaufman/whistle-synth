@@ -4,7 +4,7 @@
 
 1. Install dependencies:
    ```
-   sudo apt install portaudio19-dev python3-evdev
+   sudo apt install portaudio19-dev python3-evdev python3-mido
    ```
 
 2. Build it:
@@ -38,7 +38,7 @@ To support changing voices while headless,
 Description=Keyboard Control for Pitch Synthesis
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/pitch-detect/kbd.py /home/pi/pitch-detect/current-voice /home/pi/jammer/kbd-config
+ExecStart=/usr/bin/python3 /home/pi/pitch-detect/kbd.py /home/pi/pitch-detect/current-voice
 Restart=always
 KillSignal=SIGQUIT
 Type=simple
