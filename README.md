@@ -4,7 +4,7 @@
 
 1. Install dependencies:
    ```
-   sudo apt install portaudio19-dev python3-evdev python3-mido
+   sudo apt install portaudio19-dev python3-evdev python3-mido python3-rtmidi
    ```
 
 2. Build it:
