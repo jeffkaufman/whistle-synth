@@ -59,7 +59,7 @@ def start():
     whistle_voice_fname = sys.argv[1]
 
     device_id = find_keyboard()
-    with mido.open_output('mido-kbd', virtual=True) as midiport:
+    with mido.open_output('mido-keypad', virtual=True) as midiport:
         run(device_id, midiport)
 
 if __name__ == "__main__":
