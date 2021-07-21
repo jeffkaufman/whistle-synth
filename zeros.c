@@ -79,6 +79,8 @@
 #define DURATION_BLOCKS (100) // in DURATION_UNITS
 #define DURATION_MAX_VAL (0.04)
 
+#define USB_SOUND_CARD_PREFIX "USB Audio Device"
+
 /*******************************************************************/
 
 void die(char *errmsg) {
@@ -736,7 +738,11 @@ int start_audio() {
   for(int i = 0; i < numDevices; i++) {
     deviceInfo = Pa_GetDeviceInfo(i);
     printf("device[%d]: %s\n", i, deviceInfo->name);
-    if (strcmp(deviceInfo->name, "USB Audio Device") == 0) {
+    // Take the first device whose name starts with USB_SOUND_CARD_PREFIX
+    if (best_audio_device_index == -1 &&
+        strncmp(USB_SOUND_CARD_PREFIX,
+                deviceInfo->name,
+                strlen(USB_SOUND_CARD_PREFIX) == 0) {
       best_audio_device_index = i;
     }
   }
@@ -769,10 +775,10 @@ int start_audio() {
   
   err = Pa_OpenStream(&stream,
 		      &inputParameters,
-		      &outputParameters,
+OA		      &outputParameters,
 		      SAMPLE_RATE,
 		      FRAMES_PER_BUFFER,
-		      paClipOff,      /* we won't output out of range samples so don't bother clipping them */
+		      paClipOff,      /* we won't output out of range samples so dvon't bother clipping them */
 		      NULL, /* no callback, use blocking API */
 		      NULL ); /* no callback, so no callback userData */
   if( err != paNoError ) goto error2;
