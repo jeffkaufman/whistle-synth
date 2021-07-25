@@ -213,7 +213,7 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 
 #define V_SOPRANO_RECORDER 0
 #define V_DIST 1
-#define V_CLARINET 2
+#define V_LOWDIST 2
 #define V_BASS_CLARINET 3
 #define V_EBASS 4
 #define V_VOCAL_2 6
@@ -255,14 +255,15 @@ float atan_decimal(float v) {
 float saturate(float v) {
   //  return clip(v);
 
-  float c = sine_decimal(atan_decimal(v * .75));
 
-  if (voice == V_DIST || voice == V_CLARINET) {
+  if (voice == V_DIST || voice == V_LOWDIST) {
+    float c = sine_decimal(atan_decimal(v * .75));
     v += (SAT_1 * c);
     v += (SAT_2 * c*c);
     v += (SAT_4 * c*c*c*c);
     v += (SAT_8 * c*c*c*c*c*c*c);
     v -= SAT_BIAS;
+    v *= 0.55;
   }
   
   return atan_decimal(v*2);
@@ -331,7 +332,7 @@ void init_oscs(float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 0.5,
 	     /*mod=*/ 2);
-  } else if (voice == V_CLARINET) {
+  } else if (voice == V_LOWDIST) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -728,7 +729,7 @@ int start_audio() {
     } else if( err ) goto xrun;
 
     float alpha = ALPHA_HIGH;
-    if (voice == V_CLARINET) {
+    if (voice == V_LOWDIST) {
       alpha = ALPHA_MEDIUM;
     } else if (voice == V_BASS_CLARINET ||
 	       voice == V_EBASS) {
