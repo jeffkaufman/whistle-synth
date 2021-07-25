@@ -62,7 +62,7 @@
 #define WHISTLE_RANGE_LOW (75)
 #define VOCAL_RANGE_LOW (300)
 #define SLIDE (4)
-#define VOLUME (0.7)
+#define VOLUME (10.0)
 #define DURATION (3)
 
 #define HISTORY_LENGTH (8192)
