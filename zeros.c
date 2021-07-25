@@ -116,7 +116,7 @@ void update_duration(float sample) {
     //printf("%.2f\n", duration_val);
   }
 }
-   
+
 
 struct Octaver {
   float hist[HISTORY_LENGTH];
@@ -244,13 +244,15 @@ float clip(float v) {
 }
 
 float saturate(float v) {
-  return clip(v);
+  //  return clip(v);
+
+  return atanf(v) / (M_PI/2);
 }
 
 void init_oscs(float adjustment) {
   int cycles = octaver.cycles;
   int offset = (cycles % DURATION) * N_OSCS_PER_LAYER;
-  
+
   if (voice == V_SOPRANO_RECORDER) {
     osc_init(&oscs[offset+0],
 	     cycles,
@@ -630,7 +632,7 @@ float update(float s) {
     range_high = VOCAL_RANGE_HIGH;
     range_low = VOCAL_RANGE_LOW;
   }
-  
+
   if (octaver.positive) {
     if (s < 0) {
       /*
@@ -682,7 +684,7 @@ float update(float s) {
       octaver.positive = TRUE;
     }
   }
-  
+
   octaver.previous_sample = s;
 
   float val = 0;
@@ -731,12 +733,12 @@ int start_audio() {
   const PaDeviceInfo* outputInfo;
   float *sampleBlock = NULL;
   int numBytes;
-  
+
   init_octaver();
 
   err = Pa_Initialize();
   if( err != paNoError ) goto error2;
-  
+
   int numDevices = Pa_GetDeviceCount();
   if (numDevices < 0) {
     die("no devices found");
@@ -754,7 +756,7 @@ int start_audio() {
       best_audio_device_index = i;
     }
   }
-  
+
   if (best_audio_device_index == -1) {
     best_audio_device_index = Pa_GetDefaultInputDevice();
   }
@@ -764,12 +766,12 @@ int start_audio() {
   inputInfo = Pa_GetDeviceInfo( inputParameters.device );
   printf( "   Name: %s\n", inputInfo->name );
   printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
-  
+
   inputParameters.channelCount = 1;  // mono
   inputParameters.sampleFormat = PA_SAMPLE_TYPE;
   inputParameters.suggestedLatency = inputInfo->defaultLowInputLatency ;
   inputParameters.hostApiSpecificStreamInfo = NULL;
-  
+
   outputParameters.device = best_audio_device_index;
   printf( "Output device # %d.\n", outputParameters.device );
   outputInfo = Pa_GetDeviceInfo( outputParameters.device );
@@ -780,7 +782,7 @@ int start_audio() {
   outputParameters.hostApiSpecificStreamInfo = NULL;
 
   /* -- setup -- */
-  
+
   err = Pa_OpenStream(&stream,
 		      &inputParameters,
 		      &outputParameters,
@@ -799,7 +801,7 @@ int start_audio() {
       goto error1;
     }
   memset( sampleBlock, SAMPLE_SILENCE, numBytes );
-  
+
   err = Pa_StartStream( stream );
   if( err != paNoError ) goto error1;
 
@@ -819,9 +821,9 @@ int start_audio() {
   }
   int leslie_write_offset = 0;
   float leslie_index = 0;
-  
+
   float output = 0;
-  
+
   while(TRUE) {
     err = Pa_ReadStream( stream, sampleBlock, FRAMES_PER_BUFFER );
     if (err & paInputOverflow) {
@@ -832,18 +834,18 @@ int start_audio() {
     if (voice == V_CLARINET) {
       alpha = ALPHA_MEDIUM;
     } else if (voice == V_RESPONSIVE_BASS ||
-	       voice == V_BASS_CLARINET || 
+	       voice == V_BASS_CLARINET ||
 	       voice == V_EBASS) {
       alpha = ALPHA_LOW;
     }
-    
+
     for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
       float sample = sampleBlock[i];
       float val = update(sample);
 
       output += alpha * (val - output);
       float sample_out = output / alpha ; // makeup gain
-      
+
       if (LESLIE_PERIOD > 0) {
 	leslie_hist[(leslie_write_offset++) % LESLIE_SAMPLES] = sample_out;
 	float leslie_read_pos =
@@ -854,7 +856,7 @@ int start_audio() {
 	float leslie_read_amtA = leslie_read_pos - leslie_read_posA;
 	float leslie_read_amtB = 1 - leslie_read_amtA;
 
-	sample_out = 
+	sample_out =
 	  leslie_hist[leslie_read_posA % LESLIE_SAMPLES]*leslie_read_amtA +
 	  leslie_hist[leslie_read_posB % LESLIE_SAMPLES]*leslie_read_amtB;
       }
@@ -905,4 +907,3 @@ int main(int argc, char** argv) {
   start_voice_thread();
   return start_audio();
 }
-
