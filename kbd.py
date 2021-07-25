@@ -12,7 +12,7 @@ whistle_voice_fname = None
 def find_keyboard():
     keyboards = glob.glob("/dev/input/by-id/*kbd")
     while not keyboards:
-        sleep(1)
+        time.sleep(1)
         keyboards = glob.glob("/dev/input/by-id/*kbd")
     return keyboards[0]
 
@@ -26,23 +26,20 @@ def run(device_id, midiport):
 
 whistle_voice_keys = {
     'KEY_NUMLOCK': 0,
-    'KEY_KPSLASH': 2
-    'KEY_KPASTERISK': 4,
-    'KEY_BACKSPACE': 6,
+    'KEY_KPSLASH': 1,
+    'KEY_KPASTERISK': 2,
+    'KEY_BACKSPACE': 4,
+    'KEY_KPMINUS': 6,
 }
-
-
-
 
 jammer_config_keys = {}
 for i in range(10):
     jammer_config_keys['KEY_%s' % i] = i
     jammer_config_keys['KEY_KP%s' % i] = i
 
-jammer_config_keys['KEY_KPMINUS'] = 10
-jammer_config_keys['KEY_KPPLUS'] = 11
-jammer_config_keys['KEY_ENTER'] = 12
-jammer_config_keys['KEY_KPDOT'] = 13
+jammer_config_keys['KEY_KPPLUS'] = 10
+jammer_config_keys['KEY_ENTER'] = 11
+jammer_config_keys['KEY_KPDOT'] = 12
     
 def handle_key(keycode, midiport):
     if keycode in whistle_voice_keys:
