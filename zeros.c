@@ -246,7 +246,7 @@ float clip(float v) {
 float saturate(float v) {
   //  return clip(v);
 
-  return atanf(v) / (M_PI/2);
+  return atanf(v * 2) / (M_PI/2);
 }
 
 void init_oscs(float adjustment) {
