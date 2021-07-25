@@ -26,19 +26,24 @@ def run(device_id, midiport):
 
 whistle_voice_keys = {
     'KEY_NUMLOCK': 0,
-    'KEY_KPSLASH': 1,
-    'KEY_KPASTERISK': 2,
-    'KEY_KPMINUS': 3,
-    'KEY_KPPLUS': 4,
-    'KEY_BACKSPACE': 5,
-    'KEY_KPDOT': 6
+    'KEY_KPSLASH': 2
+    'KEY_KPASTERISK': 4,
+    'KEY_BACKSPACE': 6,
 }
+
+
+
 
 jammer_config_keys = {}
 for i in range(10):
     jammer_config_keys['KEY_%s' % i] = i
     jammer_config_keys['KEY_KP%s' % i] = i
 
+jammer_config_keys['KEY_KPMINUS'] = 10
+jammer_config_keys['KEY_KPPLUS'] = 11
+jammer_config_keys['KEY_ENTER'] = 12
+jammer_config_keys['KEY_KPDOT'] = 13
+    
 def handle_key(keycode, midiport):
     if keycode in whistle_voice_keys:
         with open(whistle_voice_fname, 'w') as outf:
