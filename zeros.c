@@ -742,7 +742,7 @@ int start_audio() {
     if (best_audio_device_index == -1 &&
         strncmp(USB_SOUND_CARD_PREFIX,
                 deviceInfo->name,
-                strlen(USB_SOUND_CARD_PREFIX) == 0) {
+                strlen(USB_SOUND_CARD_PREFIX) == 0)) {
       best_audio_device_index = i;
     }
   }
@@ -775,7 +775,7 @@ int start_audio() {
   
   err = Pa_OpenStream(&stream,
 		      &inputParameters,
-OA		      &outputParameters,
+		      &outputParameters,
 		      SAMPLE_RATE,
 		      FRAMES_PER_BUFFER,
 		      paClipOff,      /* we won't output out of range samples so dvon't bother clipping them */
