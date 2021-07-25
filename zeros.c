@@ -239,6 +239,14 @@ float sine_decimal(float v) {
   return sin((v+0.5)*M_PI*2);
 }
 
+float clip(float v) {
+  return fmaxf(-1, fminf(1, v));
+}
+
+float saturate(float v) {
+  return clip(v);
+}
+
 void init_oscs(float adjustment) {
   int cycles = octaver.cycles;
   int offset = (cycles % DURATION) * N_OSCS_PER_LAYER;
@@ -851,8 +859,8 @@ int start_audio() {
 	  leslie_hist[leslie_read_posB % LESLIE_SAMPLES]*leslie_read_amtB;
       }
 
-      // clip it, so we never wrap -- wrapping sounds horrible
-      sampleBlock[i] = fmaxf(-1, fminf(1, sample_out));
+      // never wrap -- wrapping sounds horrible
+      sampleBlock[i] = saturate(sample_out);
     }
 
     err = Pa_WriteStream( stream, sampleBlock, FRAMES_PER_BUFFER );
