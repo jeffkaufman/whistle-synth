@@ -28,8 +28,8 @@ whistle_voice_keys = {
     'KEY_NUMLOCK': 0,
     'KEY_KPSLASH': 1,
     'KEY_KPASTERISK': 2,
-    'KEY_BACKSPACE': 4,
-    'KEY_KPMINUS': 6,
+    'KEY_KPMINUS': 4,
+    'KEY_PLUS': 6,
 }
 
 jammer_config_keys = {}
@@ -37,7 +37,7 @@ for i in range(10):
     jammer_config_keys['KEY_%s' % i] = i
     jammer_config_keys['KEY_KP%s' % i] = i
 
-jammer_config_keys['KEY_KPPLUS'] = 10
+jammer_config_keys['KEY_BACKSPACE'] = 10
 jammer_config_keys['KEY_ENTER'] = 11
 jammer_config_keys['KEY_KPDOT'] = 12
     
