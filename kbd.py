@@ -25,30 +25,23 @@ def run(device_id, midiport):
                 handle_key(event.keycode, midiport)
 
 whistle_voice_keys = {
-    'KEY_NUMLOCK': 0,
-    'KEY_KPSLASH': 1,
-    'KEY_KPASTERISK': 2,
-    'KEY_KPMINUS': 4,
-    'KEY_PLUS': 6,
+    'KEY_1': 0,
+    'KEY_2': 1,
+    'KEY_3': 2,
+    'KEY_4': 4,
+    'KEY_5': 6,
 }
 
-jammer_config_keys = {}
-for i in range(10):
-    jammer_config_keys['KEY_%s' % i] = i
-    jammer_config_keys['KEY_KP%s' % i] = i
-
-jammer_config_keys['KEY_BACKSPACE'] = 10
-jammer_config_keys['KEY_ENTER'] = 11
-jammer_config_keys['KEY_KPDOT'] = 12
-    
 def handle_key(keycode, midiport):
     if keycode in whistle_voice_keys:
         with open(whistle_voice_fname, 'w') as outf:
             outf.write(str(whistle_voice_keys[keycode]))
-    elif keycode in jammer_config_keys:
+    elif keycode >= 'KEY_A' and keycode <= 'KEY_Z':
+        pseudo_note = ord(keycode[-1]) - ord('A')
+        print(pseudo_note)
         midiport.send(
             mido.Message('note_on',
-                         note=jammer_config_keys[keycode]))
+                         note=pseudo_note))
     else:
         print(keycode)
 
