@@ -37,7 +37,7 @@ def handle_key(keycode, midiport):
         with open(whistle_voice_fname, 'w') as outf:
             outf.write(str(whistle_voice_keys[keycode]))
     elif keycode >= 'KEY_A' and keycode <= 'KEY_Z':
-        pseudo_note = ord(keycode[-1]) - ord('A')
+        pseudo_note = ord(keycode[-1])
         print(pseudo_note)
         midiport.send(
             mido.Message('note_on',
