@@ -9,6 +9,9 @@ JAMMER_CONFIG_LENGTH = 10
 
 whistle_voice_fname = None
 
+digits_read = []
+digit_note_to_send = None
+
 def find_keyboard():
     keyboards = glob.glob("/dev/input/by-id/*kbd")
     while not keyboards:
@@ -33,15 +36,39 @@ whistle_voice_keys = {
 }
 
 def handle_key(keycode, midiport):
+    global state
+    global digit_note_to_send
+
+    if keycode >= 'KEY_0' and keycode <= 'KEY_9' and digit_note_to_send:
+        digits_read.append(keycode[-1])
+        if len(digits_read) == 3:
+            val = int("".join(digits_read))
+            if 0 <= val <= 127:
+                midiport.send(
+                    mido.Message('note_on',
+                                 note=digit_note_to_send,
+                                 velocity=val))
+                print("sending %s %s" % (digit_note_to_send, val))
+            digits_read.clear()
+            digit_note_to_send = None
+        return
+
+    digit_note_to_send = None
+    digits_read.clear()
+
     if keycode in whistle_voice_keys:
         with open(whistle_voice_fname, 'w') as outf:
             outf.write(str(whistle_voice_keys[keycode]))
     elif keycode >= 'KEY_A' and keycode <= 'KEY_Z':
         pseudo_note = ord(keycode[-1])
         print(pseudo_note)
-        midiport.send(
-            mido.Message('note_on',
-                         note=pseudo_note))
+
+        if keycode == 'KEY_P':
+            digit_note_to_send = pseudo_note
+        else:
+            midiport.send(
+                mido.Message('note_on',
+                             note=pseudo_note))
     else:
         print(keycode)
 
