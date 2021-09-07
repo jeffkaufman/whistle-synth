@@ -21,7 +21,7 @@ To run on boot, `/etc/systemd/system/pitch-detect.service` should have:
 Description=Pitch Detection and	Synthesis
 
 [Service]
-ExecStart=/home/pi/pitch-detect/zeros-linux /home/pi/pitch-detect/current-voice
+ExecStart=/home/pi/pitch-detect/zeros-linux /home/pi/pitch-detect/device-index /home/pi/pitch-detect/current-voice
 Restart=always
 KillSignal=SIGQUIT
 Type=simple
@@ -38,7 +38,7 @@ To support changing voices while headless,
 Description=Keyboard Control for Pitch Synthesis
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/pitch-detect/kbd.py /home/pi/pitch-detect/current-voice
+ExecStart=/usr/bin/python3 /home/pi/pitch-detect/kbd.py /home/pi/pitch-detect/device-index /home/pi/pitch-detect/current-voice
 Restart=always
 KillSignal=SIGQUIT
 Type=simple

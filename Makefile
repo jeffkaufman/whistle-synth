@@ -24,7 +24,7 @@ zeros-osc: zeros.m
 	  zeros.m -o zeros-osc -std=c99 -Wall
 
 run-linux: zeros-linux
-	./zeros-linux $(CURDIR)/current-voice
+	./zeros-linux $(CURDIR)/device-index $(CURDIR)/current-voice
 
 run-osc: zeros-osc
 	./zeros-osc

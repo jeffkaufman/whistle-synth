@@ -265,7 +265,7 @@ float saturate(float v) {
     v -= SAT_BIAS;
     v *= 0.55;
   }
-  
+
   return atan_decimal(v*2);
 }
 
@@ -592,6 +592,17 @@ float update(float s) {
   return val * VOLUME;
 }
 
+int read_number(FILE* file) {
+  char buf[16];
+  rewind(file);
+  int bytesRead = fread(buf, 1, 16, file);
+  if (bytesRead > 15) {
+    bytesRead = 15;
+  }
+  buf[bytesRead] = '\0';
+  return atoi(buf);
+}
+
 char* current_voice_filename = NULL;
 void* update_voice(void* ignored) {
   FILE* current_voice_file = fopen(current_voice_filename, "r");
@@ -600,15 +611,9 @@ void* update_voice(void* ignored) {
     exit(-1);
   }
 
-  char buf[16];
   while (1) {
     rewind(current_voice_file);
-    int bytesRead = fread(buf, 1, 16, current_voice_file);
-    if (bytesRead > 15) {
-      bytesRead = 15;
-    }
-    buf[bytesRead] = '\0';
-    int new_voice = atoi(buf);
+    int new_voice = read_number(current_voice_file);
     if (voice != new_voice) {
       printf("%d -> %d\n", voice, new_voice);
       voice = new_voice;
@@ -622,7 +627,7 @@ void start_voice_thread() {
   pthread_create(&voice_thread, NULL, &update_voice, NULL);
 }
 
-int start_audio() {
+int start_audio(int device_index) {
   PaStreamParameters inputParameters;
   PaStreamParameters outputParameters;
   PaStream *stream = NULL;
@@ -643,20 +648,30 @@ int start_audio() {
   }
   const PaDeviceInfo* deviceInfo;
   int best_audio_device_index = -1;
-  for(int i = 0; i < numDevices; i++) {
+  int seen_good_devices = 0;
+  for(int i = 0; i < numDevices && best_audio_device_index == -1; i++) {
     deviceInfo = Pa_GetDeviceInfo(i);
     printf("device[%d]: %s\n", i, deviceInfo->name);
-    // Take the first device whose name starts with USB_SOUND_CARD_PREFIX
+    // Take the Nth device whose name starts with USB_SOUND_CARD_PREFIX
     if (best_audio_device_index == -1 &&
         strncmp(USB_SOUND_CARD_PREFIX,
                 deviceInfo->name,
-                strlen(USB_SOUND_CARD_PREFIX) == 0)) {
-      best_audio_device_index = i;
+                strlen(USB_SOUND_CARD_PREFIX)) == 0) {
+      if (seen_good_devices == device_index) {
+        best_audio_device_index = i;
+      } else {
+        seen_good_devices++;
+      }
     }
   }
 
   if (best_audio_device_index == -1) {
-    best_audio_device_index = Pa_GetDefaultInputDevice();
+    if (device_index == 0) {
+      printf("falling back to default\n");
+      best_audio_device_index = Pa_GetDefaultInputDevice();
+    } else {
+      die("no good device found");
+    }
   }
 
   inputParameters.device = best_audio_device_index;
@@ -796,11 +811,13 @@ xrun:
 }
 
 int main(int argc, char** argv) {
-  if (argc != 2) {
-    printf("usage: %s /path/to/voice/file\n", argv[0]);
+  if (argc != 3) {
+    printf("usage: %s /path/to/device/index /path/to/voice/file\n", argv[0]);
     return -1;
   }
-  current_voice_filename = argv[1];
+  int device_index = read_number(fopen(argv[1], "r"));
+  current_voice_filename = argv[2];
+
   start_voice_thread();
-  return start_audio();
+  return start_audio(device_index);
 }
