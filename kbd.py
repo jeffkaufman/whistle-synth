@@ -77,11 +77,16 @@ def restart_whistle_synth():
     subprocess.run(["service", "pitch-detect", "restart"])
     
 whistle_voice_keys = {
-    'KEY_1': 0,
-    'KEY_2': 1,
-    'KEY_3': 2,
+    'KEY_1': 1,
+    'KEY_2': 2,
+    'KEY_3': 3,
     'KEY_4': 4,
-    'KEY_5': 6,
+    'KEY_5': 5,
+    'KEY_6': 6,
+    'KEY_7': 7,
+    'KEY_8': 8,
+    'KEY_9': 9,
+    'KEY_0': 0,
 }
 
 def handle_key(keycode, midiport):

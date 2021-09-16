@@ -216,7 +216,7 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_LOWDIST 2
 #define V_BASS_CLARINET 3
 #define V_EBASS 4
-#define V_VOCAL_2 6
+#define V_VOCAL_2 5
 #define N_VOICES (V_VOCAL_2+1)
 
 unsigned char voice = V_EBASS;
