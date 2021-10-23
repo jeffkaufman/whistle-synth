@@ -116,7 +116,7 @@ def handle_key(keycode, midiport):
     if keycode in whistle_voice_keys:
         with open(whistle_voice_fname, 'w') as outf:
             outf.write(str(whistle_voice_keys[keycode]))
-    elif modifiers['KEY_RIGHTALT'] and modifiers['KEY_RIGHTSHIFT']:
+    elif modifiers['KEY_RIGHTSHIFT']:
         if keycode == 'KEY_BACKSPACE':
             swap_outputs()
         elif keycode == 'KEY_EQUAL':
