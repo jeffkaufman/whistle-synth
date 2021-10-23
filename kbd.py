@@ -28,7 +28,7 @@ modifiers = {
     'KEY_LEFTALT': False,
     'KEY_LEFTSHIFT': False,
     'KEY_LEFTCTRL': False,
-}  
+}
 
 def run(device_id, midiport):
     device = evdev.InputDevice(device_id)
@@ -52,7 +52,7 @@ def swap_outputs():
 
     with open(device_index_fname) as inf:
         cur_val = inf.read().strip()
-        
+
     with open(device_index_fname, 'w') as outf:
         outf.write('1' if cur_val == '0' else '0')
 
@@ -60,7 +60,7 @@ def swap_outputs():
     time.sleep(2)
 
     print('  starting services')
-    
+
     subprocess.run(["service", "pitch-detect", "start"])
     subprocess.run(["service", "fluidsynth", "start"])
 
@@ -75,7 +75,7 @@ def restart_jammer():
 def restart_whistle_synth():
     print('restarting whistle synth')
     subprocess.run(["service", "pitch-detect", "restart"])
-    
+
 whistle_voice_keys = {
     'KEY_1': 1,
     'KEY_2': 2,
@@ -123,7 +123,6 @@ def handle_key(keycode, midiport):
             restart_whistle_synth()
         elif keycode == 'KEY_MINUS':
             restart_jammer()
-            
     elif len(keycode) == len('KEY_A') and 'KEY_A' <= keycode <= 'KEY_Z':
         pseudo_note = ord(keycode[-1])
         print(pseudo_note)
@@ -134,6 +133,14 @@ def handle_key(keycode, midiport):
             midiport.send(
                 mido.Message('note_on',
                              note=pseudo_note))
+    elif keycode.startswith("KEY_F") and keycode[len("KEY_F"):].isdigit():
+        fn_digit = int(keycode[len("KEY_F"):])
+        pseudo_note = ord('Z') + fn_digit
+        print(pseudo_note)
+
+        midiport.send(
+            mido.Message('note_on',
+                         note=pseudo_note))
     else:
         print(keycode)
 
