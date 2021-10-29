@@ -62,7 +62,7 @@
 #define WHISTLE_RANGE_LOW (75)
 #define VOCAL_RANGE_LOW (300)
 #define SLIDE (4)
-#define VOLUME (10.0)
+#define VOLUME (5.0)
 #define DURATION (3)
 
 #define HISTORY_LENGTH (8192)
@@ -211,13 +211,13 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
   }
 }
 
-#define V_SOPRANO_RECORDER 0
-#define V_DIST 1
-#define V_LOWDIST 2
-#define V_BASS_CLARINET 3
-#define V_EBASS 4
-#define V_VOCAL_2 5
-#define N_VOICES (V_VOCAL_2+1)
+#define V_SOPRANO_RECORDER 1
+#define V_DIST 2
+#define V_LOWDIST 3
+#define V_BASS_CLARINET 4
+#define V_EBASS 5
+#define V_VOCAL_2 6
+#define V_RAW 7
 
 unsigned char voice = V_EBASS;
 
@@ -252,9 +252,12 @@ float atan_decimal(float v) {
 #define SAT_8 1
 #define SAT_BIAS 0.5
 
-float saturate(float v) {
-  //  return clip(v);
+#define USE_CLIPPING 1
 
+float saturate(float v) {
+  if (USE_CLIPPING) {
+    return clip(v);
+  }
 
   if (voice == V_DIST || voice == V_LOWDIST) {
     float c = sine_decimal(atan_decimal(v * .75));
@@ -290,7 +293,7 @@ void init_oscs(float adjustment) {
 	     cycles,
 	     adjustment,
 	     /*vol=*/ 0.5,
-	     /*mode=*/ OSC_NAT,
+	     /*mode=*/ OSC_SQR,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
@@ -518,6 +521,10 @@ void handle_cycle() {
 
 
 float update(float s) {
+  if (voice == V_RAW) {
+    return s;
+  }
+
   set_hist(s);
   update_duration(s);
 
