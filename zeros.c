@@ -121,7 +121,7 @@ void update_duration(float sample) {
 struct Octaver {
   float hist[HISTORY_LENGTH];
   int hist_pos;
-  int cycles;
+  long long cycles;
   float samples_since_last_crossing;
   float samples_since_attack_began;
   BOOL positive;
@@ -178,7 +178,7 @@ struct Osc {
 };
 
 void osc_init(
-    struct Osc* osc, int cycles, float adjustment, float vol,
+    struct Osc* osc, long long cycles, float adjustment, float vol,
     int mode, float lfo_rate, float lfo_amplitude,
     BOOL lfo_is_volume, float speed, float cycle, int mod) {
 
@@ -290,8 +290,8 @@ float saturate(float v) {
 }
 
 void init_oscs(float adjustment) {
-  int cycles = octaver.cycles;
-  int offset = (cycles % DURATION) * N_OSCS_PER_LAYER;
+  long long cycles = octaver.cycles;
+  long long offset = (cycles % DURATION) * N_OSCS_PER_LAYER;
 
   if (voice_iff.value == V_SOPRANO_RECORDER) {
     osc_init(&oscs[offset+0],
