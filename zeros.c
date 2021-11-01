@@ -667,6 +667,7 @@ void update_iff(struct int_from_file* iff) {
   if (iff->value != new_value) {
     printf("%s: %d -> %d\n", iff->purpose, iff->value, new_value);
     iff->value = new_value;
+    init_octaver();
   }
 }
 
