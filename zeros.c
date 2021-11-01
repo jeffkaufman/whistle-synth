@@ -62,7 +62,7 @@
 #define WHISTLE_RANGE_LOW (75)
 #define VOCAL_RANGE_LOW (300)
 #define SLIDE (4)
-#define VOLUME (5.0)
+#define VOLUME (10.0)
 #define DURATION (3)
 
 #define HISTORY_LENGTH (8192)
@@ -211,6 +211,27 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
   }
 }
 
+float volumes[10] = {0.00,  // 0
+                     0.01,  // 1
+                     0.02,  // 2
+                     0.04,  // 3
+                     0.08,  // 4
+                     0.16,  // 5
+                     0.32,  // 6
+                     0.64,  // 7
+                     1.28,  // 8
+                     2.56}; // 9
+
+struct int_from_file {
+  const char* purpose;
+  const char* fname;
+  FILE* file;
+  int value;
+};
+
+struct int_from_file voice_iff;
+struct int_from_file volume_iff;
+
 #define V_SOPRANO_RECORDER 1
 #define V_DIST 2
 #define V_LOWDIST 3
@@ -218,8 +239,6 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 #define V_EBASS 5
 #define V_VOCAL_2 6
 #define V_RAW 7
-
-unsigned char voice = V_EBASS;
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
@@ -259,7 +278,7 @@ float saturate(float v) {
     return clip(v);
   }
 
-  if (voice == V_DIST || voice == V_LOWDIST) {
+  if (voice_iff.value == V_DIST || voice_iff.value == V_LOWDIST) {
     float c = sine_decimal(atan_decimal(v * .75));
     v += (SAT_1 * c);
     v += (SAT_2 * c*c);
@@ -276,7 +295,7 @@ void init_oscs(float adjustment) {
   int cycles = octaver.cycles;
   int offset = (cycles % DURATION) * N_OSCS_PER_LAYER;
 
-  if (voice == V_SOPRANO_RECORDER) {
+  if (voice_iff.value == V_SOPRANO_RECORDER) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -288,7 +307,7 @@ void init_oscs(float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
-  } else if (voice == V_DIST) {
+  } else if (voice_iff.value == V_DIST) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -300,7 +319,7 @@ void init_oscs(float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
-  } else if (voice == V_BASS_CLARINET) {
+  } else if (voice_iff.value == V_BASS_CLARINET) {
     osc_init(&oscs[offset],
 	     cycles,
 	     adjustment,
@@ -323,7 +342,7 @@ void init_oscs(float adjustment) {
 	     /*speed=*/ 0.125,
 	     /*cycle=*/ 0.125,
 	     /*mod=*/ 2);
-  } else if (voice == V_VOCAL_2) {
+  } else if (voice_iff.value == V_VOCAL_2) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -335,7 +354,7 @@ void init_oscs(float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 0.5,
 	     /*mod=*/ 2);
-  } else if (voice == V_LOWDIST) {
+  } else if (voice_iff.value == V_LOWDIST) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -391,7 +410,7 @@ void init_oscs(float adjustment) {
 	     /*speed=*/ 9.0/4,
 	     /*cycle=*/ 9.0/2,
 	     /*mod=*/ 2);
-  } else if (voice == V_EBASS) {
+  } else if (voice_iff.value == V_EBASS) {
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -521,7 +540,7 @@ void handle_cycle() {
 
 
 float update(float s) {
-  if (voice == V_RAW) {
+  if (voice_iff.value == V_RAW) {
     return s;
   }
 
@@ -533,7 +552,7 @@ float update(float s) {
 
   int range_high = WHISTLE_RANGE_HIGH;
   int range_low = WHISTLE_RANGE_LOW;
-  if (voice == V_VOCAL_2) {
+  if (voice_iff.value == V_VOCAL_2) {
     range_high = VOCAL_RANGE_HIGH;
     range_low = VOCAL_RANGE_LOW;
   }
@@ -596,7 +615,7 @@ float update(float s) {
   for (int i = 0 ; i < N_OSCS; i++) {
     val += osc_next(&oscs[i]);
   }
-  return val * VOLUME;
+  return val * VOLUME * volumes[volume_iff.value];
 }
 
 int read_number(FILE* file) {
@@ -610,28 +629,39 @@ int read_number(FILE* file) {
   return atoi(buf);
 }
 
-char* current_voice_filename = NULL;
-void* update_voice(void* ignored) {
-  FILE* current_voice_file = fopen(current_voice_filename, "r");
-  if (!current_voice_file) {
-    perror("can't open voice file");
+void open_iff_or_die(struct int_from_file* iff) {
+  iff->file = fopen(iff->fname, "r");
+  if (!iff->file) {
+    perror("can't open file");
+    fprintf(stderr, "  in: %s", iff->fname);
     exit(-1);
   }
+  return;
+}
+
+void update_iff(struct int_from_file* iff) {
+  rewind(iff->file);
+  int new_value = read_number(iff->file);
+  if (iff->value != new_value) {
+    printf("%s: %d -> %d\n", iff->purpose, iff->value, new_value);
+    iff->value = new_value;
+  }
+}
+
+void* update_iffs(void* ignored) {
+  open_iff_or_die(&voice_iff);
+  open_iff_or_die(&volume_iff);
 
   while (1) {
-    rewind(current_voice_file);
-    int new_voice = read_number(current_voice_file);
-    if (voice != new_voice) {
-      printf("%d -> %d\n", voice, new_voice);
-      voice = new_voice;
-    }
+    update_iff(&voice_iff);
+    update_iff(&volume_iff);
     usleep(50000 /* 50ms in us */);
   }
 }
 
-pthread_t voice_thread;
-void start_voice_thread() {
-  pthread_create(&voice_thread, NULL, &update_voice, NULL);
+pthread_t iff_thread;
+void start_iff_thread() {
+  pthread_create(&iff_thread, NULL, &update_iffs, NULL);
 }
 
 int start_audio(int device_index) {
@@ -751,10 +781,10 @@ int start_audio(int device_index) {
     } else if( err ) goto xrun;
 
     float alpha = ALPHA_HIGH;
-    if (voice == V_LOWDIST) {
+    if (voice_iff.value == V_LOWDIST) {
       alpha = ALPHA_MEDIUM;
-    } else if (voice == V_BASS_CLARINET ||
-	       voice == V_EBASS) {
+    } else if (voice_iff.value == V_BASS_CLARINET ||
+	       voice_iff.value == V_EBASS) {
       alpha = ALPHA_LOW;
     }
 
@@ -818,13 +848,19 @@ xrun:
 }
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
-    printf("usage: %s /path/to/device/index /path/to/voice/file\n", argv[0]);
+  if (argc != 4) {
+    printf("usage: %s /path/to/device/index /path/to/voice/file"
+           " /path/to/volume/file\n", argv[0]);
     return -1;
   }
   int device_index = read_number(fopen(argv[1], "r"));
-  current_voice_filename = argv[2];
+  voice_iff.purpose = "voice";
+  voice_iff.fname = argv[2];
+  voice_iff.value = V_EBASS;
+  volume_iff.purpose = "volume";
+  volume_iff.fname = argv[3];
+  volume_iff.value = 5;
 
-  start_voice_thread();
+  start_iff_thread();
   return start_audio(device_index);
 }

@@ -8,8 +8,10 @@ import subprocess
 
 JAMMER_CONFIG_LENGTH = 10
 
-whistle_voice_fname = None
-device_index_fname = None
+config_dir = os.path.dirname(__file__)
+device_index_fname = os.path.join(config_dir, "device-index")
+whistle_voice_fname = os.path.join(config_dir, "current-voice")
+whistle_volume_fname = os.path.join(config_dir, "current-volume")
 
 digits_read = []
 digit_note_to_send = None
@@ -76,6 +78,37 @@ def restart_whistle_synth():
     print('restarting whistle synth')
     subprocess.run(["service", "pitch-detect", "restart"])
 
+def read_number(fname):
+    with open(fname) as inf:
+        return int(inf.read().strip())
+
+def write_number(val, fname):
+    if val < 0:
+        val = 0
+    if val > 9:
+        val = 9
+    with open(fname, 'w') as outf:
+        outf.write(str(val))
+
+def current_voice():
+    return read_number(whistle_voice_fname)
+
+def volume_fname():
+    return os.path.join(config_dir, "configured-volume-%s" % current_voice())
+
+def current_volume():
+    fname = volume_fname()
+    if os.path.exists(fname):
+        return read_number(fname)
+    return 5
+
+def save_volume(new_value):
+    write_number(new_value, volume_fname())
+    write_number(new_value, whistle_volume_fname)
+
+def volume_change(increment):
+    save_volume(current_volume() + increment)
+
 whistle_voice_keys = {
     'KEY_1': 1,
     'KEY_2': 2,
@@ -114,15 +147,15 @@ def handle_key(keycode, midiport):
     digits_read.clear()
 
     if keycode in whistle_voice_keys:
-        with open(whistle_voice_fname, 'w') as outf:
-            outf.write(str(whistle_voice_keys[keycode]))
+        write_number(whistle_voice_keys[keycode], whistle_voice_fname)
+        save_volume(current_volume())
     elif modifiers['KEY_RIGHTSHIFT']:
         if keycode == 'KEY_BACKSPACE':
             swap_outputs()
-        elif keycode == 'KEY_EQUAL':
-            restart_whistle_synth()
-        elif keycode == 'KEY_MINUS':
-            restart_jammer()
+    elif keycode == 'KEY_MINUS':
+        volume_change(-1)
+    elif keycode == 'KEY_EQUAL':
+        volume_change(+1)
     elif len(keycode) == len('KEY_A') and 'KEY_A' <= keycode <= 'KEY_Z':
         pseudo_note = ord(keycode[-1])
         print(pseudo_note)
@@ -145,14 +178,9 @@ def handle_key(keycode, midiport):
         print(keycode)
 
 def start():
-    global device_index_fname
-    global whistle_voice_fname
-
-    if len(sys.argv) != 3:
-        print("usage: kbd.py <device-index-fname> <whistle_voice_fname>");
+    if len(sys.argv) != 1:
+        print("usage: kbd.py");
         return
-    device_index_fname = sys.argv[1]
-    whistle_voice_fname = sys.argv[2]
 
     device_id = find_keyboard()
     with mido.open_output('mido-keypad', virtual=True) as midiport:
