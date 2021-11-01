@@ -62,7 +62,7 @@
 #define WHISTLE_RANGE_LOW (75)
 #define VOCAL_RANGE_LOW (300)
 #define SLIDE (4)
-#define VOLUME (10.0)
+#define VOLUME (50.0)
 #define DURATION (3)
 
 #define HISTORY_LENGTH (8192)
@@ -241,6 +241,7 @@ struct int_from_file volume_iff;
 #define V_VOCAL_2 7
 #define V_VOCAL_1 8
 #define V_RAW 9
+#define V_RAWDIST 0
 
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
@@ -274,18 +275,18 @@ float atan_decimal(float v) {
 #define SAT_BIAS 0.5
 
 float saturate(float v) {
-  if (voice_iff.value != V_DIST) {
+  if (voice_iff.value != V_DIST && voice_iff.value != V_RAWDIST) {
     return clip(v);
   }
 
-  float c = sine_decimal(atan_decimal(v * .75));
+  float c = sine_decimal(atan_decimal(v * 4));
   v += (SAT_1 * c);
   v += (SAT_2 * c*c);
   v += (SAT_4 * c*c*c*c);
   v += (SAT_8 * c*c*c*c*c*c*c);
   v -= SAT_BIAS;
   v *= 0.55;
-  return atan_decimal(v*2);
+  return atan_decimal(v/4);
 }
 
 void init_oscs(float adjustment) {
@@ -561,8 +562,8 @@ void handle_cycle() {
 
 
 float update(float s) {
-  if (voice_iff.value == V_RAW) {
-    return s;
+  if (voice_iff.value == V_RAW || voice_iff.value == V_RAWDIST) {
+    return s * volumes[volume_iff.value] / volumes[5];
   }
 
   set_hist(s);
@@ -573,7 +574,7 @@ float update(float s) {
 
   int range_high = WHISTLE_RANGE_HIGH;
   int range_low = WHISTLE_RANGE_LOW;
-  if (voice_iff.value == V_VOCAL_2) {
+  if (voice_iff.value == V_VOCAL_2 || voice_iff.value == V_VOCAL_1) {
     range_high = VOCAL_RANGE_HIGH;
     range_low = VOCAL_RANGE_LOW;
   }
