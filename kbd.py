@@ -122,9 +122,23 @@ whistle_voice_keys = {
     'KEY_0': 0,
 }
 
+keycodes = {
+    'KEY_LEFTBRACE': 'KEY_[',
+    'KEY_RIGHTBRACE': 'KEY_]',
+    'KEY_SEMICOLON': 'KEY_;',
+    'KEY_APOSTROPHE': 'KEY_\'',
+    'KEY_COMMA': 'KEY_,',
+    'KEY_DOT': 'KEY_.',
+    'KEY_SLASH': 'KEY_/',
+    'KEY_BACKSLASH': 'KEY_\\',
+    'KEY_GRAVE': 'KEY_`',
+}
+
 def handle_key(keycode, midiport):
     global state
     global digit_note_to_send
+
+    keycode = keycodes.get(keycode, keycode)
 
     if (len(keycode) == len('KEY_0') and
         'KEY_0' <= keycode <= 'KEY_9' and
@@ -156,7 +170,15 @@ def handle_key(keycode, midiport):
         volume_change(-1)
     elif keycode == 'KEY_EQUAL':
         volume_change(+1)
-    elif len(keycode) == len('KEY_A') and 'KEY_A' <= keycode <= 'KEY_Z':
+    elif keycode.startswith("KEY_F") and keycode[len("KEY_F"):].isdigit():
+        fn_digit = int(keycode[len("KEY_F"):])
+        pseudo_note = ord('Z') + fn_digit
+        print(pseudo_note)
+
+        midiport.send(
+            mido.Message('note_on',
+                         note=pseudo_note))
+    elif len(keycode) == len('KEY_A'):
         pseudo_note = ord(keycode[-1])
         print(pseudo_note)
 
@@ -166,14 +188,6 @@ def handle_key(keycode, midiport):
             midiport.send(
                 mido.Message('note_on',
                              note=pseudo_note))
-    elif keycode.startswith("KEY_F") and keycode[len("KEY_F"):].isdigit():
-        fn_digit = int(keycode[len("KEY_F"):])
-        pseudo_note = ord('Z') + fn_digit
-        print(pseudo_note)
-
-        midiport.send(
-            mido.Message('note_on',
-                         note=pseudo_note))
     else:
         print(keycode)
 
