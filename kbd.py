@@ -172,7 +172,7 @@ def handle_key(keycode, midiport):
         volume_change(+1)
     elif keycode.startswith("KEY_F") and keycode[len("KEY_F"):].isdigit():
         fn_digit = int(keycode[len("KEY_F"):])
-        pseudo_note = ord('Z') + fn_digit
+        pseudo_note = ord('a') + fn_digit
         print(pseudo_note)
 
         midiport.send(
