@@ -9,7 +9,6 @@ import subprocess
 JAMMER_CONFIG_LENGTH = 10
 
 config_dir = os.path.dirname(__file__)
-device_index_fname = os.path.join(config_dir, "device-index")
 whistle_voice_fname = os.path.join(config_dir, "current-voice")
 whistle_volume_fname = os.path.join(config_dir, "current-volume")
 
@@ -43,41 +42,6 @@ def run(device_id, midiport):
             elif event.keystate == 1: # keydown
                 handle_key(event.keycode, midiport)
 
-def swap_outputs():
-    print('swapping outputs...')
-
-    print('  stopping services')
-
-    # Restart ones that use devices together so they don't conflict.
-    subprocess.run(["service", "pitch-detect", "stop"])
-    subprocess.run(["service", "fluidsynth", "stop"])
-
-    with open(device_index_fname) as inf:
-        cur_val = inf.read().strip()
-
-    with open(device_index_fname, 'w') as outf:
-        outf.write('1' if cur_val == '0' else '0')
-
-    print('  sleeping...')
-    time.sleep(2)
-
-    print('  starting services')
-
-    subprocess.run(["service", "pitch-detect", "start"])
-    subprocess.run(["service", "fluidsynth", "start"])
-
-    subprocess.run(["service", "jammer", "restart"])
-
-def restart_jammer():
-    print('restarting fluidsynth')
-    subprocess.run(["service", "fluidsynth", "restart"])
-    print('restarting jammer')
-    subprocess.run(["service", "jammer", "restart"])
-
-def restart_whistle_synth():
-    print('restarting whistle synth')
-    subprocess.run(["service", "pitch-detect", "restart"])
-
 def read_number(fname):
     with open(fname) as inf:
         return int(inf.read().strip())
@@ -110,17 +74,26 @@ def volume_change(increment):
     save_volume(current_volume() + increment)
 
 whistle_voice_keys = {
-    'KEY_1': 1,
-    'KEY_2': 2,
-    'KEY_3': 3,
-    'KEY_4': 4,
-    'KEY_5': 5,
-    'KEY_6': 6,
-    'KEY_7': 7,
-    'KEY_8': 8,
-    'KEY_9': 9,
-    'KEY_0': 0,
+    'KEY_KP1': 1,
+    'KEY_KP2': 2,
+    'KEY_KP3': 3,
+    'KEY_KP4': 4,
+    'KEY_KP5': 5,
+    'KEY_KP6': 6,
+    'KEY_KP7': 7,
+    'KEY_KP8': 8,
+    'KEY_KP9': 9,
+    'KEY_KP0': 0,
 }
+
+# Remaining available whistle options:
+#
+#   KEY_NUMLOCK
+#   KEY_KPSLASH
+#   KEY_KPASTERISK
+#   KEY_BACKSPACE
+#   KEY_KPENTER
+#   KEY_KPDOT
 
 keycodes = {
     'KEY_LEFTBRACE': 'KEY_[',
@@ -163,12 +136,9 @@ def handle_key(keycode, midiport):
     if keycode in whistle_voice_keys:
         write_number(whistle_voice_keys[keycode], whistle_voice_fname)
         save_volume(current_volume())
-    elif modifiers['KEY_RIGHTSHIFT']:
-        if keycode == 'KEY_BACKSPACE':
-            swap_outputs()
-    elif keycode == 'KEY_MINUS':
+    elif keycode == 'KEY_KPMINUS':
         volume_change(-1)
-    elif keycode == 'KEY_EQUAL':
+    elif keycode == 'KEY_KPPLUS':
         volume_change(+1)
     elif keycode.startswith("KEY_F") and keycode[len("KEY_F"):].isdigit():
         fn_digit = int(keycode[len("KEY_F"):])
