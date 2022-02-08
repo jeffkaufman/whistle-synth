@@ -150,16 +150,12 @@ def handle_key(keycode, midiport):
         midiport.send(
             mido.Message('note_on',
                          note=pseudo_note))
+    elif keycode == 'KEY_DELETE':
+        digit_note_to_send = 108
     elif len(keycode) == len('KEY_A'):
         pseudo_note = ord(keycode[-1])
         print(pseudo_note)
-
-        if keycode == 'KEY_P':
-            digit_note_to_send = pseudo_note
-        else:
-            midiport.send(
-                mido.Message('note_on',
-                             note=pseudo_note))
+        midiport.send(mido.Message('note_on', note=pseudo_note))
     else:
         print(keycode)
 
