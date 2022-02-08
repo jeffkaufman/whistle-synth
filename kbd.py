@@ -107,6 +107,7 @@ keycodes = {
     'KEY_GRAVE': 'KEY_`',
     'KEY_EQUAL': 'KEY_=',
     'KEY_MINUS': 'KEY_-',
+    'KEY_ESC': 'KEY_m',  # 109
 }
 
 def handle_key(keycode, midiport):
