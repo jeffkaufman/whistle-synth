@@ -105,6 +105,8 @@ keycodes = {
     'KEY_SLASH': 'KEY_/',
     'KEY_BACKSLASH': 'KEY_\\',
     'KEY_GRAVE': 'KEY_`',
+    'KEY_EQUAL': 'KEY_=',
+    'KEY_MINUS': 'KEY_-',
 }
 
 def handle_key(keycode, midiport):
