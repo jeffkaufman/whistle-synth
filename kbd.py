@@ -161,12 +161,24 @@ def handle_key(keycode, midiport):
     else:
         print(keycode)
 
+def start_services(*services):
+    for service in services:
+        subprocess.run(["service", service, "start"])
+
 def start():
     if len(sys.argv) != 1:
         print("usage: kbd.py");
         return
 
     device_id = find_keyboard()
+
+    if "SEM_HCT" in device_id:
+        # Keypad found: run whistle
+        start_services("pitch-detect")
+    else:
+        # No keypad: run jammer
+        start_services("fluidsynth", "jammer")
+
     with mido.open_output('mido-keypad', virtual=True) as midiport:
         run(device_id, midiport)
 

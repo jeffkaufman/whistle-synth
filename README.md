@@ -47,9 +47,18 @@ Type=simple
 WantedBy=multi-user.target
 ```
 
-Then `sudo systemctl enable pitch-detect`,
-`sudo systemctl enable pitch-detect-kbd` and
-`sudo systemctl daemon-reload`.
+If this box will only ever run whistle-synth then:
+
+```
+sudo systemctl enable pitch-detect
+```
+
+Regardless:
+
+```
+sudo systemctl enable pitch-detect-kbd
+sudo systemctl daemon-reload
+```
 
 ## Run
 
