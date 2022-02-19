@@ -2,12 +2,14 @@
 
 ## Build
 
-1. Install dependencies:
+1. Check out as ~/pitch-detect
+
+2. Install dependencies:
    ```
    sudo apt install portaudio19-dev python3-evdev python3-mido python3-rtmidi
    ```
 
-2. Build it:
+3. Build it:
    ```
     make zeros-linux
    ```
@@ -59,6 +61,14 @@ Regardless:
 sudo systemctl enable pitch-detect-kbd
 sudo systemctl daemon-reload
 ```
+
+Set levels for consistency:
+
+```
+$ alsamixer
+> F6 select "USB Audio Device"
+> Speaker :83
+> Mic: 32
 
 ## Run
 
