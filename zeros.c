@@ -251,11 +251,6 @@ struct Osc oscs[N_OSCS];
 #define ALPHA_MEDIUM (0.03)
 #define ALPHA_LOW (0.01)
 
-// in samples -- set to zero for off
-#define LESLIE_PERIOD 0 // 4096
-// in samples
-#define LESLIE_DEPTH 36
-#define LESLIE_SAMPLES (LESLIE_DEPTH*2)
 float sine_decimal(float v) {
   return sin((v+0.5)*M_PI*2);
 }
@@ -787,14 +782,6 @@ int start_audio(int device_index) {
     duration_hist[i] = 0;
   }
 
-
-  float leslie_hist[LESLIE_SAMPLES];
-  for (int i = 0; i < LESLIE_SAMPLES; i++) {
-    leslie_hist[i] = 0;
-  }
-  int leslie_write_offset = 0;
-  float leslie_index = 0;
-
   float output = 0;
 
   while(TRUE) {
@@ -817,21 +804,6 @@ int start_audio(int device_index) {
 
       output += alpha * (val - output);
       float sample_out = output / alpha ; // makeup gain
-
-      if (LESLIE_PERIOD > 0) {
-	leslie_hist[(leslie_write_offset++) % LESLIE_SAMPLES] = sample_out;
-	float leslie_read_pos =
-	  leslie_write_offset +
-	  LESLIE_DEPTH/2*(sine_decimal(leslie_index++/LESLIE_PERIOD)+1);
-	int leslie_read_posA = (int)leslie_read_pos;
-	int leslie_read_posB = (int)(leslie_read_pos+1);
-	float leslie_read_amtA = leslie_read_pos - leslie_read_posA;
-	float leslie_read_amtB = 1 - leslie_read_amtA;
-
-	sample_out =
-	  leslie_hist[leslie_read_posA % LESLIE_SAMPLES]*leslie_read_amtA +
-	  leslie_hist[leslie_read_posB % LESLIE_SAMPLES]*leslie_read_amtB;
-      }
 
       // never wrap -- wrapping sounds horrible
       sampleBlock[i] = saturate(sample_out);
