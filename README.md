@@ -69,6 +69,7 @@ $ alsamixer
 > F6 select "USB Audio Device"
 > Speaker :83
 > Mic: 32
+```
 
 ## Run
 
