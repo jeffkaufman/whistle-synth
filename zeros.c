@@ -689,8 +689,9 @@ int start_audio(int device_index) {
   PaError err;
   const PaDeviceInfo* inputInfo;
   const PaDeviceInfo* outputInfo;
-  float *sampleBlock = NULL;
-  int numBytes;
+  float *sampleBlockIn = NULL;
+  float *sampleBlockOut = NULL;
+  int numBytesPerChannel;
 
   init_octaver();
 
@@ -744,7 +745,7 @@ int start_audio(int device_index) {
   printf( "Output device # %d.\n", outputParameters.device );
   outputInfo = Pa_GetDeviceInfo( outputParameters.device );
   printf( "Output LL: %.2fms\n", outputInfo->defaultLowOutputLatency * 1000);
-  outputParameters.channelCount = 1;  // mono
+  outputParameters.channelCount = 2;  // stereo
   outputParameters.sampleFormat = PA_SAMPLE_TYPE;
   outputParameters.suggestedLatency = outputInfo->defaultLowOutputLatency;
   outputParameters.hostApiSpecificStreamInfo = NULL;
@@ -761,14 +762,15 @@ int start_audio(int device_index) {
 		      NULL ); /* no callback, so no callback userData */
   if( err != paNoError ) goto error2;
 
-  numBytes = FRAMES_PER_BUFFER * SAMPLE_SIZE ;
-  sampleBlock = (float *) malloc( numBytes );
-  if( sampleBlock == NULL )
-    {
-      printf("Could not allocate record array.\n");
-      goto error1;
-    }
-  memset( sampleBlock, SAMPLE_SILENCE, numBytes );
+  numBytesPerChannel = FRAMES_PER_BUFFER * SAMPLE_SIZE ;
+  sampleBlockIn = (float *) malloc( numBytesPerChannel );
+  sampleBlockOut = (float *) malloc( numBytesPerChannel * 2);
+  if( sampleBlockIn == NULL || sampleBlockOut == NULL) {
+    printf("Could not allocate in and out arrays.\n");
+    goto error1;
+  }
+  memset( sampleBlockIn, SAMPLE_SILENCE, numBytesPerChannel );
+  memset( sampleBlockOut, SAMPLE_SILENCE, numBytesPerChannel * 2);
 
   err = Pa_StartStream( stream );
   if( err != paNoError ) goto error1;
@@ -785,7 +787,7 @@ int start_audio(int device_index) {
   float output = 0;
 
   while(TRUE) {
-    err = Pa_ReadStream( stream, sampleBlock, FRAMES_PER_BUFFER );
+    err = Pa_ReadStream( stream, sampleBlockIn, FRAMES_PER_BUFFER );
     if (err & paInputOverflow) {
       printf("ignoring input undeflow\n");
     } else if( err ) goto xrun;
@@ -799,17 +801,21 @@ int start_audio(int device_index) {
     }
 
     for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
-      float sample = sampleBlock[i];
+      float sample = sampleBlockIn[i];
       float val = update(sample);
 
       output += alpha * (val - output);
       float sample_out = output / alpha ; // makeup gain
 
       // never wrap -- wrapping sounds horrible
-      sampleBlock[i] = saturate(sample_out);
+      sample_out = saturate(sample_out);
+
+      // Balance output in software
+      sampleBlockOut[i*2] = sample_out;
+      sampleBlockOut[i*2 + 1] = -sample_out;
     }
 
-    err = Pa_WriteStream( stream, sampleBlock, FRAMES_PER_BUFFER );
+    err = Pa_WriteStream( stream, sampleBlockOut, FRAMES_PER_BUFFER );
     if (err & paOutputUnderflow) {
       printf("ignoring output undeflow\n");
     } else if( err ) goto xrun;
@@ -821,7 +827,8 @@ xrun:
     Pa_AbortStream( stream );
     Pa_CloseStream( stream );
   }
-  free( sampleBlock );
+  free( sampleBlockOut );
+  free( sampleBlockIn );
   Pa_Terminate();
   if( err & paInputOverflow )
     fprintf( stderr, "Input Overflow.\n" );
@@ -829,7 +836,8 @@ xrun:
     fprintf( stderr, "Output Underflow.\n" );
   return -2;
  error1:
-  free( sampleBlock );
+  free( sampleBlockOut );
+  free( sampleBlockIn );
  error2:
   if( stream ) {
     Pa_AbortStream( stream );
