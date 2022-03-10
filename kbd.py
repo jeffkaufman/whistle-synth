@@ -111,7 +111,8 @@ keycodes = {
     'KEY_UP': 'KEY_n', # 110
     'KEY_LEFT': 'KEY_o', # 111
     'KEY_DOWN': 'KEY_p', # 112
-    'KEY_RIGHT': 'KEY_1', # 113
+    'KEY_RIGHT': 'KEY_q', # 113
+    'KEY_TAB': 'KEY_r', # 114
 }
 
 def handle_key(keycode, midiport):
