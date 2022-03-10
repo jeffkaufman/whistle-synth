@@ -148,6 +148,10 @@ def handle_key(keycode, midiport):
         volume_change(-1)
     elif keycode == 'KEY_KPPLUS':
         volume_change(+1)
+    elif keycode == 'KEY_DELETE':
+        digit_note_to_send = 108
+    elif keycode == 'KEY_F8':
+        digit_note_to_send = 105
     elif keycode.startswith("KEY_F") and keycode[len("KEY_F"):].isdigit():
         fn_digit = int(keycode[len("KEY_F"):])
         pseudo_note = ord('a') + fn_digit
@@ -156,8 +160,6 @@ def handle_key(keycode, midiport):
         midiport.send(
             mido.Message('note_on',
                          note=pseudo_note))
-    elif keycode == 'KEY_DELETE':
-        digit_note_to_send = 108
     elif len(keycode) == len('KEY_A'):
         pseudo_note = ord(keycode[-1])
         print(pseudo_note)
