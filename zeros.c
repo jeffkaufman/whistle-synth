@@ -65,7 +65,12 @@
 #define VOLUME (50.0)
 #define DURATION (3)
 
+#define GATE_SQUARED (0.000025)
+#define RECENT_GATE_SQUARED (0.05)
+//#define GRACE_TICKS (44100)
+
 #define HISTORY_LENGTH (8192)
+#define RECENT_LENGTH (256)
 
 #define BOOL char
 #define TRUE 1
@@ -127,6 +132,8 @@ struct Octaver {
   BOOL positive;
   float previous_sample;
   float rough_input_period;
+  float hist_sq;
+  float recent_hist_sq;
 };
 
 struct Octaver octaver;
@@ -144,9 +151,21 @@ void init_octaver() {
   octaver.positive = TRUE;
   octaver.previous_sample = 0;
   octaver.rough_input_period = 40;
+  octaver.hist_sq = 0;
+  octaver.recent_hist_sq = 0;
 }
 
 void set_hist(float s) {
+  octaver.hist_sq += (s*s);
+  octaver.hist_sq -= (octaver.hist[octaver.hist_pos] *
+                      octaver.hist[octaver.hist_pos]);
+
+  octaver.recent_hist_sq += (s*s);
+  int recent_pos = (octaver.hist_pos - RECENT_LENGTH +
+                    HISTORY_LENGTH) % HISTORY_LENGTH;
+  octaver.recent_hist_sq -= (octaver.hist[recent_pos] *
+                             octaver.hist[recent_pos]);
+
   octaver.hist[octaver.hist_pos] = s;
   octaver.hist_pos = (octaver.hist_pos + 1) % HISTORY_LENGTH;
 }
@@ -154,6 +173,23 @@ void set_hist(float s) {
 float get_hist(int pos) {
   return octaver.hist[
     (HISTORY_LENGTH + octaver.hist_pos - pos) % HISTORY_LENGTH];
+}
+
+float hist_squared_sum() {
+  float s = 0;
+  for (int i = 0; i < HISTORY_LENGTH; i++) {
+    s += (octaver.hist[i] * octaver.hist[i]);
+  }
+  return s;
+}
+
+// Only called when octaver.hist_pos = HISTORY_LENGTH-1
+float recent_hist_squared_sum() {
+  float s = 0;
+  for (int i = HISTORY_LENGTH - RECENT_LENGTH; i < HISTORY_LENGTH; i++) {
+    s += (octaver.hist[i] * octaver.hist[i]);
+  }
+  return s;
 }
 
 struct Osc {
@@ -555,7 +591,8 @@ void handle_cycle() {
   }
 }
 
-
+u_int64_t ticks = 0;
+u_int64_t grace_ticks = 0;
 float update(float s) {
   if (voice_iff.value == V_RAW || voice_iff.value == V_RAWDIST) {
     return s * volumes[volume_iff.value] / volumes[5];
@@ -563,6 +600,16 @@ float update(float s) {
 
   set_hist(s);
   update_duration(s);
+
+  // To avoid drift, recompute history every 10s.
+  if ((++ticks) % 441000 == 0) {
+    printf("%lld volume: %.12f -- %.12f\n", ticks, hist_squared_sum(), octaver.hist_sq/HISTORY_LENGTH);
+    octaver.hist_sq = hist_squared_sum();
+  }
+  if (octaver.hist_pos == HISTORY_LENGTH-1) {
+    printf("recent: %.12f -- %.12f\n", recent_hist_squared_sum(), octaver.recent_hist_sq/RECENT_LENGTH);
+    octaver.recent_hist_sq = recent_hist_squared_sum();
+  }
 
   octaver.samples_since_last_crossing++;
   octaver.samples_since_attack_began++;
@@ -632,6 +679,18 @@ float update(float s) {
   for (int i = 0 ; i < N_OSCS; i++) {
     val += osc_next(&oscs[i]);
   }
+
+  if (octaver.hist_sq/HISTORY_LENGTH < GATE_SQUARED &&
+      octaver.recent_hist_sq / RECENT_LENGTH < RECENT_GATE_SQUARED) {
+//  if (grace_ticks == 0) {
+        val = 0;
+//    } else {
+//      grace_ticks--;
+//  } else {
+//    grace_ticks = GRACE_TICKS;
+//  }
+  }
+
   return val * VOLUME * volumes[volume_iff.value];
 }
 
@@ -785,7 +844,6 @@ int start_audio(int device_index) {
   }
 
   float output = 0;
-
   while(TRUE) {
     err = Pa_ReadStream( stream, sampleBlockIn, FRAMES_PER_BUFFER );
     if (err & paInputOverflow) {
