@@ -11,6 +11,7 @@ JAMMER_CONFIG_LENGTH = 10
 config_dir = os.path.dirname(__file__)
 whistle_voice_fname = os.path.join(config_dir, "current-voice")
 whistle_volume_fname = os.path.join(config_dir, "current-volume")
+whistle_gate_fname = os.path.join(config_dir, "current-gate")
 
 digits_read = []
 digit_note_to_send = None
@@ -66,12 +67,25 @@ def current_volume():
         return read_number(fname)
     return 5
 
+def current_gate():
+    fname = whistle_gate_fname
+    if os.path.exists(fname):
+        return read_number(fname)
+    return 5
+
 def save_volume(new_value):
     write_number(new_value, volume_fname())
     write_number(new_value, whistle_volume_fname)
 
+def save_gate(new_value):
+    write_number(new_value, whistle_gate_fname)
+
 def volume_change(increment):
     save_volume(current_volume() + increment)
+
+def gate_change(increment):
+    save_gate(current_gate() + increment)
+
 
 whistle_voice_keys = {
     'KEY_KP1': 1,
@@ -89,8 +103,6 @@ whistle_voice_keys = {
 # Remaining available whistle options:
 #
 #   KEY_NUMLOCK
-#   KEY_KPSLASH
-#   KEY_KPASTERISK
 #   KEY_BACKSPACE
 #   KEY_KPENTER
 #   KEY_KPDOT
@@ -115,9 +127,11 @@ keycodes = {
     'KEY_TAB': 'KEY_r', # 114
 }
 
+plus_minus_mode = 'volume'
 def handle_key(keycode, midiport):
     global state
     global digit_note_to_send
+    global plus_minus_mode
 
     keycode = keycodes.get(keycode, keycode)
 
@@ -145,9 +159,19 @@ def handle_key(keycode, midiport):
         write_number(whistle_voice_keys[keycode], whistle_voice_fname)
         save_volume(current_volume())
     elif keycode == 'KEY_KPMINUS':
-        volume_change(-1)
+        if plus_minus_mode == 'gate':
+            gate_change(-1)
+        else:
+            volume_change(-1)
     elif keycode == 'KEY_KPPLUS':
-        volume_change(+1)
+        if plus_minus_mode == 'gate':
+            gate_change(+1)
+        else:
+            volume_change(+1)
+    elif keycode == 'KEY_KPSLASH':
+        plus_minus_mode = 'volume'
+    elif keycode == 'KEY_KPASTERISK':
+        plus_minus_mode = 'gate'
     elif keycode == 'KEY_DELETE':
         digit_note_to_send = 108
     elif keycode == 'KEY_F8':

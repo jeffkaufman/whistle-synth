@@ -68,8 +68,8 @@
 #define VOLUME (1.0)
 #define DURATION (3)
 
-#define GATE_SQUARED (0.000025)
-#define RECENT_GATE_SQUARED (0.05)
+#define GATE_SQUARED (0.01*0.01)
+#define RECENT_GATE_SQUARED (40*40*GATE_SQUARED)
 //#define GRACE_TICKS (44100)
 
 #define HISTORY_LENGTH (8192)
@@ -272,8 +272,10 @@ struct int_from_file {
 
 struct int_from_file voice_iff;
 struct int_from_file volume_iff;
+struct int_from_file gate_iff;
 float gain;
 float ungain;
+float gate_squared;
 
 #define V_SOPRANO_RECORDER 1
 #define V_SQR 2
@@ -574,11 +576,11 @@ float update(float s) {
 
   // To avoid drift, recompute history every 10s.
   if ((++ticks) % 441000 == 0) {
-    printf("%lld volume: %.12f -- %.12f\n", ticks, hist_squared_sum(), octaver.hist_sq/HISTORY_LENGTH);
+    //printf("%lld volume: %.12f -- %.12f\n", ticks, hist_squared_sum(), octaver.hist_sq/HISTORY_LENGTH);
     octaver.hist_sq = hist_squared_sum();
   }
   if (octaver.hist_pos == HISTORY_LENGTH-1) {
-    printf("recent: %.12f -- %.12f\n", recent_hist_squared_sum(), octaver.recent_hist_sq/RECENT_LENGTH);
+    //printf("recent: %.12f -- %.12f\n", recent_hist_squared_sum(), octaver.recent_hist_sq/RECENT_LENGTH);
     octaver.recent_hist_sq = recent_hist_squared_sum();
   }
 
@@ -651,8 +653,10 @@ float update(float s) {
     val += osc_next(&oscs[i]);
   }
 
-  if (octaver.hist_sq/HISTORY_LENGTH < GATE_SQUARED &&
-      octaver.recent_hist_sq / RECENT_LENGTH < RECENT_GATE_SQUARED) {
+  if ((octaver.hist_sq/HISTORY_LENGTH <
+       GATE_SQUARED * gate_squared) &&
+      (octaver.recent_hist_sq / RECENT_LENGTH <
+       RECENT_GATE_SQUARED * gate_squared )) {
 //  if (grace_ticks == 0) {
         val = 0;
 //    } else {
@@ -699,6 +703,11 @@ void init_gains() {
   }
 }
 
+void init_gate() {
+  gate_squared = ((volumes[9-gate_iff.value] / volumes[5]) *
+                  (volumes[9-gate_iff.value] / volumes[5]));
+}
+
 void update_iff(struct int_from_file* iff) {
   rewind(iff->file);
   int new_value = read_number(iff->file);
@@ -707,16 +716,19 @@ void update_iff(struct int_from_file* iff) {
     iff->value = new_value;
     init_octaver();
     init_gains();
+    init_gate();
   }
 }
 
 void* update_iffs(void* ignored) {
   open_iff_or_die(&voice_iff);
   open_iff_or_die(&volume_iff);
+  open_iff_or_die(&gate_iff);
 
   while (1) {
     update_iff(&voice_iff);
     update_iff(&volume_iff);
+    update_iff(&gate_iff);
     usleep(50000 /* 50ms in us */);
   }
 }
@@ -895,8 +907,9 @@ xrun:
 }
 
 int main(int argc, char** argv) {
-  if (argc != 4) {
-    printf("usage: %s /device/index /voice/file /volume/file\n", argv[0]);
+  if (argc != 5) {
+    printf("usage: %s /device/index /voice/file /volume/file /gate/file\n",
+           argv[0]);
     return -1;
   }
   int device_index = read_number(fopen(argv[1], "r"));
@@ -906,6 +919,9 @@ int main(int argc, char** argv) {
   volume_iff.purpose = "volume";
   volume_iff.fname = argv[3];
   volume_iff.value = 5;
+  gate_iff.purpose = "gate";
+  gate_iff.fname = argv[4];
+  gate_iff.value = 1;
 
   start_iff_thread();
   return start_audio(device_index);
