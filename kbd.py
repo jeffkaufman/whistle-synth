@@ -172,18 +172,24 @@ def start_services(*services):
         subprocess.run(["service", service, "start"])
 
 def start():
-    if len(sys.argv) != 1:
-        print("usage: kbd.py");
+    start_service = True
+    if len(sys.argv) == 1:
+        pass
+    elif len(sys.argv) == 2 and sys.argv[1] == "--no-services":
+        start_service = False
+    else:
+        print("usage: kbd.py [--no-services]");
         return
 
     device_id = find_keyboard()
 
-    if "SEM_HCT" in device_id:
-        # Keypad found: run whistle
-        start_services("pitch-detect")
-    else:
-        # No keypad: run jammer
-        start_services("fluidsynth", "jammer")
+    if start_service:
+        if "SEM_HCT" in device_id:
+            # Keypad found: run whistle
+            start_services("pitch-detect")
+        else:
+            # No keypad: run jammer
+            start_services("fluidsynth", "jammer")
 
     with mido.open_output('mido-keypad', virtual=True) as midiport:
         run(device_id, midiport)
