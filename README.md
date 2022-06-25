@@ -115,7 +115,7 @@ expect whistling; 7 and 8 singing.
 1. https://www.jefftk.com/p/you-should-be-logging-shell-history
 1. `alsamixer`
     1. select sound card "USB Audio Device"
-    1. Set Speaker and Mic to 83% volume
+    1. Set Speaker, Mic, and Capture to 100% volume
 
 ### Future
 

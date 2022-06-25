@@ -62,7 +62,10 @@
 #define WHISTLE_RANGE_LOW (75)
 #define VOCAL_RANGE_LOW (300)
 #define SLIDE (4)
-#define VOLUME (50.0)
+// We amplify in two stages: first gain, then saturate, then volume.  This lets
+// us get the effect of saturation/clipping independent of the output volume.
+#define GAIN (1.0)
+#define VOLUME (1.0)
 #define DURATION (3)
 
 #define GATE_SQUARED (0.000025)
@@ -247,16 +250,18 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
   }
 }
 
-float volumes[10] = {0.00,  // 0
-                     0.01,  // 1
-                     0.02,  // 2
-                     0.04,  // 3
-                     0.08,  // 4
-                     0.16,  // 5
-                     0.32,  // 6
-                     0.64,  // 7
-                     1.28,  // 8
-                     2.56}; // 9
+float volumes[10] = {
+                     0.026, // 0
+                     0.039, // 1
+                     0.059, // 2
+                     0.088, // 3
+                     0.132, // 4
+                     0.198, // 5
+                     0.296, // 6
+                     0.444, // 7
+                     0.667, // 8
+                     1.000, // 9
+};
 
 struct int_from_file {
   const char* purpose;
@@ -267,6 +272,8 @@ struct int_from_file {
 
 struct int_from_file voice_iff;
 struct int_from_file volume_iff;
+float gain;
+float ungain;
 
 #define V_SOPRANO_RECORDER 1
 #define V_SQR 2
@@ -328,6 +335,8 @@ void init_oscs(float adjustment) {
   long long offset = (cycles % DURATION) * N_OSCS_PER_LAYER;
 
   if (voice_iff.value == V_SOPRANO_RECORDER) {
+    gain = 0.3;
+    ungain = 1;
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -340,6 +349,8 @@ void init_oscs(float adjustment) {
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
   } else if (voice_iff.value == V_SQR) {
+    gain = 0.25;
+    ungain = 1;
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -352,6 +363,8 @@ void init_oscs(float adjustment) {
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
   } else if (voice_iff.value == V_DIST) {
+    gain = 0.125;
+    ungain = 1;
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -364,6 +377,8 @@ void init_oscs(float adjustment) {
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
   } else if (voice_iff.value == V_LOW_DIST) {
+    gain = 0.25;
+    ungain = 0.7;
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -376,6 +391,8 @@ void init_oscs(float adjustment) {
 	     /*cycle=*/ 1,
 	     /*mod=*/ 4);
   } else if (voice_iff.value == V_LOW_LOW_DIST) {
+    gain = 0.15;
+    ungain = 1;
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -388,6 +405,8 @@ void init_oscs(float adjustment) {
 	     /*cycle=*/ 1,
 	     /*mod=*/ 8);
   } else if (voice_iff.value == V_VOCAL_2) {
+    gain = 0.25;
+    ungain = 0.5;
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -400,6 +419,8 @@ void init_oscs(float adjustment) {
 	     /*cycle=*/ 0.5,
 	     /*mod=*/ 2);
   } else if (voice_iff.value == V_VOCAL_1) {
+    gain = 0.09;
+    ungain = 1;
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -412,6 +433,8 @@ void init_oscs(float adjustment) {
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
   } else if (voice_iff.value == V_EBASS) {
+    gain = 0.25;
+    ungain = 1;
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
@@ -543,7 +566,7 @@ u_int64_t ticks = 0;
 u_int64_t grace_ticks = 0;
 float update(float s) {
   if (voice_iff.value == V_RAW || voice_iff.value == V_RAWDIST) {
-    return s * volumes[volume_iff.value] / volumes[5];
+    return s * gain;
   }
 
   set_hist(s);
@@ -639,7 +662,7 @@ float update(float s) {
 //  }
   }
 
-  return val * VOLUME * volumes[volume_iff.value];
+  return val * GAIN * gain;
 }
 
 int read_number(FILE* file) {
@@ -663,6 +686,19 @@ void open_iff_or_die(struct int_from_file* iff) {
   return;
 }
 
+void init_gains() {
+  if (voice_iff.value == V_RAW) {
+    gain = 0.125;
+    ungain = 0.7;
+  } else if (voice_iff.value == V_RAWDIST) {
+    gain = 0.5;
+    ungain = 0.25;
+  } else {
+    gain = 0.25;
+    ungain = 1;
+  }
+}
+
 void update_iff(struct int_from_file* iff) {
   rewind(iff->file);
   int new_value = read_number(iff->file);
@@ -670,6 +706,7 @@ void update_iff(struct int_from_file* iff) {
     printf("%s: %d -> %d\n", iff->purpose, iff->value, new_value);
     iff->value = new_value;
     init_octaver();
+    init_gains();
   }
 }
 
@@ -813,6 +850,10 @@ int start_audio(int device_index) {
       // never wrap -- wrapping sounds horrible
       sample_out = saturate(sample_out);
 
+      sample_out *= VOLUME * volumes[volume_iff.value] * ungain;
+      // Ideally this is never hit, but it would be really bad if it wrapped.
+      sample_out = clip(sample_out);
+
       // Balance output in software
       sampleBlockOut[i*2] = sample_out;
       sampleBlockOut[i*2 + 1] = -sample_out;
@@ -855,8 +896,7 @@ xrun:
 
 int main(int argc, char** argv) {
   if (argc != 4) {
-    printf("usage: %s /path/to/device/index /path/to/voice/file"
-           " /path/to/volume/file\n", argv[0]);
+    printf("usage: %s /device/index /voice/file /volume/file\n", argv[0]);
     return -1;
   }
   int device_index = read_number(fopen(argv[1], "r"));
