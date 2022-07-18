@@ -67,8 +67,10 @@ Set levels for consistency:
 ```
 $ alsamixer
 > F6 select "USB Audio Device"
-> Speaker :83
-> Mic: 32
+> F5 [All]
+> Speaker: 100
+> Mic: 100
+> Capture: 100
 ```
 
 ## Run
