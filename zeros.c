@@ -42,6 +42,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
@@ -669,8 +670,41 @@ float update(float s) {
   return val * GAIN * gain;
 }
 
-float delay_update() {
-   return 0;  // doesn't do anything yet
+float delay_tempo = 118.5;
+int delay_repeats = 3;
+float delay_volume = 1;
+#define DELAY_HISTORY_LENGTH (SAMPLE_RATE*90*10)
+float delay_history[DELAY_HISTORY_LENGTH];
+uint64_t delay_write_pos = 0;
+
+float delay_update(float sample) {
+   uint64_t write_pos = delay_write_pos % DELAY_HISTORY_LENGTH;
+   delay_history[write_pos] = sample;
+
+   float sample_out = 0;
+
+   float repeat_delta_samples = delay_tempo * SAMPLE_RATE;
+   for (int repeat = 1; repeat <= delay_repeats; repeat++) {
+      float repeat_pos = write_pos - repeat_delta_samples*repeat;
+      if (repeat_pos < 0) {
+         repeat_pos += DELAY_HISTORY_LENGTH;
+      }
+
+      int repeat_A_pos = (int)repeat_pos;
+      int repeat_B_pos = repeat_A_pos + 1;
+
+      float repeat_A_frac = 1 - (repeat_pos - repeat_A_pos);
+
+      float sample_A = delay_history[repeat_A_pos];
+      // We added one to repeat_A_pos above, so it could be past the
+      // end of delay_history.
+      float sample_B = delay_history[repeat_B_pos % DELAY_HISTORY_LENGTH];
+
+      sample += (sample_A * repeat_A_frac) + (sample_B * (1-repeat_A_frac));
+   }
+
+   delay_write_pos++;
+   return sample_out * delay_volume / delay_repeats;
 }
 
 
@@ -848,6 +882,11 @@ int start_audio(int device_index) {
   for (int i = 0; i < DURATION_BLOCKS; i++) {
     duration_hist[i] = 0;
   }
+
+  for (int i = 0; i < DELAY_HISTORY_LENGTH; i++) {
+     delay_history[i] = 0;
+  }
+
 
   float output = 0;
   while(TRUE) {
