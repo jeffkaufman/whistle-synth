@@ -670,7 +670,12 @@ float update(float s) {
   return val * GAIN * gain;
 }
 
-float delay_tempo = 118.5;
+float bpm_to_samples(float bpm) {
+  float bps = bpm/60;
+  return SAMPLE_RATE / bps;
+}
+
+float delay_tempo_bpm = 118.5;
 int delay_repeats = 3;
 float delay_volume = 1;
 #define DELAY_HISTORY_LENGTH (SAMPLE_RATE*90*10)
@@ -683,9 +688,9 @@ float delay_update(float sample) {
 
    float sample_out = 0;
 
-   float repeat_delta_samples = delay_tempo * SAMPLE_RATE;
+   float repeat_delta_samples = bpm_to_samples(delay_tempo_bpm);
    for (int repeat = 1; repeat <= delay_repeats; repeat++) {
-      float repeat_pos = write_pos - repeat_delta_samples*repeat;
+      float repeat_pos = write_pos - (repeat_delta_samples*repeat);
       if (repeat_pos < 0) {
          repeat_pos += DELAY_HISTORY_LENGTH;
       }
@@ -700,7 +705,7 @@ float delay_update(float sample) {
       // end of delay_history.
       float sample_B = delay_history[repeat_B_pos % DELAY_HISTORY_LENGTH];
 
-      sample += (sample_A * repeat_A_frac) + (sample_B * (1-repeat_A_frac));
+      sample_out += (sample_A * repeat_A_frac) + (sample_B * (1-repeat_A_frac));
    }
 
    delay_write_pos++;
@@ -835,7 +840,8 @@ int start_audio(int device_index) {
   printf( "   Name: %s\n", inputInfo->name );
   printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
 
-  inputParameters.channelCount = 2;  // stereo
+  //inputParameters.channelCount = 2;  // stereo
+  inputParameters.channelCount = 1;  // FIXME!
   inputParameters.sampleFormat = PA_SAMPLE_TYPE;
   inputParameters.suggestedLatency = inputInfo->defaultLowInputLatency ;
   inputParameters.hostApiSpecificStreamInfo = NULL;
@@ -901,8 +907,11 @@ int start_audio(int device_index) {
     }
 
     for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
-      float sample = sampleBlockIn[i*2];
-      float delay_sample = sampleBlockIn[i*2];
+      //float sample = sampleBlockIn[i*2];
+      //float delay_sample = sampleBlockIn[i*2 + 1];
+      float sample = 0;  // FIXME
+      float delay_sample = sampleBlockIn[i];  // FIXME
+      
       float val = update(sample);
       float delay_sample_out = delay_update(delay_sample);
 
@@ -917,7 +926,8 @@ int start_audio(int device_index) {
       // Ideally this is never hit, but it would be really bad if it wrapped.
       sample_out = clip(sample_out);
 
-      sampleBlockOut[i*2] = sample_out;
+      //sampleBlockOut[i*2] = sample_out; 
+      sampleBlockOut[i*2] = delay_sample_out; // FIXME
       sampleBlockOut[i*2 + 1] = delay_sample_out;
     }
 
