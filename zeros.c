@@ -669,6 +669,12 @@ float update(float s) {
   return val * GAIN * gain;
 }
 
+float delay_update() {
+   return 0;  // doesn't do anything yet
+}
+
+
+
 int read_number(FILE* file) {
   char buf[16];
   rewind(file);
@@ -733,6 +739,9 @@ void* update_iffs(void* ignored) {
   }
 }
 
+
+
+
 pthread_t iff_thread;
 void start_iff_thread() {
   pthread_create(&iff_thread, NULL, &update_iffs, NULL);
@@ -792,7 +801,7 @@ int start_audio(int device_index) {
   printf( "   Name: %s\n", inputInfo->name );
   printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
 
-  inputParameters.channelCount = 1;  // mono
+  inputParameters.channelCount = 2;  // stereo
   inputParameters.sampleFormat = PA_SAMPLE_TYPE;
   inputParameters.suggestedLatency = inputInfo->defaultLowInputLatency ;
   inputParameters.hostApiSpecificStreamInfo = NULL;
@@ -853,22 +862,24 @@ int start_audio(int device_index) {
     }
 
     for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
-      float sample = sampleBlockIn[i];
+      float sample = sampleBlockIn[i*2];
+      float delay_sample = sampleBlockIn[i*2];
       float val = update(sample);
+      float delay_sample_out = delay_update(delay_sample);
 
       output += alpha * (val - output);
       float sample_out = output / alpha ; // makeup gain
 
       // never wrap -- wrapping sounds horrible
       sample_out = saturate(sample_out);
+      delay_sample_out = saturate(delay_sample_out);
 
       sample_out *= VOLUME * volumes[volume_iff.value] * ungain;
       // Ideally this is never hit, but it would be really bad if it wrapped.
       sample_out = clip(sample_out);
 
-      // Balance output in software
       sampleBlockOut[i*2] = sample_out;
-      sampleBlockOut[i*2 + 1] = -sample_out;
+      sampleBlockOut[i*2 + 1] = delay_sample_out;
     }
 
     err = Pa_WriteStream( stream, sampleBlockOut, FRAMES_PER_BUFFER );
