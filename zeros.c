@@ -439,27 +439,29 @@ void init_oscs(float adjustment) {
   } else if (voice_iff.value == V_EBASS) {
     gain = 0.25;
     ungain = 1;
+    int speed_base = 32;
+    int cycle_base = 16;
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.14,
+	     /*vol=*/ 0.2,
 	     /*mode=*/ OSC_SIN,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ FALSE,
-	     /*speed=*/ 1.0/32,
-	     /*cycle=*/ 1.0/8,
+	     /*speed=*/ 1.0/speed_base,
+	     /*cycle=*/ 8.0/cycle_base,
 	     /*mod=*/ 2);
     osc_init(&oscs[offset+1],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.14,
+	     /*vol=*/ 0.24,
 	     /*mode=*/ OSC_SIN,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ FALSE,
-	     /*speed=*/ 2.0/32,
-	     /*cycle=*/ 2.0/8,
+	     /*speed=*/ 2.0/speed_base,
+	     /*cycle=*/ 2.0/cycle_base,
 	     /*mod=*/ 2);
     osc_init(&oscs[offset+2],
 	     cycles,
@@ -469,8 +471,8 @@ void init_oscs(float adjustment) {
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ FALSE,
-	     /*speed=*/ 3.0/32,
-	     /*cycle=*/ 3.0/8,
+	     /*speed=*/ 3.11/speed_base,
+	     /*cycle=*/ 3.0/cycle_base,
 	     /*mod=*/ 2);
     osc_init(&oscs[offset+3],
 	     cycles,
@@ -480,8 +482,8 @@ void init_oscs(float adjustment) {
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ FALSE,
-	     /*speed=*/ 4.0/32,
-	     /*cycle=*/ 4.0/8,
+	     /*speed=*/ 4.3/speed_base,
+	     /*cycle=*/ 4.0/cycle_base,
 	     /*mod=*/ 2);
     osc_init(&oscs[offset+4],
 	     cycles,
@@ -491,8 +493,8 @@ void init_oscs(float adjustment) {
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ FALSE,
-	     /*speed=*/ 5.0/32,
-	     /*cycle=*/ 5.0/8,
+	     /*speed=*/ 5.7/speed_base,
+	     /*cycle=*/ 5.0/cycle_base,
 	     /*mod=*/ 2);
     osc_init(&oscs[offset+5],
 	     cycles,
@@ -502,8 +504,8 @@ void init_oscs(float adjustment) {
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ FALSE,
-	     /*speed=*/ 6.0/32,
-	     /*cycle=*/ 6.0/8,
+	     /*speed=*/ 6.1/speed_base,
+	     /*cycle=*/ 6.0/cycle_base,
 	     /*mod=*/ 2);
   }
 }
