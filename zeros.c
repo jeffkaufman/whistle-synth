@@ -88,7 +88,8 @@
 #define DURATION_BLOCKS (100) // in DURATION_UNITS
 #define DURATION_MAX_VAL (0.04)
 
-#define USB_SOUND_CARD_PREFIX "USB Audio Device"
+//#define USB_SOUND_CARD_PREFIX "USB Audio Device"
+#define USB_SOUND_CARD_PREFIX "Focusrite"
 
 /*******************************************************************/
 
@@ -838,10 +839,11 @@ int start_audio(int device_index) {
   printf( "Input device # %d.\n", inputParameters.device );
   inputInfo = Pa_GetDeviceInfo( inputParameters.device );
   printf( "   Name: %s\n", inputInfo->name );
+  printf( "     CC: %d\n", inputInfo->maxInputChannels );
+  printf( "     SR: %0.2f\n", inputInfo->defaultSampleRate);
   printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
 
-  //inputParameters.channelCount = 2;  // stereo
-  inputParameters.channelCount = 1;  // FIXME!
+  inputParameters.channelCount = 2;  // stereo
   inputParameters.sampleFormat = PA_SAMPLE_TYPE;
   inputParameters.suggestedLatency = inputInfo->defaultLowInputLatency ;
   inputParameters.hostApiSpecificStreamInfo = NULL;
@@ -849,7 +851,10 @@ int start_audio(int device_index) {
   outputParameters.device = best_audio_device_index;
   printf( "Output device # %d.\n", outputParameters.device );
   outputInfo = Pa_GetDeviceInfo( outputParameters.device );
-  printf( "Output LL: %.2fms\n", outputInfo->defaultLowOutputLatency * 1000);
+  printf( "   Name: %s\n", outputInfo->name );
+  printf( "     CC: %d\n", outputInfo->maxOutputChannels );
+  printf( "     SR: %0.2f\n", outputInfo->defaultSampleRate);
+  printf( "     LL: %.2fms\n", outputInfo->defaultLowOutputLatency * 1000);
   outputParameters.channelCount = 2;  // stereo
   outputParameters.sampleFormat = PA_SAMPLE_TYPE;
   outputParameters.suggestedLatency = outputInfo->defaultLowOutputLatency;
@@ -868,13 +873,13 @@ int start_audio(int device_index) {
   if( err != paNoError ) goto error2;
 
   numBytesPerChannel = FRAMES_PER_BUFFER * SAMPLE_SIZE ;
-  sampleBlockIn = (float *) malloc( numBytesPerChannel );
+  sampleBlockIn = (float *) malloc( numBytesPerChannel * 2);
   sampleBlockOut = (float *) malloc( numBytesPerChannel * 2);
   if( sampleBlockIn == NULL || sampleBlockOut == NULL) {
     printf("Could not allocate in and out arrays.\n");
     goto error1;
   }
-  memset( sampleBlockIn, SAMPLE_SILENCE, numBytesPerChannel );
+  memset( sampleBlockIn, SAMPLE_SILENCE, numBytesPerChannel * 2);
   memset( sampleBlockOut, SAMPLE_SILENCE, numBytesPerChannel * 2);
 
   err = Pa_StartStream( stream );
@@ -907,10 +912,8 @@ int start_audio(int device_index) {
     }
 
     for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
-      //float sample = sampleBlockIn[i*2];
-      //float delay_sample = sampleBlockIn[i*2 + 1];
-      float sample = 0;  // FIXME
-      float delay_sample = sampleBlockIn[i];  // FIXME
+      float sample = sampleBlockIn[i*2];
+      float delay_sample = sampleBlockIn[i*2 + 1];
       
       float val = update(sample);
       float delay_sample_out = delay_update(delay_sample);
@@ -926,9 +929,8 @@ int start_audio(int device_index) {
       // Ideally this is never hit, but it would be really bad if it wrapped.
       sample_out = clip(sample_out);
 
-      //sampleBlockOut[i*2] = sample_out; 
-      sampleBlockOut[i*2] = delay_sample_out; // FIXME
-      sampleBlockOut[i*2 + 1] = delay_sample_out;
+      sampleBlockOut[i*2] = sample_out; 
+      sampleBlockOut[i*2 + 1] = delay_sample_out;      
     }
 
     err = Pa_WriteStream( stream, sampleBlockOut, FRAMES_PER_BUFFER );
