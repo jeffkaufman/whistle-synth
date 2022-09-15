@@ -1,10 +1,10 @@
 import evdev # sudo apt install python3-evdev
+import selectors
 import glob
 import time
 import os
 import sys
 import mido # sudo apt install python3-mido python3-rtmidi
-import subprocess
 
 JAMMER_CONFIG_LENGTH = 10
 
@@ -16,12 +16,12 @@ whistle_gate_fname = os.path.join(config_dir, "current-gate")
 digits_read = []
 digit_note_to_send = None
 
-def find_keyboard():
+def find_keyboards():
     keyboards = glob.glob("/dev/input/by-id/*kbd")
     while not keyboards:
         time.sleep(1)
         keyboards = glob.glob("/dev/input/by-id/*kbd")
-    return keyboards[0]
+    return keyboards
 
 modifiers = {
     'KEY_RIGHTALT': False,
@@ -32,16 +32,22 @@ modifiers = {
     'KEY_LEFTCTRL': False,
 }
 
-def run(device_id, midiport):
-    device = evdev.InputDevice(device_id)
-    for event in device.read_loop():
-        if event.type == evdev.ecodes.EV_KEY:
-            event = evdev.categorize(event)
+def run(device_ids, midiport):
+    selector = selectors.DefaultSelector()
+    for device_id in device_ids:
+        selector.register(evdev.InputDevice(device_id), selectors.EVENT_READ)
 
-            if event.keycode in modifiers and event.keystate in [0, 1]:
-                modifiers[event.keycode] = (event.keystate == 1)
-            elif event.keystate == 1: # keydown
-                handle_key(event.keycode, midiport)
+    while True:
+        for key, mask in selector.select():
+            device = key.fileobj
+            for event in device.read():
+                if event.type != evdev.ecodes.EV_KEY: continue
+                event = evdev.categorize(event)
+
+                if event.keycode in modifiers and event.keystate in [0, 1]:
+                    modifiers[event.keycode] = (event.keystate == 1)
+                elif event.keystate == 1: # keydown
+                    handle_key(event.keycode, midiport)
 
 def read_number(fname):
     with open(fname) as inf:
@@ -191,32 +197,17 @@ def handle_key(keycode, midiport):
     else:
         print(keycode)
 
-def start_services(*services):
-    for service in services:
-        subprocess.run(["service", service, "start"])
-
 def start():
-    start_service = True
     if len(sys.argv) == 1:
         pass
-    elif len(sys.argv) == 2 and sys.argv[1] == "--no-services":
-        start_service = False
     else:
-        print("usage: kbd.py [--no-services]");
+        print("usage: kbd.py");
         return
 
-    device_id = find_keyboard()
-
-    if start_service:
-        if "SEM_HCT" in device_id:
-            # Keypad found: run whistle
-            start_services("pitch-detect")
-        else:
-            # No keypad: run jammer
-            start_services("fluidsynth", "jammer")
+    device_ids = find_keyboards()
 
     with mido.open_output('mido-keypad', virtual=True) as midiport:
-        run(device_id, midiport)
+        run(device_ids, midiport)
 
 if __name__ == "__main__":
     start()

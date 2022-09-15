@@ -49,16 +49,11 @@ Type=simple
 WantedBy=multi-user.target
 ```
 
-If this box will only ever run whistle-synth then:
-
-```
-sudo systemctl enable pitch-detect
-```
-
-Regardless:
+Then:
 
 ```
 sudo systemctl enable pitch-detect-kbd
+sudo systemctl enable pitch-detect
 sudo systemctl daemon-reload
 ```
 
