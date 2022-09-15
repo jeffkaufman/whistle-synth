@@ -681,6 +681,7 @@ float bpm_to_samples(float bpm) {
   return SAMPLE_RATE / bps;
 }
 
+BOOL delay_on = FALSE;
 float delay_tempo_bpm = 118.5;
 int delay_repeats = 3;
 float delay_volume = 1;
@@ -689,6 +690,10 @@ float delay_history[DELAY_HISTORY_LENGTH];
 uint64_t delay_write_pos = 0;
 
 float delay_update(float sample) {
+  if (!delay_on) {
+    sample = 0;
+  }
+  
    uint64_t write_pos = delay_write_pos % DELAY_HISTORY_LENGTH;
    delay_history[write_pos] = sample;
 
@@ -763,10 +768,19 @@ void update_iff(struct int_from_file* iff) {
   rewind(iff->file);
   int new_value = read_number(iff->file);
   if (iff == &tempo_iff) {
+    BOOL delay_was_on = iff->value > 0;
     iff->value = new_value;
-    delay_tempo_bpm =
-      (TEMPO_DRIFT_RATE * iff->value * 0.01) +
-      (1-TEMPO_DRIFT_RATE) * delay_tempo_bpm;
+    delay_on = iff->value > 0;
+
+    if (delay_on) {
+      if (!delay_was_on) {
+	delay_tempo_bpm = iff->value*0.01;
+      } else {
+	delay_tempo_bpm =
+	  (TEMPO_DRIFT_RATE * iff->value * 0.01) +
+	  (1-TEMPO_DRIFT_RATE) * delay_tempo_bpm;
+      }
+    }
   } else if (iff->value != new_value) {
     printf("%s: %d -> %d\n", iff->purpose, iff->value, new_value);
     iff->value = new_value;
@@ -994,11 +1008,11 @@ int main(int argc, char** argv) {
   gate_iff.value = 1;
   tempo_iff.purpose = "tempo";
   tempo_iff.fname = argv[5];
-  tempo_iff.value = 11800;
+  tempo_iff.value = 0;
 
   // tempo file is in tmpfs and might not exist; fine to overwrite
   FILE* tempo_file = fopen(tempo_iff.fname, "w");
-  fprintf(tempo_file, "11800\n");
+  fprintf(tempo_file, "0\n");
   fflush(tempo_file);
   fclose(tempo_file);
 
