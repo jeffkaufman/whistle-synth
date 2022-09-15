@@ -23,7 +23,7 @@ To run on boot, `/etc/systemd/system/pitch-detect.service` should have:
 Description=Pitch Detection and	Synthesis
 
 [Service]
-ExecStart=/home/pi/pitch-detect/zeros-linux /home/pi/pitch-detect/device-index /home/pi/pitch-detect/current-voice /home/pi/pitch-detect/current-volume /home/pi/pitch-detect/current-gate
+ExecStart=/home/pi/pitch-detect/zeros-linux /home/pi/pitch-detect/device-index /home/pi/pitch-detect/current-voice /home/pi/pitch-detect/current-volume /home/pi/pitch-detect/current-gate /run/user/1000/current-tempo
 Restart=always
 KillSignal=SIGQUIT
 Type=simple
