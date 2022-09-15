@@ -1012,6 +1012,11 @@ int main(int argc, char** argv) {
 
   // tempo file is in tmpfs and might not exist; fine to overwrite
   FILE* tempo_file = fopen(tempo_iff.fname, "w");
+  while (tempo_file == NULL) {
+    perror("waiting for tmpfs to come up...");
+    sleep(1);
+    tempo_file = fopen(tempo_iff.fname, "w");
+  }
   fprintf(tempo_file, "0\n");
   fflush(tempo_file);
   fclose(tempo_file);
