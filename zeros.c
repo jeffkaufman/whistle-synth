@@ -89,7 +89,7 @@
 #define DURATION_MAX_VAL (0.04)
 
 //#define USB_SOUND_CARD_PREFIX "USB Audio Device"
-#define USB_SOUND_CARD_PREFIX "Focusrite"
+#define USB_SOUND_CARD_PREFIX "Scarlett"
 
 /*******************************************************************/
 
