@@ -697,12 +697,87 @@ float update(float s) {
     }
   }
 
+  /* Pattern Detection
+   * 
+   * This code is trying to detect a pattern where you whistle three
+   * notes in a row with an even cadence, the first two being similar
+   * length, and almost identical pitch, and the third one triggering
+   * a bass note at the selected pitch.
+   *
+   * First, we process the signal to extract pitch, and whether the
+   * user is currently whistling, and then we check for the pattern.
+   * Ideally, the pattern looks like:
+   *         ____      ____
+   *    ____/    \____/    \____/
+   *
+   * We're checking several things:
+   *         ____      ____
+   *    ____/    \____/    \____/
+   *        |----|    |----|
+   *          ^          ^ second note pitch and length in samples
+   *          first note pitch and length in samples
+   *
+   * We're also checking cadence:
+   *         ____      ____
+   *    ____/    \____/    \____/
+   *        |---------|---------|
+   *             ^         ^ second note cadence
+   *             first note cadence
+   *
+   * If these don't match then we forget about the first note and
+   * start checking for a match to the second note:
+   *
+   *         ____      ____      ____
+   *    ____/ XX \____/    \____/    \____/
+   *
+   * The logic is:
+   *
+   * 1. If a note is ending, and we don't have a first note yet, save
+   *    the details of this note as first.
+   *
+   * 2. If a note is ending, and we do have a first note, check if
+   *    they match.  If they don't match, save the details of this
+   *    note as first, otherwise as second.
+   *
+   * 3. If a note is starting and we have a first and second note,
+   *    check the cadences.  If they match, detection achieved!
+   *    Otherwise, demote the second note to first.
+   *
+   * note_cadence_samples counts from the end of the last good note.
+   * 
+   *         ____      ____
+   *    ____/    \____/    \
+   *        |---------|    ^ current time
+   *             ^ first note cadence
+   *             |---------| < note_cadence_samples
+   *
+   * This means that to get first note cadence we need to subtract the
+   * length of the second note and add the length of the first.
+   *
+   * When we get the potential third note we have much less filtering
+   * happening first, because we only have one cycle to work with and
+   * not a nice long note.  Importantly, we can't wait to the end of
+   * the note to trigger.  Calculating second note cadence is a bit
+   * tricky:
+   *
+   *         ____      ____
+   *    ____/    \____/    \____/
+   *                            ^ current time
+   *                  |----| < second note length
+   *                       |----| < note_cadence_samples
+   *                  |---------| < second note cadence
+   *
+   * We can just add second note length and note_cadence_samples, but
+   * the reason this works is that note_cadence_samples represents
+   * something different here than it does at the end of a note.
+   */
+  
   octaver.samples_since_toggle++;
   octaver.note_cadence_samples++;
 
   if (detected_whistle == 1 && !octaver.was_detecting) {
-    printf("%.7f %.7f\n", octaver.hist_sq/HISTORY_LENGTH,
-	   octaver.recent_hist_sq / RECENT_LENGTH);
+    //printf("    %.7f %.7f\n", octaver.hist_sq/HISTORY_LENGTH,
+    //	   octaver.recent_hist_sq / RECENT_LENGTH);
     
     if (octaver.second_note_period > 0) {
       long long second_note_cadence_samples =
@@ -712,20 +787,25 @@ float update(float s) {
 	  octaver.first_note_cadence_samples * 4/5) {
 	// don't look for a potential match unless it's about when
 	// we're expecting it.
+	printf("Note start:\n");
 	if (compare_numbers(octaver.first_note_cadence_samples,
 				 second_note_cadence_samples) > 0.2) {
-	  printf("cadence doesn't match %lld %lld %.3f\n",
+	  printf("  cadence doesn't match %lld %lld %.3f\n",
 		 octaver.first_note_cadence_samples,
 		 second_note_cadence_samples,
 		 compare_numbers(octaver.first_note_cadence_samples,
 				 second_note_cadence_samples));
+	  printf("  demoting second note to first note\n");
+	  octaver.first_note_period = octaver.second_note_period;
+	  octaver.first_note_len_samples = octaver.second_note_len_samples;
 	} else {
-	  printf("Accepted! %lld %lld %.3f %.1f\n",
+	  printf("  accepted! %lld %lld %.3f %.1f\n",
 		 octaver.first_note_cadence_samples,
 		 second_note_cadence_samples,
 		 compare_numbers(octaver.first_note_cadence_samples,
 				 second_note_cadence_samples),
 		 octaver.rough_input_period);
+	  printf("  clearing first and second note\n");
 	  octaver.first_note_period = 0;
 	  octaver.first_note_len_samples = 0;
 	  octaver.first_note_cadence_samples = 0;
@@ -742,38 +822,49 @@ float update(float s) {
     if (octaver.samples_since_toggle > 4000) {
       float detection_period =
 	octaver.detection_period_sum / octaver.cycles_since_toggle;
-      printf("  %.0f for %lld cycles (%lld samples)\n",
+      BOOL second_note_looks_good = FALSE;
+      printf("Note end: %.0f for %lld cycles (%lld samples)\n",
 	     detection_period,
 	     octaver.cycles_since_toggle,
 	     octaver.samples_since_toggle);
       if (octaver.first_note_period == 0) {
-	octaver.first_note_period = detection_period;
-	octaver.first_note_len_samples = octaver.samples_since_toggle;
+	printf("  no current first note\n");
+      } else if (octaver.note_cadence_samples > SAMPLE_RATE * 2) {
+	printf("  cadence too long %lld\n", octaver.note_cadence_samples);
+      } else if (compare_numbers(octaver.first_note_period,
+				 detection_period) > 0.02) {
+	  printf("  second note doesn't match pitch %.4f vs %.4f -> %.4f\n",
+		 octaver.first_note_period,
+		 detection_period,
+		 compare_numbers(octaver.first_note_period,
+				 detection_period));
+      } else if (compare_numbers(octaver.first_note_len_samples,
+				 octaver.samples_since_toggle) > 0.2) {
+	printf("  second note doesn't match length %lld %lld -> %.2f\n",
+	       octaver.first_note_len_samples,
+	       octaver.second_note_len_samples,
+	       compare_numbers(octaver.first_note_len_samples,
+			      octaver.samples_since_toggle));
       } else {
+	printf("  looks good so far periods=%.4f lengths=%.2f\n",
+	       compare_numbers(octaver.first_note_period,
+			       detection_period),
+	       compare_numbers(octaver.first_note_len_samples,
+			       octaver.samples_since_toggle));
+	second_note_looks_good = TRUE;
+      }
+
+      if (second_note_looks_good) {
 	octaver.second_note_period = detection_period;
 	octaver.second_note_len_samples = octaver.samples_since_toggle;
-
-	if (// Pitches are too different
-	    compare_numbers(octaver.first_note_period,
-			    octaver.second_note_period) > 0.01 ||
-	    // Lengths are too different
-	    compare_numbers(octaver.first_note_len_samples,
-			    octaver.second_note_len_samples) > 0.2) {
-	  printf("second note doesn't match %f %f\n",
-		 compare_numbers(octaver.first_note_period,
-				 octaver.second_note_period),
-		 compare_numbers(octaver.first_note_len_samples,
-				 octaver.second_note_len_samples));
-	
-	  octaver.first_note_period = octaver.second_note_period;
-	  octaver.first_note_len_samples = octaver.second_note_len_samples;
-
-	  octaver.second_note_period = 0;
-	  octaver.second_note_len_samples = 0;
-	} else {
-	  octaver.first_note_cadence_samples =
-	    octaver.note_cadence_samples - octaver.first_note_len_samples;
-	}
+	octaver.first_note_cadence_samples =
+	  octaver.note_cadence_samples
+	  - octaver.second_note_len_samples
+	  + octaver.first_note_len_samples;
+      } else {
+	octaver.first_note_period = detection_period;
+	octaver.first_note_len_samples = octaver.samples_since_toggle;
+	printf("  calling it a first note\n");
       }
       octaver.note_cadence_samples = 0;
     }
