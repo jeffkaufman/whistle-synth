@@ -133,12 +133,22 @@ struct Octaver {
   int hist_pos;
   long long cycles;
   float samples_since_last_crossing;
-  float samples_since_attack_began;
   BOOL positive;
   float previous_sample;
   float rough_input_period;
   float hist_sq;
   float recent_hist_sq;
+  BOOL was_detecting;
+  long long cycles_since_toggle;
+  long long samples_since_toggle;
+  // divide by cycles_since_toggle to get average period
+  float detection_period_sum;
+  float first_note_period;
+  long long first_note_len_samples;
+  long long first_note_cadence_samples;
+  long long note_cadence_samples;
+  float second_note_period;
+  long long second_note_len_samples;
 };
 
 struct Octaver octaver;
@@ -151,13 +161,23 @@ void init_octaver() {
   octaver.hist_pos = 0;
 
   octaver.samples_since_last_crossing = 0;
-  octaver.samples_since_attack_began = 0;
 
   octaver.positive = TRUE;
   octaver.previous_sample = 0;
   octaver.rough_input_period = 40;
   octaver.hist_sq = 0;
   octaver.recent_hist_sq = 0;
+  octaver.was_detecting = 0;
+  octaver.cycles_since_toggle = 0;
+  octaver.samples_since_toggle = 0;
+  octaver.detection_period_sum = 0;
+
+  octaver.first_note_period = 0;
+  octaver.first_note_len_samples = 0;
+  octaver.first_note_cadence_samples = 0;
+  octaver.note_cadence_samples = 0;
+  octaver.second_note_period = 0;
+  octaver.second_note_len_samples = 0;
 }
 
 void set_hist(float s) {
@@ -568,6 +588,10 @@ void handle_cycle() {
   }
 }
 
+float compare_numbers(float a, float b) {
+  return fabs(a - b) / (a + b);
+}
+
 u_int64_t ticks = 0;
 u_int64_t grace_ticks = 0;
 float update(float s) {
@@ -589,7 +613,6 @@ float update(float s) {
   }
 
   octaver.samples_since_last_crossing++;
-  octaver.samples_since_attack_began++;
 
   int range_high = WHISTLE_RANGE_HIGH;
   int range_low = WHISTLE_RANGE_LOW;
@@ -598,6 +621,8 @@ float update(float s) {
     range_low = VOCAL_RANGE_LOW;
   }
 
+  int detected_whistle = -1;
+  
   if (octaver.positive) {
     if (s < 0) {
       /*
@@ -636,9 +661,14 @@ float update(float s) {
       if (octaver.rough_input_period > range_high &&
           octaver.rough_input_period < range_low) {
         init_oscs(adjustment);
+	detected_whistle = 1;
+      } else {
+	detected_whistle = 0;
       }
 
       octaver.cycles++;
+      octaver.cycles_since_toggle++;
+      octaver.detection_period_sum += octaver.rough_input_period;
       handle_cycle();
 
       octaver.positive = FALSE;
@@ -661,13 +691,99 @@ float update(float s) {
        GATE_SQUARED * gate_squared) &&
       (octaver.recent_hist_sq / RECENT_LENGTH <
        RECENT_GATE_SQUARED * gate_squared )) {
-//  if (grace_ticks == 0) {
-        val = 0;
-//    } else {
-//      grace_ticks--;
-//  } else {
-//    grace_ticks = GRACE_TICKS;
-//  }
+    val = 0;
+    if (detected_whistle == 1) {
+      detected_whistle = 0;
+    }
+  }
+
+  octaver.samples_since_toggle++;
+  octaver.note_cadence_samples++;
+
+  if (detected_whistle == 1 && !octaver.was_detecting) {
+    printf("%.7f %.7f\n", octaver.hist_sq/HISTORY_LENGTH,
+	   octaver.recent_hist_sq / RECENT_LENGTH);
+    
+    if (octaver.second_note_period > 0) {
+      long long second_note_cadence_samples =
+	octaver.note_cadence_samples + octaver.second_note_len_samples;
+
+      if (second_note_cadence_samples >
+	  octaver.first_note_cadence_samples * 4/5) {
+	// don't look for a potential match unless it's about when
+	// we're expecting it.
+	if (compare_numbers(octaver.first_note_cadence_samples,
+				 second_note_cadence_samples) > 0.2) {
+	  printf("cadence doesn't match %lld %lld %.3f\n",
+		 octaver.first_note_cadence_samples,
+		 second_note_cadence_samples,
+		 compare_numbers(octaver.first_note_cadence_samples,
+				 second_note_cadence_samples));
+	} else {
+	  printf("Accepted! %lld %lld %.3f %.1f\n",
+		 octaver.first_note_cadence_samples,
+		 second_note_cadence_samples,
+		 compare_numbers(octaver.first_note_cadence_samples,
+				 second_note_cadence_samples),
+		 octaver.rough_input_period);
+	  octaver.first_note_period = 0;
+	  octaver.first_note_len_samples = 0;
+	  octaver.first_note_cadence_samples = 0;
+	}
+	octaver.second_note_period = 0;
+	octaver.second_note_len_samples = 0;
+      }
+    }
+    
+    octaver.was_detecting = TRUE;
+    octaver.cycles_since_toggle = 0;
+    octaver.samples_since_toggle = 0;
+  } else if (detected_whistle == 0 && octaver.was_detecting) {
+    if (octaver.samples_since_toggle > 4000) {
+      float detection_period =
+	octaver.detection_period_sum / octaver.cycles_since_toggle;
+      printf("  %.0f for %lld cycles (%lld samples)\n",
+	     detection_period,
+	     octaver.cycles_since_toggle,
+	     octaver.samples_since_toggle);
+      if (octaver.first_note_period == 0) {
+	octaver.first_note_period = detection_period;
+	octaver.first_note_len_samples = octaver.samples_since_toggle;
+      } else {
+	octaver.second_note_period = detection_period;
+	octaver.second_note_len_samples = octaver.samples_since_toggle;
+
+	if (// Pitches are too different
+	    compare_numbers(octaver.first_note_period,
+			    octaver.second_note_period) > 0.01 ||
+	    // Lengths are too different
+	    compare_numbers(octaver.first_note_len_samples,
+			    octaver.second_note_len_samples) > 0.2) {
+	  printf("second note doesn't match %f %f\n",
+		 compare_numbers(octaver.first_note_period,
+				 octaver.second_note_period),
+		 compare_numbers(octaver.first_note_len_samples,
+				 octaver.second_note_len_samples));
+	
+	  octaver.first_note_period = octaver.second_note_period;
+	  octaver.first_note_len_samples = octaver.second_note_len_samples;
+
+	  octaver.second_note_period = 0;
+	  octaver.second_note_len_samples = 0;
+	} else {
+	  octaver.first_note_cadence_samples =
+	    octaver.note_cadence_samples - octaver.first_note_len_samples;
+	}
+      }
+      octaver.note_cadence_samples = 0;
+    }
+    octaver.was_detecting = FALSE;
+    octaver.cycles_since_toggle = 0;
+    octaver.samples_since_toggle = 0;
+  }
+
+  if (detected_whistle == 0) {
+    octaver.detection_period_sum = 0;
   }
 
   return val * GAIN * gain;
