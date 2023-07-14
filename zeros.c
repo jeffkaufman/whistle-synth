@@ -149,6 +149,8 @@ struct Octaver {
   long long note_cadence_samples;
   float second_note_period;
   long long second_note_len_samples;
+  long long pattern_pitch_cycles;
+  BOOL pattern_active;
 };
 
 struct Octaver octaver;
@@ -178,6 +180,9 @@ void init_octaver() {
   octaver.note_cadence_samples = 0;
   octaver.second_note_period = 0;
   octaver.second_note_len_samples = 0;
+  octaver.pattern_pitch_cycles = 0;
+
+  octaver.pattern_active = FALSE;
 }
 
 void set_hist(float s) {
@@ -221,7 +226,7 @@ struct Osc {
   BOOL active;
   float amp;
   float pos;
-  int samples;
+  long long samples;
   float total_amplitude;
   int duration;
 
@@ -301,7 +306,7 @@ float gate_squared;
 
 #define V_SOPRANO_RECORDER 1
 #define V_SQR 2
-#define V_DIST 3
+#define V_PATTERN 3
 #define V_LOW_DIST 4
 #define V_LOW_LOW_DIST 5
 #define V_EBASS 6
@@ -313,6 +318,7 @@ float gate_squared;
 #define N_OSCS_PER_LAYER 6
 #define N_OSCS (N_OSCS_PER_LAYER*DURATION)
 struct Osc oscs[N_OSCS];
+struct Osc pattern_osc;
 
 #define ALPHA_HIGH (0.1)
 #define ALPHA_MEDIUM (0.03)
@@ -337,8 +343,7 @@ float atan_decimal(float v) {
 #define SAT_BIAS 0.5
 
 float saturate(float v) {
-  if (voice_iff.value != V_DIST &&
-      voice_iff.value != V_LOW_DIST &&
+  if (voice_iff.value != V_LOW_DIST &&
       voice_iff.value != V_LOW_LOW_DIST &&
       voice_iff.value != V_RAWDIST) {
     return clip(v);
@@ -352,6 +357,21 @@ float saturate(float v) {
   v -= SAT_BIAS;
   v *= 0.55;
   return atan_decimal(v/4);
+}
+
+void init_pattern() {
+  osc_init(&pattern_osc,
+	   /*cycles=*/0,
+	   /*adjustment=*/0,
+	   /*vol=*/ 1,
+	   /*mode=*/ OSC_SIN,
+	   /*lfo_rate=*/ 0,
+	   /*lfo_amplitude=*/ 0,
+	   /*lfo_is_volume*/ FALSE,
+	   /*speed=*/ 1.0/32,
+	   /*cycle=*/ 8.0/16,
+	   /*mod=*/ 2);
+  octaver.pattern_active = TRUE;
 }
 
 void init_oscs(float adjustment) {
@@ -386,7 +406,7 @@ void init_oscs(float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
-  } else if (voice_iff.value == V_DIST) {
+  } else if (FALSE) { //(voice_iff.value == V_DIST) {
     gain = 0.125;
     ungain = 1;
     osc_init(&oscs[offset+0],
@@ -456,7 +476,78 @@ void init_oscs(float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
-  } else if (voice_iff.value == V_EBASS) {
+  } else if (voice_iff.value == V_EBASS || voice_iff.value == V_PATTERN) {
+    gain = 0.25;
+    ungain = 1;
+    int speed_base = 32;
+    int cycle_base = 16;
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.2,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 1.0/speed_base,
+	     /*cycle=*/ 8.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.24,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 2.0/speed_base,
+	     /*cycle=*/ 2.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+2],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.14,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 3.11/speed_base,
+	     /*cycle=*/ 3.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+3],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.14,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 4.3/speed_base,
+	     /*cycle=*/ 4.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+4],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.06,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 5.7/speed_base,
+	     /*cycle=*/ 5.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+5],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.06,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 6.1/speed_base,
+	     /*cycle=*/ 6.0/cycle_base,
+	     /*mod=*/ 2);
+  } else if (voice_iff.value == V_PATTERN) {
     gain = 0.25;
     ungain = 1;
     int speed_base = 32;
@@ -539,16 +630,21 @@ float osc_next(struct Osc* osc) {
 
   if (osc->duration > 0) {
     osc->amp += 0.01 * (1 - osc->amp);
-  } else {
+  } else if (osc != &pattern_osc) {
     osc->amp *= 0.95;
   }
 
-  float valA = get_hist((int)osc->pos);
-  float valB = get_hist((int)(osc->pos+1));
-  float amtA = osc->pos - (int)osc->pos;
-  float amtB = 1-amtA;
+  float val = 0.1;
 
-  float val = valA*amtA + valB*amtB;
+  if (osc != &pattern_osc) {
+    float valA = get_hist((int)osc->pos);
+    float valB = get_hist((int)(osc->pos+1));
+    float amtA = osc->pos - (int)osc->pos;
+    float amtB = 1-amtA;
+    
+    val = valA*amtA + valB*amtB;
+  }
+
   osc->total_amplitude += fabsf(val);
   if (osc->mode != OSC_NAT) {
     if (osc->mode == OSC_SQR) {
@@ -660,7 +756,7 @@ float update(float s) {
 
       if (octaver.rough_input_period > range_high &&
           octaver.rough_input_period < range_low) {
-        init_oscs(adjustment);
+	init_oscs(adjustment);
 	detected_whistle = 1;
       } else {
 	detected_whistle = 0;
@@ -775,6 +871,13 @@ float update(float s) {
   octaver.samples_since_toggle++;
   octaver.note_cadence_samples++;
 
+  if (detected_whistle == 1 && octaver.pattern_pitch_cycles > 0) {
+    pattern_osc.rough_input_period =
+      (pattern_osc.rough_input_period * octaver.pattern_pitch_cycles +
+       octaver.rough_input_period) / (octaver.pattern_pitch_cycles + 1);
+    octaver.pattern_pitch_cycles++;
+  }
+  
   if (detected_whistle == 1 && !octaver.was_detecting) {
     //printf("    %.7f %.7f\n", octaver.hist_sq/HISTORY_LENGTH,
     //	   octaver.recent_hist_sq / RECENT_LENGTH);
@@ -809,6 +912,9 @@ float update(float s) {
 	  octaver.first_note_period = 0;
 	  octaver.first_note_len_samples = 0;
 	  octaver.first_note_cadence_samples = 0;
+	  octaver.pattern_pitch_cycles = 1;
+
+	  init_pattern();
 	}
 	octaver.second_note_period = 0;
 	octaver.second_note_len_samples = 0;
@@ -822,6 +928,12 @@ float update(float s) {
     if (octaver.samples_since_toggle > 4000) {
       float detection_period =
 	octaver.detection_period_sum / octaver.cycles_since_toggle;
+
+      if (octaver.pattern_pitch_cycles > 0) {
+	pattern_osc.rough_input_period = detection_period;
+	octaver.pattern_pitch_cycles = 0;
+      }
+      
       BOOL second_note_looks_good = FALSE;
       printf("Note end: %.0f for %lld cycles (%lld samples)\n",
 	     detection_period,
@@ -867,6 +979,7 @@ float update(float s) {
 	printf("  calling it a first note\n");
       }
       octaver.note_cadence_samples = 0;
+      octaver.pattern_pitch_cycles = 0;
     }
     octaver.was_detecting = FALSE;
     octaver.cycles_since_toggle = 0;
@@ -876,6 +989,10 @@ float update(float s) {
   if (detected_whistle == 0) {
     octaver.detection_period_sum = 0;
   }
+
+  if (octaver.pattern_active) {
+    val += osc_next(&pattern_osc);
+  }     
 
   return val * GAIN * gain;
 }
@@ -1116,7 +1233,7 @@ int start_audio(int device_index) {
     } else if( err ) goto xrun;
 
     float alpha = ALPHA_HIGH;
-    if (voice_iff.value == V_EBASS) {
+    if (voice_iff.value == V_EBASS || voice_iff.value == V_PATTERN) {
       alpha = ALPHA_LOW;
     }
 
