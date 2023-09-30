@@ -77,6 +77,10 @@ $ alsamixer
    ```
      make run-linux
    ```
+Or
+   ```
+     make run-max
+   ```
 
 It will generate audio.
 
@@ -118,50 +122,4 @@ expect whistling; 7 and 8 singing.
 
 Look into low-latency options.  See http://tedfelix.com/linux/linux-midi.html
 and https://wiki.linuxaudio.org/wiki/raspberrypi
-
-## Obsolete
-
-### Mac
-
-I'm no longer updating the mac-specific code, though it is still in the repo
-
-1. Install portaudio:
-   ```
-    $ wget http://www.portaudio.com/archives/pa_stable_v190600_20161030.tgz
-    $ tar -xvzf pa_stable_v190600_20161030.tgz
-    $ cd portaudio
-    $ ./configure --disable-mac-universal
-    $ make
-    $ sudo make install
-   ```
-
-2. Build it:
-   ```
-    make zeros-mac
-   ```
-
-It will make a virtual MIDI source (`whistle-pitch`), which you can then pipe
-into a synthesizer.
-
-There's also a version with its own built-in bass synthesizer, which is a
-plug-in version for a DAW (like Reaper):
-
-* source: https://github.com/jeffkaufman/iPlug2
-
-* mac vst: https://www.jefftk.com/BassWhistleVST3-v1.zip
-
-
-#### To use with OSC
-
-1. Build liblo
-   ```
-   cd liblo-0.30/
-   ./configure
-   make
-   sudo make install
-   ```
-
-2. Run: `make run-osc`
-
-### Linux
 
