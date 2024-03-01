@@ -2,7 +2,7 @@
 
 ## Build
 
-1. Check out as ~/pitch-detect
+1. Check out as ~/whistle-synth
 
 2. Install dependencies:
    ```
@@ -16,14 +16,14 @@
 
 It will detect pitches and generate audio.
 
-To run on boot, `/etc/systemd/system/pitch-detect.service` should have:
+To run on boot, `/etc/systemd/system/whistle-synth.service` should have:
 
 ```
 [Unit]
 Description=Pitch Detection and	Synthesis
 
 [Service]
-ExecStart=/home/pi/pitch-detect/zeros-linux /home/pi/pitch-detect/device-index /home/pi/pitch-detect/current-voice /home/pi/pitch-detect/current-volume /home/pi/pitch-detect/current-gate
+ExecStart=/home/jeffkaufman/whistle-synth/zeros-linux /home/jeffkaufman/whistle-synth/device-index /home/jeffkaufman/whistle-synth/current-voice /home/jeffkaufman/whistle-synth/current-volume /home/jeffkaufman/whistle-synth/current-gate
 Restart=always
 KillSignal=SIGQUIT
 Type=simple
@@ -33,14 +33,14 @@ WantedBy=multi-user.target
 ```
 
 To support changing voices while headless,
-`/etc/systemd/system/pitch-detect-kbd.service` should have:
+`/etc/systemd/system/whistle-synth-kbd.service` should have:
 
 ```
 [Unit]
 Description=Keyboard Control for Pitch Synthesis
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/pitch-detect/kbd.py
+ExecStart=/usr/bin/python3 /home/jeffkaufman/whistle-synth/kbd.py
 Restart=always
 KillSignal=SIGQUIT
 Type=simple
@@ -52,8 +52,8 @@ WantedBy=multi-user.target
 Then:
 
 ```
-sudo systemctl enable pitch-detect-kbd
-sudo systemctl enable pitch-detect
+sudo systemctl enable whistle-synth-kbd
+sudo systemctl enable whistle-synth
 sudo systemctl daemon-reload
 ```
 
@@ -79,7 +79,7 @@ $ alsamixer
    ```
 Or
    ```
-     make run-max
+     make run-mac
    ```
 
 It will generate audio.
