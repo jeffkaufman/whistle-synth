@@ -280,10 +280,10 @@ float ungain;
 float gate_squared;
 
 #define V_SOPRANO_RECORDER 1
-#define V_SQR 2
+#define V_BASS_FLUTE 2
 #define V_DIST 3
-#define V_LOW_DIST 4
-#define V_LOW_LOW_DIST 5
+#define V_REED 4
+#define V_FLUTE 5
 #define V_EBASS 6
 #define V_VOCAL_2 7
 #define V_VOCAL_1 8
@@ -318,8 +318,6 @@ float atan_decimal(float v) {
 
 float saturate(float v) {
   if (voice_iff.value != V_DIST &&
-      voice_iff.value != V_LOW_DIST &&
-      voice_iff.value != V_LOW_LOW_DIST &&
       voice_iff.value != V_RAWDIST) {
     return clip(v);
   }
@@ -339,7 +337,7 @@ void init_oscs(float adjustment) {
   long long offset = (cycles % DURATION) * N_OSCS_PER_LAYER;
 
   if (voice_iff.value == V_SOPRANO_RECORDER) {
-    gain = 0.3;
+    gain = 0.2;
     ungain = 1;
     osc_init(&oscs[offset+0],
 	     cycles,
@@ -352,19 +350,42 @@ void init_oscs(float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
-  } else if (voice_iff.value == V_SQR) {
-    gain = 0.25;
+  } else if (voice_iff.value == V_BASS_FLUTE) {
+    gain = 0.3;
     ungain = 1;
+    int cycle_base = 4;
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.5,
-	     /*mode=*/ OSC_SQR,
+	     /*vol=*/  0.5,
+	     /*mode=*/ OSC_SIN,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 1,
+	     /*speed=*/ 1.0/cycle_base,
+	     /*cycle=*/ 1.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.2,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 2.0/cycle_base,
+	     /*cycle=*/ 2.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+2],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.2,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 3.0/cycle_base,
+	     /*cycle=*/ 3.0/cycle_base,
 	     /*mod=*/ 2);
   } else if (voice_iff.value == V_DIST) {
     gain = 0.125;
@@ -380,34 +401,80 @@ void init_oscs(float adjustment) {
 	     /*speed=*/ 0.5,
 	     /*cycle=*/ 1,
 	     /*mod=*/ 2);
-  } else if (voice_iff.value == V_LOW_DIST) {
-    gain = 0.25;
-    ungain = 0.7;
-    osc_init(&oscs[offset+0],
-	     cycles,
-	     adjustment,
-	     /*vol=*/ 0.5,
-	     /*mode=*/ OSC_SQR,
-	     /*lfo_rate=*/ 0,
-	     /*lfo_amplitude=*/ 0,
-	     /*lfo_is_volume*/ TRUE,
-	     /*speed=*/ 0.5,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 4);
-  } else if (voice_iff.value == V_LOW_LOW_DIST) {
-    gain = 0.15;
+  } else if (voice_iff.value == V_REED) {
+    gain = 0.3;
     ungain = 1;
+    int cycle_base = 4;
     osc_init(&oscs[offset+0],
 	     cycles,
 	     adjustment,
-	     /*vol=*/ 0.5,
-	     /*mode=*/ OSC_SQR,
+	     /*vol=*/  0.5,
+	     /*mode=*/ OSC_NAT,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.25,
+	     /*cycle=*/ 1.0/cycle_base,
+	     /*mod=*/ 2);
+  } else if (voice_iff.value == V_FLUTE) {
+    gain = 0.3;
+    ungain = 1;
+    int cycle_base = 2;
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.5,
+	     /*mode=*/ OSC_SIN,
 	     /*lfo_rate=*/ 0,
 	     /*lfo_amplitude=*/ 0,
 	     /*lfo_is_volume*/ TRUE,
 	     /*speed=*/ 0.5,
-	     /*cycle=*/ 1,
-	     /*mod=*/ 8);
+	     /*cycle=*/ 1.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.15,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.53,
+	     /*cycle=*/ 2.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+2],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.15,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.48,
+	     /*cycle=*/ 2.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+3],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.15,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.51,
+	     /*cycle=*/ 3.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+4],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.15,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.49,
+	     /*cycle=*/ 3.0/cycle_base,
+	     /*mod=*/ 2);
   } else if (voice_iff.value == V_VOCAL_2) {
     gain = 0.25;
     ungain = 0.5;
