@@ -13,6 +13,18 @@ zeros-mac: zeros.c
     -lportaudio \
     zeros.c -o zeros-mac -std=c99 -Wall
 
+pa: paex_read_write_wire.c
+	gcc \
+    -I/opt/homebrew/include/ \
+    -L/opt/homebrew/lib/ \
+    -F/System/Library/PrivateFrameworks \
+    -framework CoreMIDI \
+    -framework CoreFoundation \
+    -framework CoreAudio \
+    -framework Foundation \
+    -lportaudio \
+    paex_read_write_wire.c -o paex_read_write_wire -std=c99 -Wall
+
 run-linux: zeros-linux
 	./zeros-linux \
     $(CURDIR)/device-index $(CURDIR)/current-voice $(CURDIR)/current-volume $(CURDIR)/current-gate
