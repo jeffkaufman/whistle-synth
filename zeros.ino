@@ -1,84 +1,17 @@
-#include <ADC.h>
 #include <Audio.h>
-#include <Wire.h>
-#include <SPI.h>
-#include <SD.h>
-#include <SerialFlash.h>
 
-AudioOutputI2S           i2s1;
-AudioControlSGTL5000     sgtl5000_1;
-
-AudioSynthWaveformSine sines[8];
-
-// Since you can only mix four at a time, stack the mixers.
-AudioMixer4 m1;
-AudioMixer4 m2;
-AudioMixer4 m3;
-
-AudioConnection patchCords[] = {
-  AudioConnection(m1, 0, m3, 0),
-  AudioConnection(m2, 0, m3, 1),
-  AudioConnection(m3, 0, i2s1, 0),
-  AudioConnection(m3, 0, i2s1, 1),
-  AudioConnection(sines[0], 0, m1, 0),
-  AudioConnection(sines[1], 0, m1, 1),
-  AudioConnection(sines[2], 0, m1, 2),
-  AudioConnection(sines[3], 0, m1, 3),
-  AudioConnection(sines[4], 0, m2, 0),
-  AudioConnection(sines[5], 0, m2, 1),
-  AudioConnection(sines[6], 0, m2, 2),
-  AudioConnection(sines[7], 0, m2, 3),
-};
-
-void jump_base_frequency(float freq) {
-  for (int i = 0; i < 8; i++) {
-    sines[i].frequency(freq * (i+1));
-  }
-}
-
-void setup() {
-  Serial.begin(9600); // Initialize serial communication
-  while (!Serial) {}  // Wait for serial monitor to open
-
-  Serial.println("Initializing audio...");
-
-  AudioMemory(10);
-  sgtl5000_1.enable();
-  sgtl5000_1.volume(0.2);
-
-  jump_base_frequency(100);
-
-  Serial.println("Audio initialized.");
-}
-
-float f = 100;
-void loop() {
-
-  delay(1000);
-  f *= 1.06;
-  if (f > 200) {
-    f = f/2;
-  }
-  jump_base_frequency(f);
-}
-
-#if 0
-
-#define BIAS_ESTIMATION_SAMPLES 0x100000
+#define SAMPLE_RATE       (44100)    // if you change this, change MIN/MAX_INPUT_PERIOD too
 
 #define WHISTLE_RANGE_HIGH (14)
 #define VOCAL_RANGE_HIGH (50)
 #define WHISTLE_RANGE_LOW (75)
 #define VOCAL_RANGE_LOW (300)
 #define SLIDE (4)
-// We amplify in two stages: first gain, then saturate, then volume.  This lets
-// us get the effect of saturation/clipping independent of the output volume.
-#define GAIN (1.0)
-#define VOLUME (1.0)
+
 #define DURATION (3)
 
-#define GATE_SQUARED (0.01 * 0.01)
-#define RECENT_GATE_SQUARED (40 * 40 * GATE_SQUARED)
+#define GATE_SQUARED (0.01*0.01)
+#define RECENT_GATE_SQUARED (40*40*GATE_SQUARED)
 //#define GRACE_TICKS (44100)
 
 #define HISTORY_LENGTH (8192)
@@ -92,24 +25,17 @@ void loop() {
 #define OSC_SQR 1
 #define OSC_SIN 2
 
-#define DURATION_UNITS (400)   // samples
-#define DURATION_BLOCKS (100)  // in DURATION_UNITS
+#define DURATION_UNITS (400) // samples
+#define DURATION_BLOCKS (100) // in DURATION_UNITS
 #define DURATION_MAX_VAL (0.04)
 
-ADC adc;
-unsigned long bias_acc = 0;
-unsigned int bias = 0;
-unsigned int bias_count = 0;
-bool calibrated = false;
-unsigned long calibration_start_micros = 0;
-float ms_per_sample;
+/*******************************************************************/
 
 float duration_hist[DURATION_BLOCKS];
 int duration_pos = 0;
 float duration_current_total = 0;
 int duration_current_count = 0;
 float duration_val = 0;
-
 void update_duration(float sample) {
   duration_current_total += fabs(sample);
   duration_current_count++;
@@ -122,13 +48,13 @@ void update_duration(float sample) {
     duration_val = 0;
     float block_min = -1;
     for (int i = 0; i < DURATION_BLOCKS; i++) {
-      float histval = duration_hist[(DURATION_BLOCKS + duration_pos - i) % DURATION_BLOCKS];
+      float histval =	duration_hist[(DURATION_BLOCKS + duration_pos - i)%DURATION_BLOCKS];
       if (block_min < 0 || histval < block_min) {
         block_min = histval;
       }
       duration_val += block_min;
     }
-    duration_val = fminf(duration_val / DURATION_BLOCKS, DURATION_MAX_VAL);
+    duration_val = fminf(duration_val/DURATION_BLOCKS, DURATION_MAX_VAL);
     //printf("%.2f\n", duration_val);
   }
 }
@@ -166,19 +92,23 @@ void init_octaver() {
 }
 
 void set_hist(float s) {
-  octaver.hist_sq += (s * s);
-  octaver.hist_sq -= (octaver.hist[octaver.hist_pos] * octaver.hist[octaver.hist_pos]);
+  octaver.hist_sq += (s*s);
+  octaver.hist_sq -= (octaver.hist[octaver.hist_pos] *
+                      octaver.hist[octaver.hist_pos]);
 
-  octaver.recent_hist_sq += (s * s);
-  int recent_pos = (octaver.hist_pos - RECENT_LENGTH + HISTORY_LENGTH) % HISTORY_LENGTH;
-  octaver.recent_hist_sq -= (octaver.hist[recent_pos] * octaver.hist[recent_pos]);
+  octaver.recent_hist_sq += (s*s);
+  int recent_pos = (octaver.hist_pos - RECENT_LENGTH +
+                    HISTORY_LENGTH) % HISTORY_LENGTH;
+  octaver.recent_hist_sq -= (octaver.hist[recent_pos] *
+                             octaver.hist[recent_pos]);
 
   octaver.hist[octaver.hist_pos] = s;
   octaver.hist_pos = (octaver.hist_pos + 1) % HISTORY_LENGTH;
 }
 
 float get_hist(int pos) {
-  return octaver.hist[(HISTORY_LENGTH + octaver.hist_pos - pos) % HISTORY_LENGTH];
+  return octaver.hist[
+    (HISTORY_LENGTH + octaver.hist_pos - pos) % HISTORY_LENGTH];
 }
 
 float hist_squared_sum() {
@@ -220,9 +150,9 @@ struct Osc {
 };
 
 void osc_init(
-  struct Osc* osc, long long cycles, float adjustment, float vol,
-  int mode, float lfo_rate, float lfo_amplitude,
-  BOOL lfo_is_volume, float speed, float cycle, int mod) {
+    struct Osc* osc, long long cycles, float adjustment, float vol,
+    int mode, float lfo_rate, float lfo_amplitude,
+    BOOL lfo_is_volume, float speed, float cycle, int mod) {
 
   osc->active = TRUE;
   osc->amp = 0;
@@ -254,20 +184,26 @@ void osc_diff(struct Osc* osc1, struct Osc* osc2) {
 }
 
 float volumes[10] = {
-  0.026,  // 0
-  0.039,  // 1
-  0.059,  // 2
-  0.088,  // 3
-  0.132,  // 4
-  0.198,  // 5
-  0.296,  // 6
-  0.444,  // 7
-  0.667,  // 8
-  1.000,  // 9
+                     0.026, // 0
+                     0.039, // 1
+                     0.059, // 2
+                     0.088, // 3
+                     0.132, // 4
+                     0.198, // 5
+                     0.296, // 6
+                     0.444, // 7
+                     0.667, // 8
+                     1.000, // 9
 };
 
-float gain;
-float ungain;
+struct int_from_file {
+  const char* purpose;
+  int value;
+};
+
+struct int_from_file voice_iff;
+struct int_from_file volume_iff;
+struct int_from_file gate_iff;
 float gate_squared;
 
 #define V_SOPRANO_RECORDER 1
@@ -282,7 +218,7 @@ float gate_squared;
 #define V_RAWDIST 0
 
 #define N_OSCS_PER_LAYER 6
-#define N_OSCS (N_OSCS_PER_LAYER * DURATION)
+#define N_OSCS (N_OSCS_PER_LAYER*DURATION)
 struct Osc oscs[N_OSCS];
 
 #define ALPHA_HIGH (0.1)
@@ -290,7 +226,7 @@ struct Osc oscs[N_OSCS];
 #define ALPHA_LOW (0.01)
 
 float sine_decimal(float v) {
-  return sin((v + 0.5) * M_PI * 2);
+  return sin((v+0.5)*M_PI*2);
 }
 
 float clip(float v) {
@@ -298,7 +234,7 @@ float clip(float v) {
 }
 
 float atan_decimal(float v) {
-  return atanf(v) / (M_PI / 2);
+  return atanf(v) / (M_PI/2);
 }
 
 #define SAT_1 1
@@ -307,84 +243,247 @@ float atan_decimal(float v) {
 #define SAT_8 1
 #define SAT_BIAS 0.5
 
-float saturate(float v) {
-  return clip(v);
-}
-
 void init_oscs(float adjustment) {
   long long cycles = octaver.cycles;
   long long offset = (cycles % DURATION) * N_OSCS_PER_LAYER;
 
-  gain = 0.25;
-  ungain = 1;
-  int speed_base = 32;
-  int cycle_base = 16;
-  osc_init(&oscs[offset + 0],
-           cycles,
-           adjustment,
-           /*vol=*/0.2,
-           /*mode=*/OSC_SIN,
-           /*lfo_rate=*/0,
-           /*lfo_amplitude=*/0,
-           /*lfo_is_volume*/ FALSE,
-           /*speed=*/1.0 / speed_base,
-           /*cycle=*/8.0 / cycle_base,
-           /*mod=*/2);
-  osc_init(&oscs[offset + 1],
-           cycles,
-           adjustment,
-           /*vol=*/0.24,
-           /*mode=*/OSC_SIN,
-           /*lfo_rate=*/0,
-           /*lfo_amplitude=*/0,
-           /*lfo_is_volume*/ FALSE,
-           /*speed=*/2.0 / speed_base,
-           /*cycle=*/2.0 / cycle_base,
-           /*mod=*/2);
-  osc_init(&oscs[offset + 2],
-           cycles,
-           adjustment,
-           /*vol=*/0.14,
-           /*mode=*/OSC_SIN,
-           /*lfo_rate=*/0,
-           /*lfo_amplitude=*/0,
-           /*lfo_is_volume*/ FALSE,
-           /*speed=*/3.11 / speed_base,
-           /*cycle=*/3.0 / cycle_base,
-           /*mod=*/2);
-  osc_init(&oscs[offset + 3],
-           cycles,
-           adjustment,
-           /*vol=*/0.14,
-           /*mode=*/OSC_SIN,
-           /*lfo_rate=*/0,
-           /*lfo_amplitude=*/0,
-           /*lfo_is_volume*/ FALSE,
-           /*speed=*/4.3 / speed_base,
-           /*cycle=*/4.0 / cycle_base,
-           /*mod=*/2);
-  osc_init(&oscs[offset + 4],
-           cycles,
-           adjustment,
-           /*vol=*/0.06,
-           /*mode=*/OSC_SIN,
-           /*lfo_rate=*/0,
-           /*lfo_amplitude=*/0,
-           /*lfo_is_volume*/ FALSE,
-           /*speed=*/5.7 / speed_base,
-           /*cycle=*/5.0 / cycle_base,
-           /*mod=*/2);
-  osc_init(&oscs[offset + 5],
-           cycles,
-           adjustment,
-           /*vol=*/0.06,
-           /*mode=*/OSC_SIN,
-           /*lfo_rate=*/0,
-           /*lfo_amplitude=*/0,
-           /*lfo_is_volume*/ FALSE,
-           /*speed=*/6.1 / speed_base,
-           /*cycle=*/6.0 / cycle_base,
-           /*mod=*/2);
+  osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.5,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 1.0/4,
+	     /*cycle=*/ 1.0/4,
+	     /*mod=*/ 2);
+
+  return;
+
+  if (voice_iff.value == V_SOPRANO_RECORDER) {
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.5,
+	     /*mode=*/ OSC_NAT,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 2);
+  } else if (voice_iff.value == V_BASS_FLUTE) {
+    int cycle_base = 4;
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.5,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 1.0/cycle_base,
+	     /*cycle=*/ 1.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.2,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 2.0/cycle_base,
+	     /*cycle=*/ 2.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+2],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.2,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 3.0/cycle_base,
+	     /*cycle=*/ 3.0/cycle_base,
+	     /*mod=*/ 2);
+  } else if (voice_iff.value == V_DIST) {
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.5,
+	     /*mode=*/ OSC_SQR,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 2);
+  } else if (voice_iff.value == V_REED) {
+    int cycle_base = 4;
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.5,
+	     /*mode=*/ OSC_NAT,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.25,
+	     /*cycle=*/ 1.0/cycle_base,
+	     /*mod=*/ 2);
+  } else if (voice_iff.value == V_FLUTE) {
+    int cycle_base = 2;
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.5,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 1.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.15,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.53,
+	     /*cycle=*/ 2.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+2],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.15,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.48,
+	     /*cycle=*/ 2.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+3],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.15,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.51,
+	     /*cycle=*/ 3.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+4],
+	     cycles,
+	     adjustment,
+	     /*vol=*/  0.15,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.49,
+	     /*cycle=*/ 3.0/cycle_base,
+	     /*mod=*/ 2);
+  } else if (voice_iff.value == V_VOCAL_2) {
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.4,
+	     /*mode=*/ OSC_NAT,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 0.5,
+	     /*mod=*/ 2);
+  } else if (voice_iff.value == V_VOCAL_1) {
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.4,
+	     /*mode=*/ OSC_NAT,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ TRUE,
+	     /*speed=*/ 0.5,
+	     /*cycle=*/ 1,
+	     /*mod=*/ 2);
+  } else if (voice_iff.value == V_EBASS) {
+    int speed_base = 32;
+    int cycle_base = 16;
+    osc_init(&oscs[offset+0],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.2,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 1.0/speed_base,
+	     /*cycle=*/ 8.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+1],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.24,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 2.0/speed_base,
+	     /*cycle=*/ 2.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+2],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.14,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 3.11/speed_base,
+	     /*cycle=*/ 3.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+3],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.14,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 4.3/speed_base,
+	     /*cycle=*/ 4.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+4],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.06,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 5.7/speed_base,
+	     /*cycle=*/ 5.0/cycle_base,
+	     /*mod=*/ 2);
+    osc_init(&oscs[offset+5],
+	     cycles,
+	     adjustment,
+	     /*vol=*/ 0.06,
+	     /*mode=*/ OSC_SIN,
+	     /*lfo_rate=*/ 0,
+	     /*lfo_amplitude=*/ 0,
+	     /*lfo_is_volume*/ FALSE,
+	     /*speed=*/ 6.1/speed_base,
+	     /*cycle=*/ 6.0/cycle_base,
+	     /*mod=*/ 2);
+  }
 }
 
 float osc_next(struct Osc* osc) {
@@ -401,11 +500,11 @@ float osc_next(struct Osc* osc) {
   }
 
   float valA = get_hist((int)osc->pos);
-  float valB = get_hist((int)(osc->pos + 1));
+  float valB = get_hist((int)(osc->pos+1));
   float amtA = osc->pos - (int)osc->pos;
-  float amtB = 1 - amtA;
+  float amtB = 1-amtA;
 
-  float val = valA * amtA + valB * amtB;
+  float val = valA*amtA + valB*amtB;
   osc->total_amplitude += fabsf(val);
   if (osc->mode != OSC_NAT) {
     if (osc->mode == OSC_SQR) {
@@ -421,13 +520,13 @@ float osc_next(struct Osc* osc) {
 
   if (osc->lfo_amplitude > 0) {
     //printf("%.2f %.2f\n", osc->lfo_pos, sine_decimal(osc->lfo_pos));
-    float lfo_amount = (sine_decimal(osc->lfo_pos) + 1) * osc->lfo_amplitude;
+    float lfo_amount = (sine_decimal(osc->lfo_pos)+1)*osc->lfo_amplitude;
     if (osc->lfo_is_volume) {
-      val = val * lfo_amount + val * (1 - osc->lfo_amplitude);
+      val = val*lfo_amount + val*(1-osc->lfo_amplitude);
     } else {
       osc->pos += lfo_amount;
     }
-    osc->lfo_pos += (1 / osc->lfo_rate);
+    osc->lfo_pos += (1/osc->lfo_rate);
   }
   return val;
 }
@@ -447,7 +546,7 @@ void handle_cycle() {
 
 u_int64_t ticks = 0;
 u_int64_t grace_ticks = 0;
-float update(float s) {
+float update_sample(float s) {
   set_hist(s);
   update_duration(s);
 
@@ -456,7 +555,7 @@ float update(float s) {
     //printf("%lld volume: %.12f -- %.12f\n", ticks, hist_squared_sum(), octaver.hist_sq/HISTORY_LENGTH);
     octaver.hist_sq = hist_squared_sum();
   }
-  if (octaver.hist_pos == HISTORY_LENGTH - 1) {
+  if (octaver.hist_pos == HISTORY_LENGTH-1) {
     //printf("recent: %.12f -- %.12f\n", recent_hist_squared_sum(), octaver.recent_hist_sq/RECENT_LENGTH);
     octaver.recent_hist_sq = recent_hist_squared_sum();
   }
@@ -466,6 +565,10 @@ float update(float s) {
 
   int range_high = WHISTLE_RANGE_HIGH;
   int range_low = WHISTLE_RANGE_LOW;
+  if (voice_iff.value == V_VOCAL_2 || voice_iff.value == V_VOCAL_1) {
+    range_high = VOCAL_RANGE_HIGH;
+    range_low = VOCAL_RANGE_LOW;
+  }
 
   if (octaver.positive) {
     if (s < 0) {
@@ -502,7 +605,8 @@ float update(float s) {
       octaver.samples_since_last_crossing -= adjustment;
       octaver.rough_input_period = octaver.samples_since_last_crossing;
 
-      if (octaver.rough_input_period > range_high && octaver.rough_input_period < range_low) {
+      if (octaver.rough_input_period > range_high &&
+          octaver.rough_input_period < range_low) {
         init_oscs(adjustment);
       }
 
@@ -521,44 +625,89 @@ float update(float s) {
   octaver.previous_sample = s;
 
   float val = 0;
-  for (int i = 0; i < N_OSCS; i++) {
+  for (int i = 0 ; i < N_OSCS; i++) {
     val += osc_next(&oscs[i]);
   }
 
-  if ((octaver.hist_sq / HISTORY_LENGTH < GATE_SQUARED * gate_squared) && (octaver.recent_hist_sq / RECENT_LENGTH < RECENT_GATE_SQUARED * gate_squared)) {
-    //  if (grace_ticks == 0) {
-    val = 0;
-    //    } else {
-    //      grace_ticks--;
-    //  } else {
-    //    grace_ticks = GRACE_TICKS;
-    //  }
+  if ((octaver.hist_sq/HISTORY_LENGTH <
+       GATE_SQUARED * gate_squared) &&
+      (octaver.recent_hist_sq / RECENT_LENGTH <
+       RECENT_GATE_SQUARED * gate_squared )) {
+//  if (grace_ticks == 0) {
+        val = 0;
+//    } else {
+//      grace_ticks--;
+//  } else {
+//    grace_ticks = GRACE_TICKS;
+//  }
   }
 
-  return val * GAIN * gain;
-}
-
-void init_gains() {
-  gain = 0.25;
-  ungain = 1;
+  return val;
 }
 
 void init_gate() {
-  gate_squared = ((volumes[8] / volumes[5]) * (volumes[8] / volumes[5]));
+  gate_squared = ((volumes[9-gate_iff.value] / volumes[5]) *
+                  (volumes[9-gate_iff.value] / volumes[5]));
 }
 
-void setup() {
-  Serial.begin(38400);
+float output = 0;
 
-  adc.adc0->setResolution(10);
-  adc.adc0->setAveraging(1);
-  adc.adc0->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_HIGH_SPEED);
-  adc.adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_HIGH_SPEED);
-  adc.adc0->setReference(ADC_REFERENCE::REF_3V3);
-  pinMode(A0, INPUT);
-  Serial.begin(38400);
+class WhistleSynth : public AudioStream
+{
+private:
+  audio_block_t *inputQueueArray[1];
+
+public:
+  WhistleSynth() : AudioStream(1, inputQueueArray) {
+    // any extra initialization
+  }
+  virtual void update(void) {
+    audio_block_t* block = receiveWritable(0);
+    if (!block) {
+      return;
+    }
+
+    float alpha = ALPHA_LOW;
+
+    for (int i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
+      float sample = block->data[i] / 32768.0;      
+      float val = update_sample(sample);
+
+      output += alpha * (val - output);
+      float sample_out = output / alpha ; // makeup gain
+
+      // Ideally this is never hit, but it would be really bad if it wrapped.
+      sample_out = clip(sample_out / 3);
+
+      block->data[i] = sample_out * 32768;
+    }
+
+    transmit(block, 0);
+    release(block);
+  }
+};
+
+AudioInputI2S i2s2;
+WhistleSynth whistleSynth;
+AudioOutputI2S i2s1;
+
+AudioConnection patchCord1(i2s2, 0, whistleSynth, 0);
+AudioConnection patchCord3(whistleSynth, 0, i2s1, 0);
+AudioConnection patchCord4(whistleSynth, 0, i2s1, 1);
+
+AudioControlSGTL5000     sgtl5000_1;
+
+void setup() {
+  // Audio connections require memory to work.  For more
+  // detailed information, see the MemoryAndCpuUsage example
+  AudioMemory(12);
+
+  // Enable the audio shield
+  sgtl5000_1.enable();
+  sgtl5000_1.volume(0.5);
 
   init_octaver();
+
   for (int i = 0; i < N_OSCS; i++) {
     oscs[i].active = FALSE;
     oscs[i].lfo_pos = 0;
@@ -568,60 +717,15 @@ void setup() {
     duration_hist[i] = 0;
   }
 
-  Serial.printf("Starting...\n");
+
+  voice_iff.purpose = "voice";
+  voice_iff.value = V_EBASS;
+  volume_iff.purpose = "volume";
+  volume_iff.value = 5;
+  gate_iff.purpose = "gate";
+  gate_iff.value = 1;
+
 }
 
 void loop() {
-  int raw_val = adc.analogRead(A0, ADC_0);
-
-  bias_acc += raw_val;
-  bias_count += 1;
-
-  if (!calibrated && bias_count == 0) {
-    Serial.printf("Calibrating...\n");
-    calibration_start_micros = micros();
-  }
-
-  if (bias_count == BIAS_ESTIMATION_SAMPLES) {
-    unsigned long duration_micros = micros() - calibration_start_micros;
-    calibration_start_micros = micros();
-
-    ms_per_sample = (1.0 / 1000) * duration_micros / bias_count;
-
-    bias = bias_acc / bias_count;
-    bias_acc = 0;
-    bias_count = 0;
-
-    if (!calibrated) {
-      Serial.printf("Calibration complete.  Sample rate is %.0fHz, and each sample is %.4fms\n", 1000 / ms_per_sample, ms_per_sample);
-    }
-
-    calibrated = true;
-  }
-
-  if (!calibrated) {
-    return;
-  }
-
-  int debiased_val = raw_val - bias;
-
-  float output = 0;
-  float alpha = ALPHA_LOW;
-
-  while (true) {
-    float sample = debiased_val / 512.0;
-    float val = update(sample);
-
-    output += alpha * (val - output);
-    float sample_out = output / alpha;  // makeup gain
-
-    // never wrap -- wrapping sounds horrible
-    sample_out = saturate(sample_out);
-
-    sample_out *= VOLUME * volumes[5] * ungain;
-    // Ideally this is never hit, but it would be really bad if it wrapped.
-    sample_out = clip(sample_out);
-  }
 }
-
-#endif
