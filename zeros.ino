@@ -10,8 +10,9 @@
 
 #define DURATION (3)
 
-#define GATE_SQUARED (0.01*0.01)
-#define RECENT_GATE_SQUARED (40*40*GATE_SQUARED)
+float gate_squared = 0.001*0.001;
+#define GATE_SCALAR (0.1)
+#define RECENT_GATE_SQUARED_MULTIPLIER (gate_squared * 40 * 40)
 //#define GRACE_TICKS (44100)
 
 #define HISTORY_LENGTH (8192)
@@ -204,7 +205,6 @@ struct int_from_file {
 struct int_from_file voice_iff;
 struct int_from_file volume_iff;
 struct int_from_file gate_iff;
-float gate_squared;
 
 #define V_SOPRANO_RECORDER 1
 #define V_BASS_FLUTE 2
@@ -550,6 +550,15 @@ float update_sample(float s) {
   set_hist(s);
   update_duration(s);
 
+  if (false && ticks % 10000 == 0) {
+    Serial.printf("!! %lu %f\n", ticks, s);
+  }
+
+  if (false && ticks % 1000 == 0) {
+    Serial.printf("%lu %f\n", ticks, s);
+  }
+
+
   // To avoid drift, recompute history every 10s.
   if ((++ticks) % 441000 == 0) {
     //printf("%lld volume: %.12f -- %.12f\n", ticks, hist_squared_sum(), octaver.hist_sq/HISTORY_LENGTH);
@@ -607,6 +616,7 @@ float update_sample(float s) {
 
       if (octaver.rough_input_period > range_high &&
           octaver.rough_input_period < range_low) {
+        //Serial.printf("period: %.2f\n", octaver.rough_input_period);
         init_oscs(adjustment);
       }
 
@@ -629,10 +639,8 @@ float update_sample(float s) {
     val += osc_next(&oscs[i]);
   }
 
-  if ((octaver.hist_sq/HISTORY_LENGTH <
-       GATE_SQUARED * gate_squared) &&
-      (octaver.recent_hist_sq / RECENT_LENGTH <
-       RECENT_GATE_SQUARED * gate_squared )) {
+  if ((octaver.hist_sq/HISTORY_LENGTH < gate_squared) &&
+      (octaver.recent_hist_sq / RECENT_LENGTH < gate_squared * RECENT_GATE_SQUARED_MULTIPLIER)) {
 //  if (grace_ticks == 0) {
         val = 0;
 //    } else {
@@ -643,11 +651,6 @@ float update_sample(float s) {
   }
 
   return val;
-}
-
-void init_gate() {
-  gate_squared = ((volumes[9-gate_iff.value] / volumes[5]) *
-                  (volumes[9-gate_iff.value] / volumes[5]));
 }
 
 float output = 0;
@@ -728,4 +731,12 @@ void setup() {
 }
 
 void loop() {
+  int potValue = analogRead(A5);
+  potValue = 512-max(0, potValue - 512);
+
+  gate_squared = (GATE_SCALAR * potValue / 512) * (GATE_SCALAR * potValue / 512);
+
+  // Print the value to the serial monitor
+  Serial.printf("Potentiometer value: %d, gs: %.5f\n", potValue, gate_squared);
+  delay(100);
 }
