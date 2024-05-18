@@ -731,12 +731,12 @@ void setup() {
 }
 
 void loop() {
-  int potValue = analogRead(A5);
-  potValue = 512-max(0, potValue - 512);
+  int a5Value = analogRead(A5);
+  a5Value = 512-max(0, a5Value - 512);
 
-  gate_squared = (GATE_SCALAR * potValue / 512) * (GATE_SCALAR * potValue / 512);
+  gate_squared = (GATE_SCALAR * a5Value / 512) * (GATE_SCALAR * a5Value / 512);
 
   // Print the value to the serial monitor
-  Serial.printf("Potentiometer value: %d, gs: %.5f\n", potValue, gate_squared);
-  delay(100);
+  Serial.printf("A5 value: %d, gs: %.5f\n", a5Value, gate_squared);
+  delay(1000);
 }
