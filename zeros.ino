@@ -1,4 +1,7 @@
 #include <Audio.h>
+#include <ADC.h>
+
+ADC adc;
 
 #define SAMPLE_RATE (44100)  // if you change this, change MIN/MAX_INPUT_PERIOD too
 
@@ -24,6 +27,8 @@ float gate_squared = 0.001 * 0.001;
 #define DURATION_MAX_VAL (0.04)
 
 /*******************************************************************/
+
+float wah = 0;
 
 float duration_hist[DURATION_BLOCKS];
 int duration_pos = 0;
@@ -165,6 +170,8 @@ float clip(float v) {
   return fmaxf(-1, fminf(1, v));
 }
 
+float varspeed = 1.0/16;
+
 void init_oscs(float adjustment) {
   unsigned long long cycles = octaver.cycles;
 
@@ -175,11 +182,16 @@ void init_oscs(float adjustment) {
 
   unsigned long long offset = (cycles % DURATION) * N_OSCS_PER_LAYER;
 
+  float volspeed = 1/(2*(10-min(9, max(octaver.recent_hist_sq, 0))));
+  //float volspeed = max(1/32, (min(9, max(octaver.recent_hist_sq, 0)) / .9 / 20));
+
+  float usespeed = (1/16.0 * (1-wah)) + (volspeed * wah);
+
   osc_init(&oscs[offset + 0],
            cycles,
            adjustment,
            /*vol=*/0.12,
-           /*speed=*/ 1.0/16,
+           /*speed=*/ usespeed,
            /*cycle=*/ 1.0/2,
            /*mod=*/4);
 }
@@ -328,6 +340,7 @@ float update_sample(float s) {
 }
 
 float output = 0;
+float alpha = ALPHA_LOW;
 
 class WhistleSynth : public AudioStream {
 private:
@@ -344,7 +357,6 @@ public:
       return;
     }
 
-    float alpha = ALPHA_LOW;
 
     for (int i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
       float sample = block->data[i] / 32767.5;
@@ -392,11 +404,46 @@ void setup() {
   for (int i = 0; i < DURATION_BLOCKS; i++) {
     duration_hist[i] = 0;
   }
+
+  adc.adc0->setAveraging(127);
 }
 
 void loop() {
   int a2Value = analogRead(A2); // 5 (black)
   gate_squared = (GATE_SCALAR * a2Value / 1024) * (GATE_SCALAR * a2Value / 1024);
 
-  delay(1000);
+  float a8Value = analogRead(A8) / 1024.0; // 4 (white)
+  if (a8Value < 0.1) {
+    a8Value = 0;
+  } else if (a8Value > 0.9) {
+    a8Value = 1;
+  }
+  wah = a8Value;
+  
+  //Serial.printf("%.3f\n", a8Value);
+  Serial.printf("%.5f\n", octaver.recent_hist_sq);
+/*
+  if (a8Value > 0.8) {
+    varspeed = 1/64.0;
+  } else if (a8Value > 0.7) {
+    varspeed = 1/32.0;
+  } else if (a8Value > 0.6) {
+    varspeed = 1/16.0;
+  } else if (a8Value > 0.5) {
+    varspeed = 1/8.0;
+  } else if (a8Value > 0.4) {
+    varspeed = 1/4.0;
+  } else if (a8Value > 0.3) {
+    varspeed = 1/2.0;
+  } else {
+    varspeed = 1/3.0;
+  }
+  */
+
+  //varspeed = 1/pow(2, max(a8Value,0.1) * 10);
+  
+
+  //Serial.printf("A0=%d, A1=%d, A3=%d, A8=%d\n", analogRead(A0), analogRead(A1), analogRead(A3), analogRead(A8));
+
+  delay(100);
 }
