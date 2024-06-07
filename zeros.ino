@@ -26,6 +26,8 @@ float gate_squared = 0.001 * 0.001;
 #define DURATION_BLOCKS (100)  // in DURATION_UNITS
 #define DURATION_MAX_VAL (0.04)
 
+#define USE_OSC2 (0)
+#define N_OSC2S (8)
 /*******************************************************************/
 
 float wah = 0;
@@ -138,6 +140,16 @@ struct Osc {
   float rough_input_period;
 };
 
+struct Osc2 {
+  float vol;
+  float pos;
+  float period;
+
+  float target_vol;
+  float target_period;
+};
+
+
 void osc_init(
   struct Osc* osc, long long cycles, float adjustment, float vol,
   float speed, float cycle, int mod) {
@@ -168,6 +180,30 @@ float sine_decimal(float v) {
 
 float clip(float v) {
   return fmaxf(-1, fminf(1, v));
+}
+
+Osc2 osc2s[N_OSC2S];
+
+#define OSC2_PERIOD_ALPHA (0.999)
+#define OSC2_VOL_ALPHA (0.999)
+
+void osc2_tick(struct Osc2* osc2) {
+  osc2->period = osc2->period * OSC2_PERIOD_ALPHA + (1-OSC2_PERIOD_ALPHA) * osc2->target_period;
+  osc2->vol = osc2->vol * OSC2_VOL_ALPHA + (1-OSC2_VOL_ALPHA) * osc2->target_vol;
+}
+
+void osc2_init(struct Osc2* osc2, float vol, float period) {
+  osc2->pos = 0;
+  osc2->period = osc2->target_period = period;
+  osc2->vol = osc2->target_vol = vol;
+}
+
+float osc2_next(struct Osc2* osc2) {
+  osc2->pos += 1.0/(osc2->period);
+  if (osc2->pos > 1) {
+    osc2->pos -= 1;
+  }
+  return sine_decimal(osc2->pos - 0.5) * osc2->vol;
 }
 
 float varspeed = 1.0/16;
@@ -303,7 +339,6 @@ float update_sample(float s) {
       octaver.rough_input_period = octaver.samples_since_last_crossing;
 
       if (octaver.rough_input_period > range_high && octaver.rough_input_period < range_low) {
-        //Serial.printf("period: %.2f\n", octaver.rough_input_period);
         init_oscs(adjustment);
       }
 
@@ -322,8 +357,18 @@ float update_sample(float s) {
   octaver.previous_sample = s;
 
   float val = 0;
-  for (int i = 0; i < N_OSCS; i++) {
-    val += osc_next(&oscs[i]);
+
+  if (USE_OSC2) {
+    for (int i = 0 ; i < N_OSC2S; i++) {
+      osc2s[i].target_period = octaver.rough_input_period * 4 / (i+1.0);
+      osc2s[i].target_vol = max(0, min(1, octaver.recent_hist_sq / 10.0 / N_OSC2S / (1+0.5*i)));
+      osc2_tick(&osc2s[i]);
+      val += osc2_next(&osc2s[i]);
+    }
+  } else {
+    for (int i = 0; i < N_OSCS; i++) {
+      val += osc_next(&oscs[i]);
+    }
   }
 
   if ((octaver.hist_sq / HISTORY_LENGTH < gate_squared) && (octaver.recent_hist_sq / RECENT_LENGTH < gate_squared * RECENT_GATE_SQUARED_MULTIPLIER)) {
@@ -361,12 +406,17 @@ public:
     for (int i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
       float sample = block->data[i] / 32767.5;
       float val = update_sample(sample);
+      float sample_out;
 
-      output += alpha * (val - output);
-      float sample_out = output / alpha;  // makeup gain
+      if (USE_OSC2) {
+        sample_out = val;
+      } else {
+        output += alpha * (val - output);
+        sample_out = output / alpha;  // makeup gain
 
-      // Ideally this is never hit, but it would be really bad if it wrapped.
-      sample_out = clip(sample_out / 3);
+        // Ideally this is never hit, but it would be really bad if it wrapped.
+        sample_out = clip(sample_out / 3);
+      }
 
       block->data[i] = sample_out * 32767;
     }
@@ -406,6 +456,10 @@ void setup() {
   }
 
   adc.adc0->setAveraging(127);
+
+  for (int i = 0; i < N_OSC2S; i++) {
+    osc2_init(&osc2s[i], 0, 30*16/(1+i));
+  }
 }
 
 void loop() {
@@ -420,8 +474,11 @@ void loop() {
   }
   wah = a8Value;
   
+  Serial.printf("%.5f %.5f %.5f, %.5f, %.5f\n", osc2s[0].period, osc2s[0].target_period, osc2s[0].pos, octaver.recent_hist_sq, wah);
+
+
   //Serial.printf("%.3f\n", a8Value);
-  Serial.printf("%.5f\n", octaver.recent_hist_sq);
+  //Serial.printf("%.5f\n", octaver.recent_hist_sq);
 /*
   if (a8Value > 0.8) {
     varspeed = 1/64.0;
