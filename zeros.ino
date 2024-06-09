@@ -27,7 +27,7 @@ float gate_squared = 0.001 * 0.001;
 #define DURATION_MAX_VAL (0.04)
 
 #define USE_OSC2 (0)
-#define N_OSC2S (8)
+#define N_OSC2S (15)
 /*******************************************************************/
 
 float wah = 0;
@@ -145,6 +145,10 @@ struct Osc2 {
   float pos;
   float period;
 
+  float output_volume_scalar;
+  float relative_period;
+  bool is_saw;
+
   float target_vol;
   float target_period;
 };
@@ -178,6 +182,10 @@ float sine_decimal(float v) {
   return sin((v + 0.5) * M_PI * 2);
 }
 
+float saw_decimal(float v) {
+  return v*2;
+}
+
 float clip(float v) {
   return fmaxf(-1, fminf(1, v));
 }
@@ -185,17 +193,21 @@ float clip(float v) {
 Osc2 osc2s[N_OSC2S];
 
 #define OSC2_PERIOD_ALPHA (0.999)
-#define OSC2_VOL_ALPHA (0.999)
+#define OSC2_VOL_ALPHA (0.99)
 
 void osc2_tick(struct Osc2* osc2) {
   osc2->period = osc2->period * OSC2_PERIOD_ALPHA + (1-OSC2_PERIOD_ALPHA) * osc2->target_period;
   osc2->vol = osc2->vol * OSC2_VOL_ALPHA + (1-OSC2_VOL_ALPHA) * osc2->target_vol;
 }
 
-void osc2_init(struct Osc2* osc2, float vol, float period) {
+void osc2_init(struct Osc2* osc2, float vol, float period, float output_volume_scalar, float relative_period, bool is_saw) {
   osc2->pos = 0;
   osc2->period = osc2->target_period = period;
   osc2->vol = osc2->target_vol = vol;
+
+  osc2->output_volume_scalar = output_volume_scalar;
+  osc2->relative_period = relative_period;
+  osc2->is_saw = is_saw;
 }
 
 float osc2_next(struct Osc2* osc2) {
@@ -203,7 +215,13 @@ float osc2_next(struct Osc2* osc2) {
   if (osc2->pos > 1) {
     osc2->pos -= 1;
   }
-  return sine_decimal(osc2->pos - 0.5) * osc2->vol;
+  float v;
+  if (osc2->is_saw) {
+    v = saw_decimal(osc2->pos - 0.5);    
+  } else {
+    v = sine_decimal(osc2->pos - 0.5);
+  }
+  return v * osc2->vol * osc2->output_volume_scalar;
 }
 
 float varspeed = 1.0/16;
@@ -360,8 +378,8 @@ float update_sample(float s) {
 
   if (USE_OSC2) {
     for (int i = 0 ; i < N_OSC2S; i++) {
-      osc2s[i].target_period = octaver.rough_input_period * 4 / (i+1.0);
-      osc2s[i].target_vol = max(0, min(1, octaver.recent_hist_sq / 10.0 / N_OSC2S / (1+0.5*i)));
+      osc2s[i].target_period = octaver.rough_input_period * osc2s[i].relative_period;
+      osc2s[i].target_vol = max(0, min(1, octaver.recent_hist_sq / 10.0));
       osc2_tick(&osc2s[i]);
       val += osc2_next(&osc2s[i]);
     }
@@ -436,6 +454,14 @@ AudioConnection patchCord4(whistleSynth, 0, i2s1, 1);
 
 AudioControlSGTL5000 sgtl5000_1;
 
+#define ALL_HARMONICS 0
+#define ODD_HARMONICS 1
+#define SUPERSAW 2
+#define SINE_SUPERSAW 3
+#define BASSY_SINES 4
+
+int voice = SINE_SUPERSAW;
+
 void setup() {
   // Audio connections require memory to work.  For more
   // detailed information, see the MemoryAndCpuUsage example
@@ -457,8 +483,59 @@ void setup() {
 
   adc.adc0->setAveraging(127);
 
+  float total_volume = 0;
   for (int i = 0; i < N_OSC2S; i++) {
-    osc2_init(&osc2s[i], 0, 30*16/(1+i));
+    float individual_volume;
+    float relative_period;
+    bool is_saw;
+
+    if (voice == ODD_HARMONICS) {
+      individual_volume = 1.0/(i+1);
+      relative_period = 4 / ((2*i)+1.0);
+      is_saw = false;
+    } else if (voice == SUPERSAW) {
+      individual_volume = 1;
+      relative_period = 4;
+      if (i > 0) {
+        float delta = (i-1) / 2 * 0.01;
+        if (i % 2 == 0) {
+          delta = -delta;
+        }
+        relative_period *= (1+delta);
+      }
+      is_saw = true;
+    } else if (voice == SINE_SUPERSAW) {
+      individual_volume = 1;
+      relative_period = 16;
+      is_saw = true;
+      if (i > 7) {
+        individual_volume = 0;
+      } else if (i > 0) {
+        float delta = (i-1) / 2 * 0.005;
+        if (i % 2 == 0) {
+          delta = -delta;
+        }
+        relative_period *= (1+delta);
+      } else {
+        is_saw = false;
+        relative_period = 16;
+        individual_volume = 30;    
+      }
+    } else if (voice == BASSY_SINES) {
+      individual_volume = 4294967296 >> (2*i);
+      relative_period = 16 / (i+1.0);
+      is_saw = false;
+    } else {
+      individual_volume = 1.0/(i+1);
+      relative_period = 4 / (i+1.0);
+      is_saw = false;
+    }
+
+    osc2_init(&osc2s[i], 0, 30, individual_volume, relative_period, is_saw);
+    total_volume += individual_volume;
+  }
+  for (int i = 0; i < N_OSC2S; i++) {
+    osc2s[i].output_volume_scalar = osc2s[i].output_volume_scalar / total_volume;
   }
 }
 
@@ -475,7 +552,7 @@ void loop() {
   }
   wah = a8Value;*/
   
-  Serial.printf("%.5f %.5f %.5f, %.5f, %.5f\n", osc2s[0].period, osc2s[0].target_period, osc2s[0].pos, octaver.recent_hist_sq, wah);
+  //Serial.printf("%.5f %.5f %.5f, %.5f, %.5f\n", osc2s[0].period, osc2s[0].target_period, osc2s[0].pos, octaver.recent_hist_sq, wah);
 
 
   //Serial.printf("%.3f\n", a8Value);
