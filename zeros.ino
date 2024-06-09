@@ -466,13 +466,14 @@ void loop() {
   int a2Value = analogRead(A2); // 5 (black)
   gate_squared = (GATE_SCALAR * a2Value / 1024) * (GATE_SCALAR * a2Value / 1024);
 
+  /*
   float a8Value = analogRead(A8) / 1024.0; // 4 (white)
   if (a8Value < 0.1) {
     a8Value = 0;
   } else if (a8Value > 0.9) {
     a8Value = 1;
   }
-  wah = a8Value;
+  wah = a8Value;*/
   
   Serial.printf("%.5f %.5f %.5f, %.5f, %.5f\n", osc2s[0].period, osc2s[0].target_period, osc2s[0].pos, octaver.recent_hist_sq, wah);
 
