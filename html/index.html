@@ -91,27 +91,43 @@ Works best in Firefox, but also works in Chrome and Edge.
 <button id=muteAll>mute</button> <button id=reset>reset</button>
 
 <p>
-Whistling Voices:
-  <button class=voice>w1</button>
-  <button class=voice>w2</button>
-  <button class=voice>w3</button>
-  <button class=voice>w4</button>
+Whistling:
+  <button class=voice>soprano rec</button>
+  <button class=voice>bass flute</button>
+  <button class=voice>flute</button>
+  <button class=voice>reed</button>
+  <button class=voice>dist</button>
+  <button class=voice>ebass</button>
 <br>
-Singing Voices (sing "doooo"):
-  <button class=voice>s1</button>
-  <button class=voice>s2</button>
+Singing:
+  <button class=voice>vocal 1</button>
+  <button class=voice>vocal 2</button>
+<br>
+Raw:
+  <button class=voice>raw</button>
+  <button class=voice>rawdist</button>
 
 <p>
 
   <table>
-  <tr><td><label for=volume>volume:</label><td><input type=text id=volume value=1>
-      <td>Output volume.  Higher numbers are louder.
+  <tr><td><label for=volume>volume:</label><td><input type=text id=volume value=0.2>
+      <td>Output volume.
   <tr><td><label for=alpha>alpha:</label><td><input type=text id=alpha value=0.1>
-      <td>Simple low-pass filter.  1 means no filter, lower numbers filter more high harmonics.
-  <tr><td><label for=rangeLow>rangeLow:</label><td><input type=text id=rangeLow value=500>
-    <td>Minimum frequency to detect (Hz).
-  <tr><td><label for=rangeHigh>rangeHigh:</label><td><input type=text id=rangeHigh value=3200>
-    <td>Maximum frequency to detect (Hz).
+      <td>Low-pass filter. Lower = more filtering.
+  <tr><td><label for=rangeLow>rangeLow:</label><td><input type=text id=rangeLow value=588>
+    <td>Min frequency to detect (Hz).
+  <tr><td><label for=rangeHigh>rangeHigh:</label><td><input type=text id=rangeHigh value=3150>
+    <td>Max frequency to detect (Hz).
+  <tr><td><label for=gain>gain:</label><td><input type=text id=gain value=0.25>
+    <td>Pre-filter gain (per voice).
+  <tr><td><label for=ungain>ungain:</label><td><input type=text id=ungain value=1>
+    <td>Post-saturation gain (per voice).
+  <tr><td><label for=gate>gate:</label><td><input type=text id=gate value=4>
+    <td>Noise gate 0-9 (0=tight, 9=open).
+  <tr><td><label for=useSaturation>saturation:</label><td><input type=checkbox id=useSaturation>
+    <td>Enable distortion saturation.
+  <tr><td><label for=isRaw>raw:</label><td><input type=checkbox id=isRaw>
+    <td>Pass input through directly (no pitch tracking).
 </table>
 
   <p>
@@ -144,11 +160,7 @@ function clear() {
   configChange();
 }
 reset.addEventListener("click", () => {
-  window.volume.value = 1;
-  window.alpha.value = 0.1;
-  window.rangeLow.value = 500;
-  window.rangeHigh.value = 3200;
-  clear();
+  setVoice("flute");
 });
 
 document.querySelectorAll(".voice").forEach((v) => {
@@ -157,173 +169,77 @@ document.querySelectorAll(".voice").forEach((v) => {
   });
 });
 
+var VOLUMES = [0.026, 0.039, 0.059, 0.088, 0.132, 0.198, 0.296, 0.444, 0.667, 1.000];
+function getGateSquared(gateValue) {
+  gateValue = Math.max(0, Math.min(9, Math.round(gateValue)));
+  var ratio = VOLUMES[9 - gateValue] / VOLUMES[5];
+  return ratio * ratio;
+}
+
 function setVoice(voice) {
   clear();
-  volume.value = 1;
+  // Defaults matching C version whistle range
+  volume.value = 0.2;
   alpha.value = 0.1;
-  rangeLow.value = 500;
-  if (voice == "w1") {
-    volume.value = 0.9;
+  rangeLow.value = 588;
+  rangeHigh.value = 3150;
+  window.gain.value = 0.25;
+  window.ungain.value = 1;
+  window.gate.value = 4;
+  window.useSaturation.checked = false;
+  window.isRaw.checked = false;
+
+  if (voice == "soprano rec") {
+    window.gain.value = 0.2;
+    addOscillator({fn:"nat", volume:0.5, speed:0.5, cycle:1, mod:2, duration:3, mute:false});
+  } else if (voice == "bass flute") {
+    window.gain.value = 0.3;
+    addOscillator({fn:"sin", volume:0.5, speed:0.25, cycle:0.25, mod:2, duration:3, mute:false});
+    addOscillator({fn:"sin", volume:0.2, speed:0.5, cycle:0.5, mod:2, duration:3, mute:false});
+    addOscillator({fn:"sin", volume:0.2, speed:0.75, cycle:0.75, mod:2, duration:3, mute:false});
+  } else if (voice == "flute") {
+    window.gain.value = 0.3;
+    addOscillator({fn:"sin", volume:0.5, speed:0.5, cycle:0.5, mod:2, duration:3, mute:false});
+    addOscillator({fn:"sin", volume:0.15, speed:0.53, cycle:1.0, mod:2, duration:3, mute:false});
+    addOscillator({fn:"sin", volume:0.15, speed:0.48, cycle:1.0, mod:2, duration:3, mute:false});
+    addOscillator({fn:"sin", volume:0.15, speed:0.51, cycle:1.5, mod:2, duration:3, mute:false});
+    addOscillator({fn:"sin", volume:0.15, speed:0.49, cycle:1.5, mod:2, duration:3, mute:false});
+  } else if (voice == "reed") {
+    window.gain.value = 0.3;
+    addOscillator({fn:"nat", volume:0.5, speed:0.25, cycle:0.25, mod:2, duration:3, mute:false});
+  } else if (voice == "dist") {
+    window.gain.value = 0.125;
+    window.useSaturation.checked = true;
+    addOscillator({fn:"sqr", volume:0.5, speed:0.5, cycle:1, mod:2, duration:3, mute:false});
+  } else if (voice == "ebass") {
+    window.gain.value = 0.25;
     alpha.value = 0.01;
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 0.25,
-      "cycle": 0.25,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 0.125,
-      "cycle": 0.125,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
-  } else if (voice == "w2") {
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 2,
-      "cycle": 2,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-      });
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 3,
-      "cycle": 2,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 4,
-      "cycle": 2,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 5,
-      "cycle": 2,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 6,
-      "cycle": 2,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
-  } else if (voice == "w3") {
-    volume.value = 0.6;
-    alpha.value = 0.01;
-    addOscillator({
-      "fn": "sqr",
-      "volume": 1,
-      "speed": 0.5,
-      "cycle": 0.5,
-      "mod": 2,
-      "duration": 3,
-        "mute": false,
-    });
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 0.25,
-      "cycle": 0.25,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 0.125,
-      "cycle": 0.125,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
-  } else if (voice == "w4") {
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 0.5,
-      "cycle": 0.5,
-      "mod": 4,
-      "duration": 3,
-      "mute": false,
-    });
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 0.5,
-      "cycle": 1,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 0.5,
-      "cycle": 0.25,
-      "mod": 3,
-      "duration": 3,
-      "mute": false,
-    });
-  } else if (voice == "s1") {
-    volume.value = 0.6;
-    alpha.value = 0.01;
-    rangeLow.value = 80;
-    
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 0.5,
-      "cycle": 1,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
-  } else if (voice == "s2") {
-    volume.value = 0.6;
-    alpha.value = 0.01;
-    rangeLow.value = 80;
-    
-    addOscillator({
-      "fn": "sqr",
-      "volume": 1,
-      "speed": 0.5,
-      "cycle": 0.5,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
-    addOscillator({
-      "fn": "sin",
-      "volume": 1,
-      "speed": 0.25,
-      "cycle": 1,
-      "mod": 2,
-      "duration": 3,
-      "mute": false,
-    });
+    addOscillator({fn:"sin", volume:0.2, speed:1/32, cycle:0.5, mod:2, duration:3, mute:false});
+    addOscillator({fn:"sin", volume:0.24, speed:2/32, cycle:0.125, mod:2, duration:3, mute:false});
+    addOscillator({fn:"sin", volume:0.14, speed:3.11/32, cycle:0.1875, mod:2, duration:3, mute:false});
+    addOscillator({fn:"sin", volume:0.14, speed:4.3/32, cycle:0.25, mod:2, duration:3, mute:false});
+    addOscillator({fn:"sin", volume:0.06, speed:5.7/32, cycle:0.3125, mod:2, duration:3, mute:false});
+    addOscillator({fn:"sin", volume:0.06, speed:6.1/32, cycle:0.375, mod:2, duration:3, mute:false});
+  } else if (voice == "vocal 1") {
+    window.gain.value = 0.09;
+    rangeLow.value = 147;
+    rangeHigh.value = 882;
+    addOscillator({fn:"nat", volume:0.4, speed:0.5, cycle:1, mod:2, duration:3, mute:false});
+  } else if (voice == "vocal 2") {
+    window.gain.value = 0.25;
+    window.ungain.value = 0.5;
+    rangeLow.value = 147;
+    rangeHigh.value = 882;
+    addOscillator({fn:"nat", volume:0.4, speed:0.5, cycle:0.5, mod:2, duration:3, mute:false});
+  } else if (voice == "raw") {
+    window.gain.value = 0.125;
+    window.ungain.value = 0.7;
+    window.isRaw.checked = true;
+  } else if (voice == "rawdist") {
+    window.gain.value = 0.5;
+    window.ungain.value = 0.25;
+    window.isRaw.checked = true;
+    window.useSaturation.checked = true;
   }
 }
 
@@ -363,19 +279,26 @@ function loadConfig() {
     hash = hash.substring(1);
     if (hash) {
       config = JSON.parse(decodeURIComponent(hash));
-      
+
       if (config.alpha) alpha.value = config.alpha;
       if (config.volume) volume.value = config.volume;
       if (config.rangeLow) rangeLow.value = config.rangeLow;
       if (config.rangeHigh) rangeHigh.value = config.rangeHigh;
-      
-      for (let i = 0; i < config.oscConfigs.length; i++) {
-        addOscillator(config.oscConfigs[i]);
+      if (config.gain !== undefined) window.gain.value = config.gain;
+      if (config.ungain !== undefined) window.ungain.value = config.ungain;
+      if (config.gate !== undefined) window.gate.value = config.gate;
+      if (config.useSaturation) window.useSaturation.checked = true;
+      if (config.raw) window.isRaw.checked = true;
+
+      if (config.oscConfigs) {
+        for (let i = 0; i < config.oscConfigs.length; i++) {
+          addOscillator(config.oscConfigs[i]);
+        }
       }
       return;
     }
   }
-  setVoice("w1");
+  setVoice("flute");
 }
 window.onload = () => {
   try {
@@ -390,6 +313,12 @@ function getConfig() {
   return {
     alpha: getAlpha(),
     volume: parseFloat(volume.value),
+    gain: parseFloat(window.gain.value),
+    ungain: parseFloat(window.ungain.value),
+    gate: parseInt(window.gate.value, 10),
+    gate_squared: getGateSquared(parseInt(window.gate.value, 10)),
+    useSaturation: window.useSaturation.checked,
+    raw: window.isRaw.checked,
     rangeLow: parseFloat(rangeLow.value),
     rangeHigh: parseFloat(rangeHigh.value),
     oscConfigs: getOscConfigs(),
@@ -457,7 +386,7 @@ function addSimpleOscillator(scale) {
     cycle: 1,
     mod: 2,
     duration: 3,
-    fn: "sin",
+    fn: "nat",
     mute: false,
   });
 }
@@ -474,8 +403,9 @@ function addOscillator(oscConfig) {
     const osc = e.target.parentElement;
     const index = [...osc.parentElement.children].indexOf(osc);
     fnToggle.innerText = {
+      "nat": "sin",
       "sin": "sqr",
-      "sqr": "sin",
+      "sqr": "nat",
     }[fnToggle.innerText];
     configChange();
   });
