@@ -1,133 +1,52 @@
-function sine_decimal(v) {
-  return Math.sin((v + 0.5) * Math.PI * 2);
-}
-
 function clip(v) {
   return Math.max(-1, Math.min(1, v));
 }
 
-function atan_decimal(v) {
-  return Math.atan(v) / (Math.PI / 2);
-}
-
-function saturate(v, useSaturation) {
-  if (!useSaturation) {
-    return clip(v);
+function polyblep(phase, dt) {
+  if (phase < dt) {
+    var t = phase / dt;
+    return t + t - t * t - 1;
+  } else if (phase > 1 - dt) {
+    var t = (phase - 1) / dt;
+    return t * t + t + t + 1;
   }
-  var c = sine_decimal(atan_decimal(v * 4));
-  v += c;
-  v += c * c;
-  v += c * c * c * c;
-  v += c * c * c * c * c * c * c;
-  v -= 0.5;
-  v *= 0.55;
-  return atan_decimal(v / 4);
+  return 0;
 }
 
 var HISTORY_LENGTH = 8192;
 var RECENT_LENGTH = 256;
 var GATE_SQUARED = 0.01 * 0.01;
 var RECENT_GATE_SQUARED = 40 * 40 * GATE_SQUARED;
+var ONSET_RAMP_SAMPLES = 132; // ~3ms at 44100Hz, just enough to prevent clicks
 
-class Osc {
-  constructor(adjustment, oscConfig, cycles, rough_input_period) {
-    this.amp = 0;
-    this.pos = -adjustment;
-    this.speed = oscConfig.speed;
-    this.mode = oscConfig.fn;  // 'nat', 'sqr', 'sin'
-    this.vol = oscConfig.volume;
-    this.mute = oscConfig.mute;
-    this.total_amplitude = 0;
-    this.samples = 0;
-    this.rough_input_period = rough_input_period;
-    this.duration = oscConfig.duration;
-
-    if (oscConfig.mod === 0) {
-      this.polarity = 1;
-    } else {
-      this.polarity = (Math.trunc(cycles * oscConfig.cycle)) % oscConfig.mod ? 1 : -1;
-    }
-
-    this.lfo_pos = 0;
-    this.lfo_rate = oscConfig.lfo_rate || 0;
-    this.lfo_amplitude = oscConfig.lfo_amplitude || 0;
-    this.lfo_is_volume = oscConfig.lfo_is_volume !== undefined ? oscConfig.lfo_is_volume : true;
-  }
-
-  next(octaver) {
-    this.samples++;
-
-    if (this.mute) {
-      this.amp = 0;
-      return 0;
-    }
-
-    if (this.duration > 0) {
-      this.amp += 0.01 * (1 - this.amp);
-    } else {
-      this.amp *= 0.95;
-    }
-
-    var posFloor = Math.floor(this.pos);
-    var valA = octaver.getHist(posFloor);
-    var valB = octaver.getHist(posFloor + 1);
-    var amtA = this.pos - posFloor;
-    var amtB = 1 - amtA;
-
-    var val = valA * amtA + valB * amtB;
-    this.total_amplitude += Math.abs(val);
-
-    if (this.mode !== 'nat') {
-      if (this.mode === 'sqr') {
-        val = val > 0 ? 1 : -1;
-      } else if (this.mode === 'sin') {
-        val = sine_decimal(this.pos / this.rough_input_period);
-      }
-      val *= (this.total_amplitude / this.samples);
-    }
-
-    this.pos += this.speed;
-    val = this.amp * val * this.polarity * this.vol;
-
-    if (this.lfo_amplitude > 0) {
-      var lfo_amount = (sine_decimal(this.lfo_pos) + 1) * this.lfo_amplitude;
-      if (this.lfo_is_volume) {
-        val = val * lfo_amount + val * (1 - this.lfo_amplitude);
-      } else {
-        this.pos += lfo_amount;
-      }
-      this.lfo_pos += (1 / this.lfo_rate);
-    }
-
-    return val;
-  }
-
-  markCycle() {
-    this.duration--;
-  }
-
-  expired() {
-    return this.duration < 1 && this.amp < 0.001;
-  }
-}
-
-class Octaver {
+class SupersawSynth {
   constructor(config) {
     this.config = config;
-    this.oscs = [];
-    this.cycles = 0;
 
+    // History buffer for gate and pitch detection
     this.hist = new Float32Array(HISTORY_LENGTH);
     this.hist_pos = 0;
     this.hist_sq = 0;
     this.recent_hist_sq = 0;
 
+    // Zero-crossing pitch detection
     this.samples_since_last_crossing = 0;
-    this.samples_since_attack_began = 0;
     this.positive = true;
     this.previous_sample = 0;
-    this.rough_input_period = 40;
+    this.detected_period = 0;
+    this.smoothed_period = 0;
     this.ticks = 0;
+
+    // Amplitude envelope
+    this.smoothed_amp = 0;
+    this.onset_ramp = 0; // counts up from 0 to ONSET_RAMP_SAMPLES on gate open
+
+    // Phase accumulators for 7 saw voices
+    this.phases = new Float64Array(7);
+
+    // Gate state
+    this.gated = true;
+    this.was_gated = true;
   }
 
   setHist(s) {
@@ -140,10 +59,6 @@ class Octaver {
 
     this.hist[this.hist_pos] = s;
     this.hist_pos = (this.hist_pos + 1) % HISTORY_LENGTH;
-  }
-
-  getHist(pos) {
-    return this.hist[(HISTORY_LENGTH + this.hist_pos - pos) % HISTORY_LENGTH];
   }
 
   histSquaredSum() {
@@ -163,10 +78,6 @@ class Octaver {
   }
 
   update(s) {
-    if (this.config.raw) {
-      return s * this.config.gain;
-    }
-
     this.setHist(s);
 
     this.ticks++;
@@ -177,8 +88,8 @@ class Octaver {
       this.recent_hist_sq = this.recentHistSquaredSum();
     }
 
+    // Zero-crossing pitch detection
     this.samples_since_last_crossing++;
-    this.samples_since_attack_began++;
 
     if (this.positive) {
       if (s < 0) {
@@ -189,22 +100,14 @@ class Octaver {
           adjustment = 0;
         }
         this.samples_since_last_crossing -= adjustment;
-        this.rough_input_period = this.samples_since_last_crossing;
+        var period = this.samples_since_last_crossing;
 
-        if (this.rough_input_period > this.config.rangeHigh &&
-            this.rough_input_period < this.config.rangeLow) {
-          for (var i = 0; i < this.config.oscConfigs.length; i++) {
-            this.oscs.push(new Osc(
-              adjustment, this.config.oscConfigs[i],
-              this.cycles, this.rough_input_period));
-          }
-        }
-        this.cycles++;
-
-        for (var i = this.oscs.length - 1; i >= 0; i--) {
-          this.oscs[i].markCycle();
-          if (this.oscs[i].expired()) {
-            this.oscs.splice(i, 1);
+        // Only accept periods in the whistle range
+        if (period > this.config.rangeHigh &&
+            period < this.config.rangeLow) {
+          this.detected_period = period;
+          if (this.smoothed_period === 0) {
+            this.smoothed_period = period;
           }
         }
 
@@ -216,68 +119,137 @@ class Octaver {
         this.positive = true;
       }
     }
-
     this.previous_sample = s;
 
-    var val = 0;
-    for (var i = 0; i < this.oscs.length; i++) {
-      val += this.oscs[i].next(this);
+    // Smooth pitch tracking
+    if (this.smoothed_period > 0 && this.detected_period > 0) {
+      this.smoothed_period +=
+        this.config.pitch_smooth * (this.detected_period - this.smoothed_period);
     }
 
     // Noise gate
     var gate_sq = this.config.gate_squared || 1;
-    if ((this.hist_sq / HISTORY_LENGTH < GATE_SQUARED * gate_sq) &&
-        (this.recent_hist_sq / RECENT_LENGTH < RECENT_GATE_SQUARED * gate_sq)) {
-      val = 0;
+    this.was_gated = this.gated;
+    this.gated =
+      (this.hist_sq / HISTORY_LENGTH < GATE_SQUARED * gate_sq) &&
+      (this.recent_hist_sq / RECENT_LENGTH < RECENT_GATE_SQUARED * gate_sq);
+
+    // Amplitude tracking
+    var input_rms = Math.sqrt(
+      Math.max(0, this.recent_hist_sq) / RECENT_LENGTH);
+    var target_amp = this.gated ? 0 : input_rms;
+
+    if (this.was_gated && !this.gated) {
+      // Gate just opened: snap amplitude to input level, start anti-click ramp
+      this.smoothed_amp = input_rms;
+      this.onset_ramp = 0;
+    } else if (target_amp > this.smoothed_amp) {
+      this.smoothed_amp +=
+        this.config.attack_coeff * (target_amp - this.smoothed_amp);
+    } else {
+      this.smoothed_amp +=
+        this.config.release_coeff * (target_amp - this.smoothed_amp);
     }
 
-    return val * this.config.gain;
+    // Anti-click ramp on note onset
+    var onset_scale = 1;
+    if (this.onset_ramp < ONSET_RAMP_SAMPLES) {
+      onset_scale = this.onset_ramp / ONSET_RAMP_SAMPLES;
+      this.onset_ramp++;
+    }
+
+    // If we don't have a valid pitch yet, output nothing
+    if (this.smoothed_period <= 0) {
+      return 0;
+    }
+
+    // Supersaw synthesis
+    var octave_divisor = Math.pow(2, this.config.octave_shift);
+    var center_period = this.smoothed_period * octave_divisor;
+    var detune_cents = this.config.detune_cents;
+    var num_voices = this.config.num_voices;
+    var half = (num_voices - 1) / 2;
+
+    // Voice weights: center is loudest, outer voices quieter
+    var WEIGHTS = [0.3, 0.5, 0.7, 1.0, 0.7, 0.5, 0.3];
+    // Index into weights centered at index 3
+    var weight_offset = 3 - half;
+
+    var val = 0;
+    var weight_sum = 0;
+
+    for (var i = 0; i < num_voices; i++) {
+      var offset = i - half; // e.g. -3, -2, -1, 0, +1, +2, +3 for 7 voices
+      var voice_period = center_period;
+      if (half > 0) {
+        voice_period = center_period / Math.pow(2, offset * detune_cents / (half * 1200));
+      }
+      var dt = 1 / voice_period; // phase increment per sample
+
+      this.phases[i] += dt;
+      this.phases[i] -= Math.floor(this.phases[i]);
+
+      var saw = 2 * this.phases[i] - 1 - polyblep(this.phases[i], dt);
+      var w = WEIGHTS[i + weight_offset];
+      val += saw * w;
+      weight_sum += w;
+    }
+
+    // Normalize
+    if (weight_sum > 0) {
+      val /= weight_sum;
+    }
+
+    // Scale by amplitude envelope and onset ramp
+    val *= this.smoothed_amp * onset_scale;
+
+    return val;
   }
 }
 
 class Synth extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.output = 0;
     this.config = null;
-    this.octaver = null;
+    this.synth = null;
     this.port.onmessage = (event) => {
-      this.config = event.data;
-      this.config.rangeLow = sampleRate / this.config.rangeLow;
-      this.config.rangeHigh = sampleRate / this.config.rangeHigh;
-      this.config.gain = this.config.gain || 0.25;
-      this.config.ungain = this.config.ungain || 1;
-      this.config.useSaturation = !!this.config.useSaturation;
-      this.config.raw = !!this.config.raw;
-      this.octaver = new Octaver(this.config);
+      var data = event.data;
+
+      // Convert frequency range to period range (in samples)
+      data.rangeLow = sampleRate / data.rangeLow;
+      data.rangeHigh = sampleRate / data.rangeHigh;
+
+      // Convert attack/release from ms to per-sample coefficients
+      var attack_samples = (data.attack_ms / 1000) * sampleRate;
+      var release_samples = (data.release_ms / 1000) * sampleRate;
+      data.attack_coeff = attack_samples > 0 ?
+        1 - Math.exp(-1 / attack_samples) : 1;
+      data.release_coeff = release_samples > 0 ?
+        1 - Math.exp(-1 / release_samples) : 1;
+
+      if (this.synth) {
+        // Update config without resetting state
+        this.synth.config = data;
+      } else {
+        this.synth = new SupersawSynth(data);
+      }
+      this.config = data;
     };
     this.port.postMessage("ready");
   }
 
-  next(s) {
-    if (!this.config || !this.octaver) {
-      return 0;
-    }
-
-    var val = this.octaver.update(s);
-    this.output += this.config.alpha * (val - this.output);
-    var sample_out = this.output / this.config.alpha;
-
-    sample_out = saturate(sample_out, this.config.useSaturation);
-    sample_out *= this.config.volume * this.config.ungain;
-    sample_out = clip(sample_out);
-
-    return sample_out;
-  }
-
   process(inputs, outputs, parameters) {
     if (!inputs || !inputs[0] || !inputs[0][0]) return true;
+    if (!this.config || !this.synth) return true;
 
     for (var i = 0; i < outputs[0][0].length; i++) {
-      var out = this.next(inputs[0][0][i]);
+      var val = this.synth.update(inputs[0][0][i]);
+      val *= this.config.volume;
+      val = clip(val);
+
       for (var j = 0; j < outputs.length; j++) {
         for (var k = 0; k < outputs[0].length; k++) {
-          outputs[j][k][i] = out;
+          outputs[j][k][i] = val;
         }
       }
     }

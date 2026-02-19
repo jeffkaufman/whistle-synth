@@ -4,26 +4,12 @@
 <script async src="https://www.googletagmanager.com/gtag/js?id=UA-27645543-1"></script><script>window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'UA-27645543-1');</script></head>
 
 <style>
-  .osc {
-    margin-top: 0.5em;
-    border: 1px solid black;
-    border-radius: 0.25em;
-  }
-  .osc > * {
-    margin: 0.5em;
-  }
   #instructions {
     border: 1px solid black;
     border-radius: 0.25em;
     margin: 1em;
     padding-left: 1em;
-    max-with: 40em;
-  }
-  input[type=text] {
-    width: 4em;
-  }
-  button {
-    margin-top: 0.1em;
+    max-width: 40em;
   }
   .error {
     max-width: 40em;
@@ -31,11 +17,23 @@
     border-radius: 0.25em;
     margin: 1em;
     padding: 1em;
-    max-with: 40em;
     display: none;
   }
   #controls {
     display: none;
+  }
+  table td {
+    padding: 0.2em 0.5em;
+  }
+  input[type=text] {
+    width: 4em;
+  }
+  input[type=range] {
+    width: 10em;
+    vertical-align: middle;
+  }
+  button {
+    margin-top: 0.1em;
   }
 </style>
 
@@ -76,7 +74,7 @@
 <h2>Instructions</h2>
 <p>
 
-This is a synthesizer that you control by whistling (or singing).  To begin, put on headphones, click "start", and whistle.
+This is a synthesizer that you control by whistling.  It produces a supersaw lead sound.  To begin, put on headphones, click "start", and whistle.
 
   <p>
 
@@ -85,57 +83,48 @@ Works best in Firefox, but also works in Chrome and Edge.
  <p>
 
 <button id=startButton>start</button>
-                                                     
+
 </div>
 <div id=controls>
 <button id=muteAll>mute</button> <button id=reset>reset</button>
 
 <p>
-Whistling:
-  <button class=voice>soprano rec</button>
-  <button class=voice>bass flute</button>
-  <button class=voice>flute</button>
-  <button class=voice>reed</button>
-  <button class=voice>dist</button>
-  <button class=voice>ebass</button>
-<br>
-Singing:
-  <button class=voice>vocal 1</button>
-  <button class=voice>vocal 2</button>
-<br>
-Raw:
-  <button class=voice>raw</button>
-  <button class=voice>rawdist</button>
-
-<p>
 
   <table>
-  <tr><td><label for=volume>volume:</label><td><input type=text id=volume value=0.2>
-      <td>Output volume.
-  <tr><td><label for=alpha>alpha:</label><td><input type=text id=alpha value=0.1>
-      <td>Low-pass filter. Lower = more filtering.
-  <tr><td><label for=rangeLow>rangeLow:</label><td><input type=text id=rangeLow value=588>
-    <td>Min frequency to detect (Hz).
-  <tr><td><label for=rangeHigh>rangeHigh:</label><td><input type=text id=rangeHigh value=3150>
-    <td>Max frequency to detect (Hz).
-  <tr><td><label for=gain>gain:</label><td><input type=text id=gain value=0.25>
-    <td>Pre-filter gain (per voice).
-  <tr><td><label for=ungain>ungain:</label><td><input type=text id=ungain value=1>
-    <td>Post-saturation gain (per voice).
-  <tr><td><label for=gate>gate:</label><td><input type=text id=gate value=4>
-    <td>Noise gate 0-9 (0=tight, 9=open).
-  <tr><td><label for=useSaturation>saturation:</label><td><input type=checkbox id=useSaturation>
-    <td>Enable distortion saturation.
-  <tr><td><label for=isRaw>raw:</label><td><input type=checkbox id=isRaw>
-    <td>Pass input through directly (no pitch tracking).
+  <tr><td><label for=volume>volume:</label>
+      <td><input type=range id=volume min=0 max=1 step=0.01 value=0.3>
+          <span id=volumeVal>0.3</span>
+      <td>Output level.
+  <tr><td><label for=octaveShift>octave shift:</label>
+      <td><input type=range id=octaveShift min=1 max=3 step=1 value=2>
+          <span id=octaveShiftVal>2</span>
+      <td>Octaves below whistle (1-3).
+  <tr><td><label for=detune>detune:</label>
+      <td><input type=range id=detune min=0 max=100 step=1 value=40>
+          <span id=detuneVal>40</span> cents
+      <td>Detuning spread.
+  <tr><td><label for=voices>voices:</label>
+      <td><input type=range id=voices min=1 max=7 step=2 value=7>
+          <span id=voicesVal>7</span>
+      <td>Number of saw layers (1-7).
+  <tr><td><label for=attackMs>attack:</label>
+      <td><input type=range id=attackMs min=1 max=200 step=1 value=30>
+          <span id=attackMsVal>30</span> ms
+      <td>Attack time.
+  <tr><td><label for=releaseMs>release:</label>
+      <td><input type=range id=releaseMs min=10 max=500 step=1 value=100>
+          <span id=releaseMsVal>100</span> ms
+      <td>Release time.
+  <tr><td><label for=pitchSmooth>pitch smooth:</label>
+      <td><input type=range id=pitchSmooth min=0.01 max=1 step=0.01 value=0.1>
+          <span id=pitchSmoothVal>0.1</span>
+      <td>Pitch tracking smoothness.
+  <tr><td><label for=gate>gate:</label>
+      <td><input type=range id=gate min=0 max=9 step=1 value=4>
+          <span id=gateVal>4</span>
+      <td>Noise gate (0=tight, 9=open).
 </table>
 
-  <p>
-
-
-  <button id=addOsc>add oscillator</button>
-
-<div id=oscs></div>
 </div>
 
 <div style=text-align:right>
@@ -153,94 +142,11 @@ if (navigator.userAgent.includes("Android") ||
   window.isMobile.style.display = "block";
 }
 
-function clear() {
-  while (oscs.children.length) {
-    oscs.removeChild(oscs.children[0]);
-  }
-  configChange();
-}
-reset.addEventListener("click", () => {
-  setVoice("flute");
-});
-
-document.querySelectorAll(".voice").forEach((v) => {
-  v.addEventListener("click", (e) => {
-    setVoice(e.target.innerText);
-  });
-});
-
 var VOLUMES = [0.026, 0.039, 0.059, 0.088, 0.132, 0.198, 0.296, 0.444, 0.667, 1.000];
 function getGateSquared(gateValue) {
   gateValue = Math.max(0, Math.min(9, Math.round(gateValue)));
   var ratio = VOLUMES[9 - gateValue] / VOLUMES[5];
   return ratio * ratio;
-}
-
-function setVoice(voice) {
-  clear();
-  // Defaults matching C version whistle range
-  volume.value = 0.2;
-  alpha.value = 0.1;
-  rangeLow.value = 588;
-  rangeHigh.value = 3150;
-  window.gain.value = 0.25;
-  window.ungain.value = 1;
-  window.gate.value = 4;
-  window.useSaturation.checked = false;
-  window.isRaw.checked = false;
-
-  if (voice == "soprano rec") {
-    window.gain.value = 0.2;
-    addOscillator({fn:"nat", volume:0.5, speed:0.5, cycle:1, mod:2, duration:3, mute:false});
-  } else if (voice == "bass flute") {
-    window.gain.value = 0.3;
-    addOscillator({fn:"sin", volume:0.5, speed:0.25, cycle:0.25, mod:2, duration:3, mute:false});
-    addOscillator({fn:"sin", volume:0.2, speed:0.5, cycle:0.5, mod:2, duration:3, mute:false});
-    addOscillator({fn:"sin", volume:0.2, speed:0.75, cycle:0.75, mod:2, duration:3, mute:false});
-  } else if (voice == "flute") {
-    window.gain.value = 0.3;
-    addOscillator({fn:"sin", volume:0.5, speed:0.5, cycle:0.5, mod:2, duration:3, mute:false});
-    addOscillator({fn:"sin", volume:0.15, speed:0.53, cycle:1.0, mod:2, duration:3, mute:false});
-    addOscillator({fn:"sin", volume:0.15, speed:0.48, cycle:1.0, mod:2, duration:3, mute:false});
-    addOscillator({fn:"sin", volume:0.15, speed:0.51, cycle:1.5, mod:2, duration:3, mute:false});
-    addOscillator({fn:"sin", volume:0.15, speed:0.49, cycle:1.5, mod:2, duration:3, mute:false});
-  } else if (voice == "reed") {
-    window.gain.value = 0.3;
-    addOscillator({fn:"nat", volume:0.5, speed:0.25, cycle:0.25, mod:2, duration:3, mute:false});
-  } else if (voice == "dist") {
-    window.gain.value = 0.125;
-    window.useSaturation.checked = true;
-    addOscillator({fn:"sqr", volume:0.5, speed:0.5, cycle:1, mod:2, duration:3, mute:false});
-  } else if (voice == "ebass") {
-    window.gain.value = 0.25;
-    alpha.value = 0.01;
-    addOscillator({fn:"sin", volume:0.2, speed:1/32, cycle:0.5, mod:2, duration:3, mute:false});
-    addOscillator({fn:"sin", volume:0.24, speed:2/32, cycle:0.125, mod:2, duration:3, mute:false});
-    addOscillator({fn:"sin", volume:0.14, speed:3.11/32, cycle:0.1875, mod:2, duration:3, mute:false});
-    addOscillator({fn:"sin", volume:0.14, speed:4.3/32, cycle:0.25, mod:2, duration:3, mute:false});
-    addOscillator({fn:"sin", volume:0.06, speed:5.7/32, cycle:0.3125, mod:2, duration:3, mute:false});
-    addOscillator({fn:"sin", volume:0.06, speed:6.1/32, cycle:0.375, mod:2, duration:3, mute:false});
-  } else if (voice == "vocal 1") {
-    window.gain.value = 0.09;
-    rangeLow.value = 147;
-    rangeHigh.value = 882;
-    addOscillator({fn:"nat", volume:0.4, speed:0.5, cycle:1, mod:2, duration:3, mute:false});
-  } else if (voice == "vocal 2") {
-    window.gain.value = 0.25;
-    window.ungain.value = 0.5;
-    rangeLow.value = 147;
-    rangeHigh.value = 882;
-    addOscillator({fn:"nat", volume:0.4, speed:0.5, cycle:0.5, mod:2, duration:3, mute:false});
-  } else if (voice == "raw") {
-    window.gain.value = 0.125;
-    window.ungain.value = 0.7;
-    window.isRaw.checked = true;
-  } else if (voice == "rawdist") {
-    window.gain.value = 0.5;
-    window.ungain.value = 0.25;
-    window.isRaw.checked = true;
-    window.useSaturation.checked = true;
-  }
 }
 
 var playerNode;
@@ -256,7 +162,7 @@ async function start() {
       latency: 0,
       noiseSuppresion: false,
       autoGainControl: false,
-    },    
+    },
   });
   micNode = new MediaStreamAudioSourceNode(audioCtx, { mediaStream: micStream });
   await audioCtx.audioWorklet.addModule('combined.js?cb=' + Math.random());
@@ -266,88 +172,50 @@ async function start() {
   playerNode.port.onmessage = configChange;
 }
 
-function getAlpha() {
-  if (parseFloat(alpha.value) > 1 || parseFloat(alpha.value) < 0.0000001) {
-    alpha.value = 1;
-  }
-  return parseFloat(alpha.value);
-}
-
-function loadConfig() {
-  let hash = window.location.hash;
-  if (hash) {
-    hash = hash.substring(1);
-    if (hash) {
-      config = JSON.parse(decodeURIComponent(hash));
-
-      if (config.alpha) alpha.value = config.alpha;
-      if (config.volume) volume.value = config.volume;
-      if (config.rangeLow) rangeLow.value = config.rangeLow;
-      if (config.rangeHigh) rangeHigh.value = config.rangeHigh;
-      if (config.gain !== undefined) window.gain.value = config.gain;
-      if (config.ungain !== undefined) window.ungain.value = config.ungain;
-      if (config.gate !== undefined) window.gate.value = config.gate;
-      if (config.useSaturation) window.useSaturation.checked = true;
-      if (config.raw) window.isRaw.checked = true;
-
-      if (config.oscConfigs) {
-        for (let i = 0; i < config.oscConfigs.length; i++) {
-          addOscillator(config.oscConfigs[i]);
-        }
-      }
-      return;
-    }
-  }
-  setVoice("flute");
-}
-window.onload = () => {
-  try {
-    loadConfig();
-  } catch (e) {
-    window.location.hash = "";
-    window.location.reload();
-  }
-}
-
 function getConfig() {
+  var gateValue = parseInt(gate.value, 10);
   return {
-    alpha: getAlpha(),
     volume: parseFloat(volume.value),
-    gain: parseFloat(window.gain.value),
-    ungain: parseFloat(window.ungain.value),
-    gate: parseInt(window.gate.value, 10),
-    gate_squared: getGateSquared(parseInt(window.gate.value, 10)),
-    useSaturation: window.useSaturation.checked,
-    raw: window.isRaw.checked,
-    rangeLow: parseFloat(rangeLow.value),
-    rangeHigh: parseFloat(rangeHigh.value),
-    oscConfigs: getOscConfigs(),
-  }
-}
-
-function getOscConfigs() {
-  const oscConfigs = [];
-  for (let i = 0; i < window.oscs.children.length; i++) {
-    const osc = window.oscs.children[i];
-    oscConfigs.push({
-      fn: osc.fnToggle.innerText,
-      volume: parseFloat(osc.volume.value),
-      speed: parseFloat(osc.speed.value),
-      cycle: parseFloat(osc.cycle.value),
-      mod: parseInt(osc.mod.value, 10),
-      duration: parseInt(osc.duration.value, 10),
-      mute: osc.mute.innerText === "M",
-    });
-  }
-  return oscConfigs;
+    octave_shift: parseInt(octaveShift.value, 10),
+    detune_cents: parseFloat(detune.value),
+    num_voices: parseInt(voices.value, 10),
+    attack_ms: parseFloat(attackMs.value),
+    release_ms: parseFloat(releaseMs.value),
+    pitch_smooth: parseFloat(pitchSmooth.value),
+    gate_squared: getGateSquared(gateValue),
+    rangeLow: 588,
+    rangeHigh: 3150,
+  };
 }
 
 function configChange() {
-  const config = getConfig();
-  window.location.hash = JSON.stringify(config);
   if (playerNode) {
-    playerNode.port.postMessage(config);
+    playerNode.port.postMessage(getConfig());
   }
+}
+
+function setDefaults() {
+  volume.value = 0.3;
+  octaveShift.value = 2;
+  detune.value = 40;
+  voices.value = 7;
+  attackMs.value = 30;
+  releaseMs.value = 100;
+  pitchSmooth.value = 0.1;
+  gate.value = 4;
+  updateAllDisplays();
+  configChange();
+}
+
+function updateAllDisplays() {
+  volumeVal.textContent = volume.value;
+  octaveShiftVal.textContent = octaveShift.value;
+  detuneVal.textContent = detune.value;
+  voicesVal.textContent = voices.value;
+  attackMsVal.textContent = attackMs.value;
+  releaseMsVal.textContent = releaseMs.value;
+  pitchSmoothVal.textContent = pitchSmooth.value;
+  gateVal.textContent = gate.value;
 }
 
 var running = false;
@@ -360,96 +228,27 @@ startButton.addEventListener("click", function() {
 
 muteAll.addEventListener("click", function() {
   if (running) {
-    playerNode.disconnect(audioCtx.destination); 
+    playerNode.disconnect(audioCtx.destination);
     muteAll.textContent = "unmute";
     running = false;
   } else {
     playerNode.connect(audioCtx.destination);
     muteAll.textContent = "mute";
-    running = true; 
+    running = true;
   }
 });
 
-const inputs = document.querySelectorAll("input");
-for (let i = 0; i < inputs.length; i++) {
-  inputs[i].addEventListener("change", configChange);
-}
-  
-addOsc.addEventListener("click", () => {
-  addSimpleOscillator(1);
-});
+reset.addEventListener("click", setDefaults);
 
-function addSimpleOscillator(scale) {
-  addOscillator({
-    volume: 1,
-    speed: 1/scale/2,
-    cycle: 1,
-    mod: 2,
-    duration: 3,
-    fn: "nat",
-    mute: false,
+// Wire up all range inputs to update their display and send config
+var rangeInputs = document.querySelectorAll("input[type=range]");
+for (var i = 0; i < rangeInputs.length; i++) {
+  rangeInputs[i].addEventListener("input", function() {
+    updateAllDisplays();
+    configChange();
   });
 }
 
-TEXT_PARAMS = ["volume", "speed", "cycle", "mod", "duration"];
-
-function addOscillator(oscConfig) {
-  const osc = document.createElement("div");
-  osc.className = "osc";
-
-  const fnToggle = document.createElement("button");
-  fnToggle.innerText = oscConfig.fn;
-  fnToggle.addEventListener("click", (e) => {
-    const osc = e.target.parentElement;
-    const index = [...osc.parentElement.children].indexOf(osc);
-    fnToggle.innerText = {
-      "nat": "sin",
-      "sin": "sqr",
-      "sqr": "nat",
-    }[fnToggle.innerText];
-    configChange();
-  });
-  osc.fnToggle = fnToggle;
-  osc.appendChild(fnToggle);
-
-  for (let i = 0; i < TEXT_PARAMS.length; i++) {
-    const param = TEXT_PARAMS[i];
-
-    const label = document.createElement("label");
-    label.innerText = param + ":";
-    osc.appendChild(label);
-    
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = ""+oscConfig[param];
-    input.addEventListener("change", configChange);
-    osc[param] = input;
-    osc.appendChild(input);
-  }
-
-  const mute = document.createElement("button");
-  mute.innerText = oscConfig.mute ? "M" : "m";
-  mute.addEventListener("click", (e) => {
-    const osc = e.target.parentElement;
-    const index = [...osc.parentElement.children].indexOf(osc);
-    mute.innerText = (mute.innerText == "m") ? "M" : "m";
-    configChange();
-  });
-  osc.mute = mute;
-  osc.appendChild(mute);
-  
-  const del = document.createElement("button");
-  del.innerText = "x";
-  del.addEventListener("click", (e) => {
-    const osc = e.target.parentElement;
-    const index = [...osc.parentElement.children].indexOf(osc);
-    osc.parentElement.removeChild(osc);
-    configChange();
-  });
-  osc.appendChild(del);
-
-  oscs.appendChild(osc);
-  configChange();
-}
+updateAllDisplays();
 </script>
 </html>
