@@ -11,7 +11,7 @@ ADC adc;
 // TODO: remember what this is about and why it's so low
 #define DURATION (9)
 
-float gate_squared = 0.001 * 0.001;
+float gate_squared = 0.01 * 0.01;
 #define GATE_SCALAR (0.1)
 #define RECENT_GATE_SQUARED_MULTIPLIER (gate_squared * 40 * 40)
 
@@ -540,8 +540,8 @@ void setup() {
 }
 
 void loop() {
-  int a2Value = analogRead(A2); // 5 (black)
-  gate_squared = (GATE_SCALAR * a2Value / 1024) * (GATE_SCALAR * a2Value / 1024);
+  //int a2Value = analogRead(A2); // 5 (black)
+  //gate_squared = (GATE_SCALAR * a2Value / 1024) * (GATE_SCALAR * a2Value / 1024);
 
   /*
   float a8Value = analogRead(A8) / 1024.0; // 4 (white)
