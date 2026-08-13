@@ -16,6 +16,12 @@
 
 It will detect pitches and generate audio.
 
+On a Mac, instead install `brew install portaudio` and `make zeros-mac`.  It
+prefers a sound card whose name starts with `USB_SOUND_CARD_PREFIX` in
+`zeros.c` and that does both input and output (a Scarlett, say); failing that
+it falls back to the default input and output devices, which on a Mac are
+separate.
+
 To run on boot, `/etc/systemd/system/whistle-synth.service` should have:
 
 ```
@@ -118,8 +124,54 @@ expect whistling; 7 and 8 singing.
     1. select sound card "USB Audio Device"
     1. Set Speaker, Mic, and Capture to 100% volume
 
+## Latency
+
+Tuned for a Mac with a Scarlett 2i2.  On startup it prints the latency it
+actually got, and prints a running `xruns:` count if it can't keep up.
+
+Three things matter, in order:
+
+1. **PortAudio's callback API**, not the blocking API.  `Pa_ReadStream` /
+   `Pa_WriteStream` layer their own ring buffers on top of the callback
+   machinery and never got below about 27ms no matter how they were tuned.
+2. **`suggestedLatency`**, with `paFramesPerBufferUnspecified` so the host
+   API hands over its native buffer size.  This used to be set to the
+   device's `defaultLowInputLatency`, which sounds low but isn't --
+   PortAudio sizes its buffers from it.
+3. **`paMacCorePro`** (mac only).  Without it CoreAudio keeps its own
+   sample rate and buffer size and quietly converts; with it the device
+   gets reconfigured to match us.  Note this changes the device's buffer
+   size for other apps while we're running.
+
+Measured acoustic round trip on a Scarlett 2i2, output to headphones and
+back in through the mic:
+
+| config | round trip |
+|---|---|
+| blocking API, device "default low" latency | 80.1ms |
+| blocking API, minimum buffers | 27.6ms |
+| callback API, 128-frame buffers | 16.0ms |
+| callback API, frames unspecified, 44100 | 6.5ms |
+| callback API + `paMacCorePro`, 48000 | **5.0ms** |
+
+The hardware floor is 176 frames (3.7ms at 48k) of fixed converter and
+safety-offset latency, from `kAudioDevicePropertyLatency` and
+`kAudioDevicePropertySafetyOffset`, so there is not much left to win.
+Dropping PortAudio for raw AudioUnits would be chasing the ~1ms between
+5.0ms and that floor.  Asking for buffers below ~20 frames measures the
+same round trip and can stall the callback outright.
+
+`SAMPLE_RATE` is 48000 because the pipeline is a fixed number of *frames*
+deep, so a faster rate is fewer milliseconds.  96k and 192k were measured
+and bought only another 0.4ms for 2-4x the CPU and delay buffer.  The
+pitch-detection bounds derive from `SAMPLE_RATE`, so changing it keeps
+them fixed in Hz.
+
 ### Future
 
-Look into low-latency options.  See http://tedfelix.com/linux/linux-midi.html
-and https://wiki.linuxaudio.org/wiki/raspberrypi
+The mac-specific latency work is under `#ifdef __APPLE__` so the linux
+build should still compile, but `zeros-linux` has not been built or run
+since any of it landed -- treat it as untested.  If you go back to the
+Pi, `SUGGESTED_LATENCY` is the knob to raise until the xruns stop.  See http://tedfelix.com/linux/linux-midi.html and
+https://wiki.linuxaudio.org/wiki/raspberrypi
 

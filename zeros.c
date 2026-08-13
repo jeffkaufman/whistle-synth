@@ -48,9 +48,20 @@
 #include <pthread.h>
 #include <unistd.h>
 #include "portaudio.h"
+#ifdef __APPLE__
+#include "pa_mac_core.h"
+#endif
 
-#define SAMPLE_RATE       (44100)    // if you change this, change MIN/MAX_INPUT_PERIOD too
-#define FRAMES_PER_BUFFER   (128)    // this is low, to minimize latency
+// The Scarlett's native rate.  The audio pipeline is a fixed number of
+// *frames* deep, so a faster rate is fewer milliseconds: 241 frames costs
+// 5.5ms at 44100 but 5.0ms at 48000.  (96k and 192k were measured too and only
+// bought another 0.4ms, for 2-4x the CPU and delay buffer.)
+#define SAMPLE_RATE       (48000)
+
+// How much buffering to ask PortAudio for.  Asking for less than this gets a
+// smaller CoreAudio buffer but measures exactly the same round trip, and small
+// enough buffers stall the callback outright, so there's nothing to gain.
+#define SUGGESTED_LATENCY (0.001)
 
 /* Select sample format. */
 #define PA_SAMPLE_TYPE  paFloat32
@@ -58,10 +69,14 @@
 #define SAMPLE_SILENCE  (0.0f)
 #define PRINTF_S_FORMAT "%.8f"
 
-#define WHISTLE_RANGE_HIGH (14)
-#define VOCAL_RANGE_HIGH (50)
-#define WHISTLE_RANGE_LOW (75)
-#define VOCAL_RANGE_LOW (300)
+// Pitch detection bounds, as periods in samples, so HIGH is the shortest
+// period (the highest pitch).  Derived from SAMPLE_RATE so they stay fixed in
+// Hz if the rate changes; the frequencies are the ones these were tuned to
+// back when they were written as sample counts at 44100.
+#define WHISTLE_RANGE_HIGH (SAMPLE_RATE/3150)  // 3150 Hz
+#define VOCAL_RANGE_HIGH (SAMPLE_RATE/882)     //  882 Hz
+#define WHISTLE_RANGE_LOW (SAMPLE_RATE/588)    //  588 Hz
+#define VOCAL_RANGE_LOW (SAMPLE_RATE/147)      //  147 Hz
 #define SLIDE (4)
 // We amplify in two stages: first gain, then saturate, then volume.  This lets
 // us get the effect of saturation/clipping independent of the output volume.
@@ -646,7 +661,7 @@ float update(float s) {
   update_duration(s);
 
   // To avoid drift, recompute history every 10s.
-  if ((++ticks) % 441000 == 0) {
+  if ((++ticks) % (SAMPLE_RATE*10) == 0) {
     //printf("%lld volume: %.12f -- %.12f\n", ticks, hist_squared_sum(), octaver.hist_sq/HISTORY_LENGTH);
     octaver.hist_sq = hist_squared_sum();
   }
@@ -856,6 +871,90 @@ void start_iff_thread() {
   pthread_create(&iff_thread, NULL, &update_iffs, NULL);
 }
 
+// Take the Nth device whose name starts with USB_SOUND_CARD_PREFIX and which
+// has at least the requested number of input and output channels.  Returns -1
+// if there's no such device.
+int find_device(int device_index, int min_input, int min_output) {
+  int numDevices = Pa_GetDeviceCount();
+  int seen_good_devices = 0;
+  for (int i = 0; i < numDevices; i++) {
+    const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(i);
+    if (deviceInfo->maxInputChannels < min_input ||
+        deviceInfo->maxOutputChannels < min_output) {
+      continue;
+    }
+    if (strncmp(USB_SOUND_CARD_PREFIX,
+                deviceInfo->name,
+                strlen(USB_SOUND_CARD_PREFIX)) == 0) {
+      if (seen_good_devices == device_index) {
+        return i;
+      }
+      seen_good_devices++;
+    }
+  }
+  return -1;
+}
+
+// How many channels we ended up with on each side; set before the stream
+// starts and read by the callback.
+int input_channels = 1;
+int output_channels = 1;
+
+// State of the output smoothing filter, carried across callbacks.
+float output_filter = 0;
+
+// The callback can't printf, so it just counts and main reports.
+volatile int xruns = 0;
+
+// Called on a realtime thread: no allocation, no I/O, no locks.
+int audio_callback(const void* inputBuffer,
+                   void* outputBuffer,
+                   unsigned long framesPerBuffer,
+                   const PaStreamCallbackTimeInfo* timeInfo,
+                   PaStreamCallbackFlags statusFlags,
+                   void* userData) {
+  const float* in = (const float*)inputBuffer;
+  float* out = (float*)outputBuffer;
+
+  if (statusFlags & (paInputOverflow | paOutputUnderflow)) {
+    xruns++;
+  }
+
+  float alpha = ALPHA_HIGH;
+  if (voice_iff.value == V_EBASS) {
+    alpha = ALPHA_LOW;
+  }
+
+  for (unsigned long i = 0; i < framesPerBuffer; i++) {
+    float sample = in ? in[i*input_channels] : 0;
+    float delay_sample = (in && input_channels > 1) ?
+      in[i*input_channels + 1] : 0;
+
+    float val = update(sample);
+    float delay_sample_out = delay_update(delay_sample);
+
+    output_filter += alpha * (val - output_filter);
+    float sample_out = output_filter / alpha ; // makeup gain
+
+    // never wrap -- wrapping sounds horrible
+    sample_out = saturate(sample_out);
+    delay_sample_out = saturate(delay_sample_out);
+
+    sample_out *= VOLUME * volumes[volume_iff.value] * ungain;
+    // Ideally this is never hit, but it would be really bad if it wrapped.
+    sample_out = clip(sample_out);
+
+    out[i*output_channels] = sample_out;
+    if (output_channels > 1) {
+      // With no delay input there's nothing to put in the second channel, so
+      // go mono instead of leaving one side silent.
+      out[i*output_channels + 1] =
+        input_channels > 1 ? delay_sample_out : sample_out;
+    }
+  }
+  return paContinue;
+}
+
 int start_audio(int device_index) {
   PaStreamParameters inputParameters;
   PaStreamParameters outputParameters;
@@ -863,9 +962,6 @@ int start_audio(int device_index) {
   PaError err;
   const PaDeviceInfo* inputInfo;
   const PaDeviceInfo* outputInfo;
-  float *sampleBlockIn = NULL;
-  float *sampleBlockOut = NULL;
-  int numBytesPerChannel;
 
   init_octaver();
 
@@ -876,35 +972,40 @@ int start_audio(int device_index) {
   if (numDevices < 0) {
     die("no devices found");
   }
-  const PaDeviceInfo* deviceInfo;
-  int best_audio_device_index = -1;
-  int seen_good_devices = 0;
-  for(int i = 0; i < numDevices && best_audio_device_index == -1; i++) {
-    deviceInfo = Pa_GetDeviceInfo(i);
-    printf("device[%d]: %s\n", i, deviceInfo->name);
-    // Take the Nth device whose name starts with USB_SOUND_CARD_PREFIX
-    if (best_audio_device_index == -1 &&
-        strncmp(USB_SOUND_CARD_PREFIX,
-                deviceInfo->name,
-                strlen(USB_SOUND_CARD_PREFIX)) == 0) {
-      if (seen_good_devices == device_index) {
-        best_audio_device_index = i;
-      } else {
-        seen_good_devices++;
-      }
-    }
+  for(int i = 0; i < numDevices; i++) {
+    const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(i);
+    printf("device[%d]: %s (in: %d, out: %d)\n", i, deviceInfo->name,
+           deviceInfo->maxInputChannels, deviceInfo->maxOutputChannels);
   }
 
-  if (best_audio_device_index == -1) {
-    if (device_index == 0) {
-      printf("falling back to default\n");
-      best_audio_device_index = Pa_GetDefaultInputDevice();
-    } else {
+  // On the Pi the USB sound card does both input and output, which is what we
+  // want: one clock for both directions.  On a Mac, though, the built-in mic
+  // and speakers are separate devices, so fall back to spanning two devices,
+  // which PortAudio is happy to do.
+  int input_device_index = find_device(device_index, 1, 1);
+  int output_device_index = input_device_index;
+  if (input_device_index == -1) {
+    input_device_index = find_device(device_index, 1, 0);
+    output_device_index = find_device(device_index, 0, 1);
+  }
+
+  if (input_device_index == -1 || output_device_index == -1) {
+    if (device_index != 0) {
       die("no good device found");
     }
+    printf("falling back to default\n");
+    if (input_device_index == -1) {
+      input_device_index = Pa_GetDefaultInputDevice();
+    }
+    if (output_device_index == -1) {
+      output_device_index = Pa_GetDefaultOutputDevice();
+    }
+  }
+  if (input_device_index == paNoDevice || output_device_index == paNoDevice) {
+    die("no input or no output device available");
   }
 
-  inputParameters.device = best_audio_device_index;
+  inputParameters.device = input_device_index;
   printf( "Input device # %d.\n", inputParameters.device );
   inputInfo = Pa_GetDeviceInfo( inputParameters.device );
   printf( "   Name: %s\n", inputInfo->name );
@@ -912,48 +1013,43 @@ int start_audio(int device_index) {
   printf( "     SR: %0.2f\n", inputInfo->defaultSampleRate);
   printf( "     LL: %.2fms\n", inputInfo->defaultLowInputLatency*1000 );
 
-  inputParameters.channelCount = 2;  // stereo
+  // Channel 0 is the whistle; channel 1, if we have one, is a second
+  // instrument that we run through the delay.
+  input_channels = inputInfo->maxInputChannels >= 2 ? 2 : 1;
+  inputParameters.channelCount = input_channels;
   inputParameters.sampleFormat = PA_SAMPLE_TYPE;
-  inputParameters.suggestedLatency = inputInfo->defaultLowInputLatency ;
+  inputParameters.suggestedLatency = SUGGESTED_LATENCY;
   inputParameters.hostApiSpecificStreamInfo = NULL;
 
-  outputParameters.device = best_audio_device_index;
+  outputParameters.device = output_device_index;
   printf( "Output device # %d.\n", outputParameters.device );
   outputInfo = Pa_GetDeviceInfo( outputParameters.device );
   printf( "   Name: %s\n", outputInfo->name );
   printf( "     CC: %d\n", outputInfo->maxOutputChannels );
   printf( "     SR: %0.2f\n", outputInfo->defaultSampleRate);
   printf( "     LL: %.2fms\n", outputInfo->defaultLowOutputLatency * 1000);
-  outputParameters.channelCount = 2;  // stereo
+  output_channels = outputInfo->maxOutputChannels >= 2 ? 2 : 1;
+  outputParameters.channelCount = output_channels;
   outputParameters.sampleFormat = PA_SAMPLE_TYPE;
-  outputParameters.suggestedLatency = outputInfo->defaultLowOutputLatency;
+  outputParameters.suggestedLatency = SUGGESTED_LATENCY;
   outputParameters.hostApiSpecificStreamInfo = NULL;
+
+#ifdef __APPLE__
+  // Without this CoreAudio keeps its own sample rate and buffer size and
+  // quietly converts to whatever we asked for, which costs real latency.
+  // paMacCorePro tells it to reconfigure the device to match us instead.
+  // Note that the buffer size is a property of the device, so this affects
+  // other apps using the Scarlett while we're running.
+  PaMacCoreStreamInfo macCoreStreamInfo;
+  PaMacCore_SetupStreamInfo(&macCoreStreamInfo, paMacCorePro);
+  inputParameters.hostApiSpecificStreamInfo = &macCoreStreamInfo;
+  outputParameters.hostApiSpecificStreamInfo = &macCoreStreamInfo;
+#endif
 
   /* -- setup -- */
 
-  err = Pa_OpenStream(&stream,
-		      &inputParameters,
-		      &outputParameters,
-		      SAMPLE_RATE,
-		      FRAMES_PER_BUFFER,
-		      paClipOff,      /* we won't output out of range samples so dvon't bother clipping them */
-		      NULL, /* no callback, use blocking API */
-		      NULL ); /* no callback, so no callback userData */
-  if( err != paNoError ) goto error2;
-
-  numBytesPerChannel = FRAMES_PER_BUFFER * SAMPLE_SIZE ;
-  sampleBlockIn = (float *) malloc( numBytesPerChannel * 2);
-  sampleBlockOut = (float *) malloc( numBytesPerChannel * 2);
-  if( sampleBlockIn == NULL || sampleBlockOut == NULL) {
-    printf("Could not allocate in and out arrays.\n");
-    goto error1;
-  }
-  memset( sampleBlockIn, SAMPLE_SILENCE, numBytesPerChannel * 2);
-  memset( sampleBlockOut, SAMPLE_SILENCE, numBytesPerChannel * 2);
-
-  err = Pa_StartStream( stream );
-  if( err != paNoError ) goto error1;
-
+  // Everything the callback touches has to be ready before the stream starts,
+  // because the callback begins firing as soon as it does.
   for (int i = 0; i < N_OSCS; i++) {
     oscs[i].active = FALSE;
     oscs[i].lfo_pos = 0;
@@ -967,64 +1063,40 @@ int start_audio(int device_index) {
      delay_history[i] = 0;
   }
 
+  // paFramesPerBufferUnspecified lets the host API hand us its native buffer
+  // size, which is a big latency win over imposing our own blocking on top.
+  err = Pa_OpenStream(&stream,
+		      &inputParameters,
+		      &outputParameters,
+		      SAMPLE_RATE,
+		      paFramesPerBufferUnspecified,
+		      paClipOff,      /* we won't output out of range samples so dvon't bother clipping them */
+		      audio_callback,
+		      NULL ); /* no callback userData */
+  if( err != paNoError ) goto error2;
 
-  float output = 0;
-  while(TRUE) {
-    err = Pa_ReadStream( stream, sampleBlockIn, FRAMES_PER_BUFFER );
-    if (err & paInputOverflow) {
-      printf("ignoring input undeflow\n");
-    } else if( err ) goto xrun;
+  err = Pa_StartStream( stream );
+  if( err != paNoError ) goto error2;
 
-    float alpha = ALPHA_HIGH;
-    if (voice_iff.value == V_EBASS) {
-      alpha = ALPHA_LOW;
+  const PaStreamInfo* streamInfo = Pa_GetStreamInfo(stream);
+  printf("Stream latency: in %.2fms + out %.2fms = %.2fms\n",
+         streamInfo->inputLatency * 1000,
+         streamInfo->outputLatency * 1000,
+         (streamInfo->inputLatency + streamInfo->outputLatency) * 1000);
+  fflush(stdout);
+
+  // The callback does all the work now; just keep the process alive and report
+  // any xruns it saw.
+  int reported_xruns = 0;
+  while (Pa_IsStreamActive(stream) == 1) {
+    Pa_Sleep(500);
+    if (xruns != reported_xruns) {
+      reported_xruns = xruns;
+      printf("xruns: %d\n", reported_xruns);
+      fflush(stdout);
     }
-
-    for (int i = 0; i < FRAMES_PER_BUFFER; i++) {
-      float sample = sampleBlockIn[i*2];
-      float delay_sample = sampleBlockIn[i*2 + 1];
-      
-      float val = update(sample);
-      float delay_sample_out = delay_update(delay_sample);
-
-      output += alpha * (val - output);
-      float sample_out = output / alpha ; // makeup gain
-
-      // never wrap -- wrapping sounds horrible
-      sample_out = saturate(sample_out);
-      delay_sample_out = saturate(delay_sample_out);
-
-      sample_out *= VOLUME * volumes[volume_iff.value] * ungain;
-      // Ideally this is never hit, but it would be really bad if it wrapped.
-      sample_out = clip(sample_out);
-
-      sampleBlockOut[i*2] = sample_out; 
-      sampleBlockOut[i*2 + 1] = delay_sample_out;      
-    }
-
-    err = Pa_WriteStream( stream, sampleBlockOut, FRAMES_PER_BUFFER );
-    if (err & paOutputUnderflow) {
-      printf("ignoring output undeflow\n");
-    } else if( err ) goto xrun;
   }
 
-xrun:
-  printf("err = %d\n", err); fflush(stdout);
-  if( stream ) {
-    Pa_AbortStream( stream );
-    Pa_CloseStream( stream );
-  }
-  free( sampleBlockOut );
-  free( sampleBlockIn );
-  Pa_Terminate();
-  if( err & paInputOverflow )
-    fprintf( stderr, "Input Overflow.\n" );
-  if( err & paOutputUnderflow )
-    fprintf( stderr, "Output Underflow.\n" );
-  return -2;
- error1:
-  free( sampleBlockOut );
-  free( sampleBlockIn );
  error2:
   if( stream ) {
     Pa_AbortStream( stream );
