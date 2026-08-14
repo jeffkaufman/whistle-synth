@@ -1,0 +1,16 @@
+# Build artifacts
+zeros-linux
+zeros-mac
+zeros2-linux
+zeros2-mac
+zeros2-offline
+paex_read_write_wire
+
+# Recorded audio: reference whistling, self-test captures, rig checks.  Raw
+# float is far too big to track -- a couple of minutes is tens of megabytes.
+# If a recording is worth keeping around, compress it first (flac is lossless
+# and gets these down by roughly half).
+recordings/
+*.f32
+*.f32.sections
+*.wav
