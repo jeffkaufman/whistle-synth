@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>WhistleSynth</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.jefftk.WhistleSynth</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Whistle Synth</string>
+	<key>CFBundleDisplayName</key>
+	<string>Whistle Synth</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.music</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Jeff Kaufman. MIT licensed.</string>
+	<!-- Shown in the microphone permission prompt.  Apple rejects vague ones,
+	     and this is the whole reason the app needs a microphone. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Whistle Synth listens to your whistling so it can follow the notes and play them back as a synth. Audio is processed on your Mac and is never recorded, saved, or sent anywhere.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>

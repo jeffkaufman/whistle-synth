@@ -1,14 +1,19 @@
 # Usage
 
-There are two implementations here, side by side:
+There are three ways in here, side by side:
 
 * `zeros.c` -- the original single file, built as `zeros-linux` / `zeros-mac`.
-* `zeros2.c` -- a rewrite split into `pitch.c`, `synth.c`, `engine.c` and
-  `delay.c`, built as `zeros2-linux` / `zeros2-mac`.  Everything below from
-  "How it works" onwards describes this one.
+* `zeros2.c` -- a rewrite split into `pitch.c`, `synth.c` and `engine.c`,
+  built as `zeros2-linux` / `zeros2-mac`.  Everything below from "How it
+  works" onwards describes this one.
+* `mac/` -- the same engine as a Mac app, with a window instead of control
+  files, CoreAudio instead of PortAudio, and stereo output.  See
+  [mac/README.md](mac/README.md).
 
-They read the same control files and take the same arguments, so `zeros2-mac`
-is a drop-in swap for `zeros-mac`.
+`zeros.c` and `zeros2.c` read the same control files and take the same
+arguments, so `zeros2-mac` is a drop-in swap for `zeros-mac`.  The Mac app
+compiles `pitch.c`, `synth.c` and `engine.c` unchanged and replaces only
+`zeros2.c` -- the part that was the audio device and the control files.
 
 ## Build
 
@@ -107,12 +112,14 @@ the Pi, keys 0-3 on the keypad):
 | voice | what |
 |---|---|
 | 0 | raw input, passed through -- for checking mic level and gate |
-| 1 | `mellow` lead |
-| 2 | `lead`, the default |
-| 3 | `bright` lead |
-| 4 | `trombone` |
-| 5 | `bass` |
-| 6 | `subbass` |
+| 1 | `lead` |
+| 2 | `trombone` |
+| 3 | `bass` |
+| 4 | `subbass` |
+
+These are the entries of the `presets` table in `synth.c`, in order, offset by
+one.  `zeros2-mac` with no arguments prints the list, which is worth doing
+rather than trusting this table: presets have come and gone.
 
 In the original, keys 0-8 select voices: 0 through 6 expect whistling, 7 and
 8 singing.
@@ -461,7 +468,7 @@ same round trip and can stall the callback outright.
 
 `SAMPLE_RATE` is 48000 because the pipeline is a fixed number of *frames*
 deep, so a faster rate is fewer milliseconds.  96k and 192k were measured
-and bought only another 0.4ms for 2-4x the CPU and delay buffer.  The
+and bought only another 0.4ms for 2-4x the CPU.  The
 pitch-detection range is given in Hz (`ENGINE_MIN_HZ`, `ENGINE_MAX_HZ`) and
 converted to periods at startup, so changing the rate leaves it alone --
 though `PITCH_MAX_PERIOD` bounds how low the range can reach.

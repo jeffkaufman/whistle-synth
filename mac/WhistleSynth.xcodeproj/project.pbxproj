@@ -1,0 +1,343 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 54;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		C94B9FA4F15F18D67CA2196B /* pitch.c in Sources */ = {isa = PBXBuildFile; fileRef = B9D91E8447FF74A87026BCFC /* pitch.c */; };
+		5444BCDCC88F8191188E8EBB /* synth.c in Sources */ = {isa = PBXBuildFile; fileRef = 4F7C7816D53B65BACD04E8BC /* synth.c */; };
+		265D2EF5CA162E5FB6BEFECC /* engine.c in Sources */ = {isa = PBXBuildFile; fileRef = 658A201220041A2A1FE1054C /* engine.c */; };
+		08B8F3A4DC79F2F26C7B37FE /* whistle.c in Sources */ = {isa = PBXBuildFile; fileRef = AC3936E702ACE47E246666A3 /* whistle.c */; };
+		39B9CAC52F7512163FF0EE31 /* whistle_audio.c in Sources */ = {isa = PBXBuildFile; fileRef = A29F49054EA386DC015C652C /* whistle_audio.c */; };
+		F788A0D99813CA0C21C9F5E3 /* WhistleSynthApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F218B9F34D2FC3AC6FB38B56 /* WhistleSynthApp.swift */; };
+		40B84604B6816A1705AF2C86 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA5E9C4E4FD9ACE197048288 /* ContentView.swift */; };
+		EC8FDE9B52566C6E59276CA0 /* PlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 846D034553BF3D988E1C01F0 /* PlayView.swift */; };
+		48F09B8630682BC976B4AB75 /* AudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83A32CE0EE1145797417CA9 /* AudioView.swift */; };
+		338C51B6F7CA94C3C91D3882 /* VoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30471B1C2AB35C000E532CD5 /* VoiceView.swift */; };
+		C1F410CF4E7314EEE74302D8 /* SynthController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4219978B14914B68BF77D949 /* SynthController.swift */; };
+		563F434F91A58423F2448024 /* VoiceParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217E4A3DBA016DA7E40B3780 /* VoiceParameters.swift */; };
+		C63D28A4E1F8E58A197FF37B /* AudioDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC7F8A6A61B8F7792B98FE5D /* AudioDevice.swift */; };
+		6C2C33F80B97C9FB97B35ECB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D04D732E88BD12D84B2340A1 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B9D91E8447FF74A87026BCFC /* pitch.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = pitch.c; path = ../pitch.c; sourceTree = "<group>"; };
+		4F7C7816D53B65BACD04E8BC /* synth.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = synth.c; path = ../synth.c; sourceTree = "<group>"; };
+		658A201220041A2A1FE1054C /* engine.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = engine.c; path = ../engine.c; sourceTree = "<group>"; };
+		AC3936E702ACE47E246666A3 /* whistle.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = whistle.c; path = core/whistle.c; sourceTree = "<group>"; };
+		A29F49054EA386DC015C652C /* whistle_audio.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = whistle_audio.c; path = core/whistle_audio.c; sourceTree = "<group>"; };
+		4C486AB9C9E77D87452D5518 /* pitch.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = pitch.h; path = ../pitch.h; sourceTree = "<group>"; };
+		332F6C10D3D303AFCF66F873 /* synth.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = synth.h; path = ../synth.h; sourceTree = "<group>"; };
+		F2C5376F198C30226E69BF59 /* engine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = engine.h; path = ../engine.h; sourceTree = "<group>"; };
+		F1B66C89FC479C360AE2C836 /* whistle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = whistle.h; path = core/whistle.h; sourceTree = "<group>"; };
+		8F807DAB11399BD031A8A3CB /* whistle_internal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = whistle_internal.h; path = core/whistle_internal.h; sourceTree = "<group>"; };
+		5B4B5CEAB6D0C61A5493EEC9 /* Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Bridging-Header.h; path = WhistleSynth/Bridging-Header.h; sourceTree = "<group>"; };
+		F218B9F34D2FC3AC6FB38B56 /* WhistleSynthApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WhistleSynthApp.swift; path = WhistleSynth/WhistleSynthApp.swift; sourceTree = "<group>"; };
+		EA5E9C4E4FD9ACE197048288 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContentView.swift; path = WhistleSynth/ContentView.swift; sourceTree = "<group>"; };
+		846D034553BF3D988E1C01F0 /* PlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlayView.swift; path = WhistleSynth/PlayView.swift; sourceTree = "<group>"; };
+		D83A32CE0EE1145797417CA9 /* AudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AudioView.swift; path = WhistleSynth/AudioView.swift; sourceTree = "<group>"; };
+		30471B1C2AB35C000E532CD5 /* VoiceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VoiceView.swift; path = WhistleSynth/VoiceView.swift; sourceTree = "<group>"; };
+		4219978B14914B68BF77D949 /* SynthController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SynthController.swift; path = WhistleSynth/SynthController.swift; sourceTree = "<group>"; };
+		217E4A3DBA016DA7E40B3780 /* VoiceParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VoiceParameters.swift; path = WhistleSynth/VoiceParameters.swift; sourceTree = "<group>"; };
+		CC7F8A6A61B8F7792B98FE5D /* AudioDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AudioDevice.swift; path = WhistleSynth/AudioDevice.swift; sourceTree = "<group>"; };
+		D04D732E88BD12D84B2340A1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = WhistleSynth/Assets.xcassets; sourceTree = "<group>"; };
+		CABFDE9ED8F5F20FDD1E20EB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = WhistleSynth/Info.plist; sourceTree = "<group>"; };
+		34C8875DD4DBF5B1BF05DBBB /* WhistleSynth.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = WhistleSynth.entitlements; path = WhistleSynth/WhistleSynth.entitlements; sourceTree = "<group>"; };
+		A81AB08D87637DB0A207B91C /* WhistleSynth.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhistleSynth.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C107A207CBFC6346AD418E6A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		42E3998A9FC3D0D272BD6BFF /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				B9D91E8447FF74A87026BCFC /* pitch.c */,
+				4F7C7816D53B65BACD04E8BC /* synth.c */,
+				658A201220041A2A1FE1054C /* engine.c */,
+				4C486AB9C9E77D87452D5518 /* pitch.h */,
+				332F6C10D3D303AFCF66F873 /* synth.h */,
+				F2C5376F198C30226E69BF59 /* engine.h */,
+			);
+			name = Engine;
+			sourceTree = "<group>";
+		};
+		504E20DF24C45AF47CA37A54 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				AC3936E702ACE47E246666A3 /* whistle.c */,
+				A29F49054EA386DC015C652C /* whistle_audio.c */,
+				F1B66C89FC479C360AE2C836 /* whistle.h */,
+				8F807DAB11399BD031A8A3CB /* whistle_internal.h */,
+			);
+			name = Core;
+			sourceTree = "<group>";
+		};
+		61435302EECCA6DF3ABB067B /* App */ = {
+			isa = PBXGroup;
+			children = (
+				F218B9F34D2FC3AC6FB38B56 /* WhistleSynthApp.swift */,
+				EA5E9C4E4FD9ACE197048288 /* ContentView.swift */,
+				846D034553BF3D988E1C01F0 /* PlayView.swift */,
+				D83A32CE0EE1145797417CA9 /* AudioView.swift */,
+				30471B1C2AB35C000E532CD5 /* VoiceView.swift */,
+				4219978B14914B68BF77D949 /* SynthController.swift */,
+				217E4A3DBA016DA7E40B3780 /* VoiceParameters.swift */,
+				CC7F8A6A61B8F7792B98FE5D /* AudioDevice.swift */,
+				D04D732E88BD12D84B2340A1 /* Assets.xcassets */,
+				CABFDE9ED8F5F20FDD1E20EB /* Info.plist */,
+				34C8875DD4DBF5B1BF05DBBB /* WhistleSynth.entitlements */,
+				5B4B5CEAB6D0C61A5493EEC9 /* Bridging-Header.h */,
+			);
+			name = App;
+			sourceTree = "<group>";
+		};
+		6CEFC86D26B2C4AE5C07A502 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A81AB08D87637DB0A207B91C /* WhistleSynth.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		78C8DE42D2E2D31B2AAE84C6 /* WhistleSynth */ = {
+			isa = PBXGroup;
+			children = (
+				61435302EECCA6DF3ABB067B /* App */,
+				504E20DF24C45AF47CA37A54 /* Core */,
+				42E3998A9FC3D0D272BD6BFF /* Engine */,
+				6CEFC86D26B2C4AE5C07A502 /* Products */,
+			);
+			name = WhistleSynth;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		094E1173E12D034ABE96B8D8 /* WhistleSynth */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 185F55E6B0116100EA5DF52B /* Build configuration list for PBXNativeTarget "WhistleSynth" */;
+			buildPhases = (
+				1B9791C81AEE6BC6291B0205 /* Sources */,
+				C107A207CBFC6346AD418E6A /* Frameworks */,
+				359E164F5623C37C1DE2679A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WhistleSynth;
+			productName = WhistleSynth;
+			productReference = A81AB08D87637DB0A207B91C /* WhistleSynth.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AF3090F7BB25095226B2FAF0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					094E1173E12D034ABE96B8D8 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = 0E77EF09FA0B0D3BBF482619 /* Build configuration list for PBXProject "WhistleSynth" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 78C8DE42D2E2D31B2AAE84C6 /* WhistleSynth */;
+			productRefGroup = 6CEFC86D26B2C4AE5C07A502 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				094E1173E12D034ABE96B8D8 /* WhistleSynth */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		359E164F5623C37C1DE2679A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6C2C33F80B97C9FB97B35ECB /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1B9791C81AEE6BC6291B0205 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C94B9FA4F15F18D67CA2196B /* pitch.c in Sources */,
+				5444BCDCC88F8191188E8EBB /* synth.c in Sources */,
+				265D2EF5CA162E5FB6BEFECC /* engine.c in Sources */,
+				08B8F3A4DC79F2F26C7B37FE /* whistle.c in Sources */,
+				39B9CAC52F7512163FF0EE31 /* whistle_audio.c in Sources */,
+				F788A0D99813CA0C21C9F5E3 /* WhistleSynthApp.swift in Sources */,
+				40B84604B6816A1705AF2C86 /* ContentView.swift in Sources */,
+				EC8FDE9B52566C6E59276CA0 /* PlayView.swift in Sources */,
+				48F09B8630682BC976B4AB75 /* AudioView.swift in Sources */,
+				338C51B6F7CA94C3C91D3882 /* VoiceView.swift in Sources */,
+				C1F410CF4E7314EEE74302D8 /* SynthController.swift in Sources */,
+				563F434F91A58423F2448024 /* VoiceParameters.swift in Sources */,
+				C63D28A4E1F8E58A197FF37B /* AudioDevice.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		79D1C75EFCA95E767C0D9247 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		6CCC2E5531579393808F7B6D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		C95898EA50143F236BB9EC00 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = WhistleSynth/WhistleSynth.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/..",
+					"$(SRCROOT)/core",
+				);
+				INFOPLIST_FILE = WhistleSynth/Info.plist;
+				INSTALL_PATH = "$(LOCAL_APPS_DIR)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jefftk.WhistleSynth;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = WhistleSynth/Bridging-Header.h;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		88B9FB845EC6212C70C39D2C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = WhistleSynth/WhistleSynth.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/..",
+					"$(SRCROOT)/core",
+				);
+				INFOPLIST_FILE = WhistleSynth/Info.plist;
+				INSTALL_PATH = "$(LOCAL_APPS_DIR)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jefftk.WhistleSynth;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = WhistleSynth/Bridging-Header.h;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0E77EF09FA0B0D3BBF482619 /* Build configuration list for PBXProject "WhistleSynth" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				79D1C75EFCA95E767C0D9247 /* Debug */,
+				6CCC2E5531579393808F7B6D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		185F55E6B0116100EA5DF52B /* Build configuration list for PBXNativeTarget "WhistleSynth" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C95898EA50143F236BB9EC00 /* Debug */,
+				88B9FB845EC6212C70C39D2C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AF3090F7BB25095226B2FAF0 /* Project object */;
+}

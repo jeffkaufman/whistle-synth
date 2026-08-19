@@ -5,7 +5,7 @@
 //
 //   pitch.c   input signal -> hints about what the player is doing
 //   synth.c   hints -> sound
-//   engine.c  wires those together with volume and the second-channel delay
+//   engine.c  wires those together with volume
 //   zeros2.c  audio device, control files, main
 //
 // The detector and the synth do not share state.  The synth free-runs and
@@ -65,7 +65,6 @@ static struct Control volume_control = { .purpose = "volume", .published = 5 };
 static struct Control gate_control = { .purpose = "gate", .published = 5 };
 
 static struct Engine engine;
-static float* delay_history;
 
 // Non-NULL only in self-test mode, where we play a synthetic whistle instead
 // of the synth and record what comes back.  See selftest.h.
@@ -196,11 +195,7 @@ static int audio_callback(const void* input_buffer,
 
   for (unsigned long i = 0; i < frames; i++) {
     float in_main = in ? in[i * input_channels] : 0;
-    float in_delay = (in && input_channels > 1)
-      ? in[i * input_channels + 1] : 0;
-
-    float out_main, out_delay;
-    engine_process(&engine, in_main, in_delay, &out_main, &out_delay);
+    float out_main = engine_process(&engine, in_main);
 
     if (self_test) {
       // Normally play the test whistle rather than the synth: the microphone
@@ -220,10 +215,7 @@ static int audio_callback(const void* input_buffer,
 
     out[i * output_channels] = out_main;
     if (output_channels > 1) {
-      // With no delay input there's nothing to put in the second channel, so
-      // go mono instead of leaving one side silent.
-      out[i * output_channels + 1] =
-        input_channels > 1 ? out_delay : out_main;
+      out[i * output_channels + 1] = out_main;
     }
   }
   return paContinue;
@@ -299,8 +291,7 @@ static int start_audio(int device_index) {
   printf("output: #%d %s (%d ch)\n", output_device, output_info->name,
          output_info->maxOutputChannels);
 
-  // Channel 0 is the whistle; channel 1, if we have one, is a second
-  // instrument that we run through the delay.
+  // Only channel 0 is used, but a device may insist on handing us two.
   input_channels = input_info->maxInputChannels >= 2 ? 2 : 1;
   output_channels = output_info->maxOutputChannels >= 2 ? 2 : 1;
 
@@ -436,13 +427,8 @@ static int run_self_test(int argc, char** argv, enum SelfTestMode mode) {
   }
   self_test = &test;
 
-  delay_history = calloc((size_t)(DELAY_MAX_SECONDS * SAMPLE_RATE),
-                         sizeof(float));
-  if (!delay_history) {
-    die("out of memory");
-  }
   int voice = argc == 5 ? atoi(argv[4]) : 1;
-  engine_init(&engine, SAMPLE_RATE, delay_history);
+  engine_init(&engine, SAMPLE_RATE);
   engine_set_voice(&engine, voice);
   engine_set_volume(&engine, mode == SELFTEST_MONITOR ? 8 : 9);
   engine_set_gate(&engine, 5);
@@ -510,12 +496,7 @@ int main(int argc, char** argv) {
   volume_control.fname = argv[3];
   gate_control.fname = argv[4];
 
-  delay_history = calloc((size_t)(DELAY_MAX_SECONDS * SAMPLE_RATE),
-                         sizeof(float));
-  if (!delay_history) {
-    die("out of memory");
-  }
-  engine_init(&engine, SAMPLE_RATE, delay_history);
+  engine_init(&engine, SAMPLE_RATE);
 
   pthread_t control_thread;
   pthread_create(&control_thread, NULL, &read_controls, NULL);

@@ -65,6 +65,19 @@ struct SynthParams {
   float detune_cents;
   int harmonics;
 
+  // How far the unison copies are spread across the stereo field, 0 to 1.
+  //
+  // This is real stereo rather than a widening effect: the copies are
+  // genuinely different signals, detuned against each other, so panning them
+  // apart puts decorrelated material on the two sides.  A single-copy voice
+  // has nothing to spread and stays centred whatever this says, which is what
+  // a bass wants anyway -- a wandering low end is the one thing that will not
+  // survive being played through a PA.
+  //
+  // Carried as a side signal, so the two channels are mid +/- side and fold
+  // down to exactly the mono output.  See synth_process.
+  float stereo_width;
+
   // Exponent on the 1/n of the pulse series.  1.0 is a true pulse wave and
   // rolls off at 6dB an octave; lower flattens the spectrum.  Brass gets much
   // of its character from an envelope far flatter than a pulse wave's, with
@@ -124,6 +137,7 @@ struct Synth {
 
   float phase[SYNTH_UNISON];
   float detune[SYNTH_UNISON];
+  float pan[SYNTH_UNISON];   // -1 left to +1 right, always summing to zero
   int unison;
 
   // Only used when the preset stretches its partials off the harmonic series.
@@ -153,15 +167,38 @@ struct Synth {
   float drive_smoothed;  // what actually multiplies the signal
 
   int control_countdown;
+
+  // The stereo difference for the sample synth_process just returned, already
+  // enveloped and scaled by stereo_width.  Left is mid+side and right is
+  // mid-side, so a caller that wants mono can ignore this entirely and a
+  // caller that adds the two channels back together gets the mid untouched.
+  float side;
 };
 
 int synth_preset_count(void);
 const char* synth_preset_name(int preset);
 
+// Copies a preset's built-in values out, so a caller can edit them and hand
+// them back through synth_set_params.  The presets themselves stay const:
+// they are the thing you get back when you reset a voice.
+void synth_preset_defaults(int preset, struct SynthParams* out);
+
+// Forces values that would otherwise divide by zero or run off the end of a
+// fixed array into range.  synth_set_params borrows a const struct and so
+// cannot do this itself: whoever fills one in calls this before publishing it.
+void synth_sanitize_params(struct SynthParams* p);
+
 void synth_init(struct Synth* s, float sample_rate, int preset);
 void synth_set_preset(struct Synth* s, int preset);
 
-// Produces one output sample from the current hint.  Realtime safe.
+// Plays `params` instead of a preset.  The struct is borrowed, not copied, so
+// it must outlive the synth -- and since the audio thread reads it every
+// block, a caller changing one while it plays needs to publish a *different*
+// struct rather than editing this one underneath it.
+void synth_set_params(struct Synth* s, const struct SynthParams* params);
+
+// Produces one output sample from the current hint, and leaves the matching
+// stereo difference in `s->side`.  Realtime safe.
 float synth_process(struct Synth* s, const struct PitchHint* hint);
 
 #endif  // SYNTH_H

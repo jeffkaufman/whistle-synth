@@ -23,13 +23,10 @@ static int clamp_step(int step) {
   return step;
 }
 
-void engine_init(struct Engine* e, float sample_rate, float* delay_history) {
+void engine_init(struct Engine* e, float sample_rate) {
   memset(e, 0, sizeof(*e));
   pitch_init(&e->detector, sample_rate, ENGINE_MIN_HZ, ENGINE_MAX_HZ);
   synth_init(&e->synth, sample_rate, 1);
-  if (delay_history) {
-    delay_init(&e->delay, delay_history, sample_rate);
-  }
   engine_set_voice(e, 2);
   engine_set_volume(e, 5);
   engine_set_gate(e, 5);
@@ -50,6 +47,12 @@ void engine_set_voice(struct Engine* e, int voice) {
   e->passthrough = (voice == 0);
   if (!e->passthrough) {
     synth_set_preset(&e->synth, voice - 1);
+  }
+}
+
+void engine_set_params(struct Engine* e, const struct SynthParams* params) {
+  if (!e->passthrough) {
+    synth_set_params(&e->synth, params);
   }
 }
 
@@ -79,18 +82,35 @@ float engine_take_peak_level(struct Engine* e) {
   return peak;
 }
 
-void engine_process(struct Engine* e, float in_main, float in_delay,
-                    float* out_main, float* out_delay) {
+// Everything both process functions share.  Leaves the stereo difference for
+// this sample in e->synth.side, which is zero in passthrough and for any
+// voice running a single oscillator.
+static float engine_render(struct Engine* e, float in) {
   // The detector always runs, even in passthrough, so switching voices
   // doesn't start from a cold buffer.
-  const struct PitchHint* hint = pitch_process(&e->detector, in_main);
+  const struct PitchHint* hint = pitch_process(&e->detector, in);
 
   if (hint->voiced && hint->level > e->peak_level) {
     e->peak_level = hint->level;
   }
 
-  float value = e->passthrough ? in_main : synth_process(&e->synth, hint);
+  if (e->passthrough) {
+    e->synth.side = 0;
+    return in;
+  }
+  return synth_process(&e->synth, hint);
+}
 
-  *out_main = clip(value * e->volume);
-  *out_delay = e->delay.history ? clip(delay_process(&e->delay, in_delay)) : 0;
+float engine_process(struct Engine* e, float in) {
+  return clip(engine_render(e, in) * e->volume);
+}
+
+void engine_process_stereo(struct Engine* e, float in,
+                           float* left, float* right) {
+  float value = engine_render(e, in);
+  float side = e->synth.side;
+  // Clipped per channel rather than before the split, so width can never push
+  // a channel past full scale.
+  *left = clip((value + side) * e->volume);
+  *right = clip((value - side) * e->volume);
 }

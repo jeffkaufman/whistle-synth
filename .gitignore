@@ -14,3 +14,6 @@ recordings/
 *.f32
 *.f32.sections
 *.wav
+
+# Built by mac/build.sh
+mac/build/

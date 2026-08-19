@@ -6,7 +6,6 @@
 //   ./zeros2-offline <voice> <volume> <gate> < in.f32 > out.f32
 //
 // Raw mono 32-bit float at SAMPLE_RATE in and out; use ffmpeg to get to and
-// from wav.  The second (delay) input channel is fed silence.
 //
 // With --trace it instead prints the pitch hints as TSV, which is how you see
 // what the detector thinks rather than guessing from the audio.
@@ -30,14 +29,7 @@ int main(int argc, char** argv) {
   bool trace = argc > 4 && strcmp(argv[4], "--trace") == 0;
 
   static struct Engine engine;
-  float* delay_history =
-    calloc((size_t)(DELAY_MAX_SECONDS * SAMPLE_RATE), sizeof(float));
-  if (!delay_history) {
-    fprintf(stderr, "out of memory\n");
-    return -1;
-  }
-
-  engine_init(&engine, SAMPLE_RATE, delay_history);
+  engine_init(&engine, SAMPLE_RATE);
   engine_set_voice(&engine, atoi(argv[1]));
   engine_set_volume(&engine, atoi(argv[2]));
   engine_set_gate(&engine, atoi(argv[3]));
@@ -53,9 +45,7 @@ int main(int argc, char** argv) {
   bool onset_pending = false;
   while ((n = fread(in, sizeof(float), CHUNK, stdin)) > 0) {
     for (size_t i = 0; i < n; i++) {
-      float out_main, out_delay;
-      engine_process(&engine, in[i], 0, &out_main, &out_delay);
-      out[i] = out_main;
+      out[i] = engine_process(&engine, in[i]);
 
       // onset is true for a single sample and the trace prints every
       // PITCH_HOP, so latch it or it is never seen.

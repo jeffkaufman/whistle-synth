@@ -36,7 +36,7 @@ run-mac: zeros-mac
 
 # -------------------------------------------------------------- rewrite ---
 
-DSP = pitch.c synth.c delay.c engine.c
+DSP = pitch.c synth.c engine.c
 AUDIO_SRC = zeros2.c selftest.c $(DSP)
 WARN = -std=c99 -Wall -Wextra
 

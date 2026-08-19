@@ -32,6 +32,13 @@ static const struct SynthParams presets[] = {
     .cutoff_soft = 1.3f, .cutoff_loud = 5.5f, .rolloff_exp = 2.0f,
     .drive_soft = 0.7f, .drive_loud = 2.2f,
     .unison = 3, .detune_cents = 4.0f, .harmonics = 10,
+    // Three copies: the outer two go left and right, the middle one holds the
+    // centre.  Set by measurement rather than taste -- this puts the L/R
+    // correlation at 0.68, which is wide and still solid.  0.6 measures 0.14
+    // and 1.0 goes negative, because three copies four cents apart really do
+    // null in the middle: at full spread the difference between the outer two
+    // is larger than their sum.
+    .stereo_width = 0.30f,
     .level_full = 0.22f,
     .attack_s = 0.007f, .release_s = 0.040f, .articulation_s = 0.005f, .glide_s = 0.005f,
     .out_gain = 0.488f,
@@ -56,6 +63,9 @@ static const struct SynthParams presets[] = {
     // One instrument, not a section: just enough spread to stop it sounding
     // like a test tone.
     .unison = 2, .detune_cents = 2.5f, .harmonics = 28,
+    // One instrument in a room, not a section spread across the stage: two
+    // copies at 0.35 measure 0.85, which is just off centre.
+    .stereo_width = 0.35f,
     .level_full = 0.22f,
     // Slower on and off than a lead, and a slower glide, which reads as the
     // slide.  Too much more and runs start to smear.
@@ -153,13 +163,62 @@ static float atan_norm(float v) {
   return atanf(v) / (float)(M_PI / 2);
 }
 
-void synth_set_preset(struct Synth* s, int preset) {
+void synth_preset_defaults(int preset, struct SynthParams* out) {
   if (preset < 0 || preset >= N_PRESETS) {
     preset = 0;
   }
-  s->params = &presets[preset];
+  *out = presets[preset];
+}
 
-  int unison = s->params->unison;
+void synth_sanitize_params(struct SynthParams* p) {
+  // level_full is a divisor, and octave multiplies every partial's frequency.
+  if (!(p->level_full > 1e-4f)) {
+    p->level_full = 1e-4f;
+  }
+  if (!(p->octave > 1e-4f)) {
+    p->octave = 1e-4f;
+  }
+  if (p->unison < 1) {
+    p->unison = 1;
+  }
+  if (p->unison > SYNTH_UNISON) {
+    p->unison = SYNTH_UNISON;
+  }
+  if (p->harmonics < 1) {
+    p->harmonics = 1;
+  }
+  if (p->harmonics > SYNTH_MAX_HARMONICS) {
+    p->harmonics = SYNTH_MAX_HARMONICS;
+  }
+  // powf(n, tilt) and powf(n/cutoff, rolloff_exp) both want a positive base
+  // and a finite exponent; cutoff_* are divisors.
+  if (!(p->cutoff_soft > 1e-3f)) {
+    p->cutoff_soft = 1e-3f;
+  }
+  if (!(p->cutoff_loud > 1e-3f)) {
+    p->cutoff_loud = 1e-3f;
+  }
+  if (!(p->rolloff_exp > 0)) {
+    p->rolloff_exp = 1;
+  }
+  if (p->growl_onset_s <= 0) {
+    p->growl_onset_s = 1e-3f;
+  }
+  if (p->min_partial_hz < 0) {
+    p->min_partial_hz = 0;
+  }
+  if (!(p->stereo_width >= 0)) {
+    p->stereo_width = 0;
+  }
+  if (p->stereo_width > 1) {
+    p->stereo_width = 1;
+  }
+}
+
+void synth_set_params(struct Synth* s, const struct SynthParams* params) {
+  s->params = params;
+
+  int unison = params->unison;
   if (unison < 1) {
     unison = 1;
   }
@@ -168,13 +227,24 @@ void synth_set_preset(struct Synth* s, int preset) {
   }
   s->unison = unison;
 
-  // Spread symmetrically about the centre voice.
+  // Spread symmetrically about the centre voice, in tuning and in position:
+  // the copy that is flat is the one on the left.  Symmetric means the pans
+  // sum to zero, which is what keeps the side signal from leaking a copy of
+  // the mid into the image.
   for (int u = 0; u < unison; u++) {
     float spread = unison > 1
       ? (u / (float)(unison - 1)) * 2 - 1   // -1..1
       : 0;
-    s->detune[u] = exp2f(spread * s->params->detune_cents / 1200.0f);
+    s->detune[u] = exp2f(spread * params->detune_cents / 1200.0f);
+    s->pan[u] = spread;
   }
+}
+
+void synth_set_preset(struct Synth* s, int preset) {
+  if (preset < 0 || preset >= N_PRESETS) {
+    preset = 0;
+  }
+  synth_set_params(s, &presets[preset]);
 }
 
 void synth_init(struct Synth* s, float sample_rate, int preset) {
@@ -364,13 +434,19 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   s->drive_smoothed += smooth * (s->drive - s->drive_smoothed);
 
   if (s->amp < 1e-5f && !hint->voiced) {
+    s->side = 0;
     return 0;
   }
 
   float f0 = exp2f(s->log_freq) * p->octave;
   float out = 0;
+  // The same sum again, but weighted by where each copy sits.  Accumulated
+  // here rather than reconstructed later because this is the only place the
+  // copies exist separately -- one line down they are one signal.
+  float spread = 0;
   for (int u = 0; u < s->unison; u++) {
     float base = f0 * s->detune[u];
+    float voice = 0;
 
     if (p->stretch > 0) {
       // Partials aren't multiples of anything, so each one carries its own
@@ -381,35 +457,47 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
         if (*ph >= 1) {
           *ph -= (int)*ph;
         }
-        out += s->harmonic_amp[i] * sinf(2 * (float)M_PI * *ph);
+        voice += s->harmonic_amp[i] * sinf(2 * (float)M_PI * *ph);
       }
-      continue;
+    } else {
+      s->phase[u] += base / s->sample_rate;
+      if (s->phase[u] >= 1) {
+        s->phase[u] -= (int)s->phase[u];
+      }
+
+      float theta = 2 * (float)M_PI * s->phase[u];
+      float cos1 = cosf(theta);
+      // sin(n*theta) by the Chebyshev recurrence, so each partial costs two
+      // multiplies instead of a sinf.
+      float sin_prev = 0;              // sin(0)
+      float sin_cur = sinf(theta);     // sin(theta)
+      for (int i = 0; i < s->harmonics_active; i++) {
+        voice += s->harmonic_amp[i] * sin_cur;
+        float next = 2 * cos1 * sin_cur - sin_prev;
+        sin_prev = sin_cur;
+        sin_cur = next;
+      }
     }
 
-    s->phase[u] += base / s->sample_rate;
-    if (s->phase[u] >= 1) {
-      s->phase[u] -= (int)s->phase[u];
-    }
-
-    float theta = 2 * (float)M_PI * s->phase[u];
-    float cos1 = cosf(theta);
-    // sin(n*theta) by the Chebyshev recurrence, so each partial costs two
-    // multiplies instead of a sinf.
-    float sin_prev = 0;              // sin(0)
-    float sin_cur = sinf(theta);     // sin(theta)
-    for (int i = 0; i < s->harmonics_active; i++) {
-      out += s->harmonic_amp[i] * sin_cur;
-      float next = 2 * cos1 * sin_cur - sin_prev;
-      sin_prev = sin_cur;
-      sin_cur = next;
-    }
+    out += voice;
+    spread += voice * s->pan[u];
   }
 
   // Drive before the envelope, so how dirty it sounds is set by how hard the
   // player is blowing and not by where they are in the note's decay.  This is
   // also most of what makes the voice cut: it fills in the partials above the
   // ones we synthesize.
+  float undriven = out;
   out = atan_norm(out * s->drive_smoothed);
+
+  // The gain the saturation just applied.  The side signal is scaled by this
+  // rather than being saturated itself: running a difference of two copies
+  // through its own atan normalizes it against a sum of three, which leaves
+  // the sides louder than the middle and the image inside-out.  Taking the
+  // gain instead keeps the spread in the same proportion to the note that it
+  // had before the drive.
+  float drive_gain = fabsf(undriven) > 1e-6f
+      ? out / undriven : atan_norm(s->drive_smoothed);
 
   // High-pass after the drive, since the drive is what puts energy back below
   // the partials we were careful not to synthesize.
@@ -426,6 +514,16 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
       out = y;
     }
   }
+
+  // Same envelope and gain as the mid, so width changes where a note sits
+  // and not how loud it is.  It skips the high-pass: only single-oscillator
+  // voices ask for one, and those have no spread to begin with.
+  //
+  // Left is mid+side and right is mid-side, so the two channels sum back to
+  // exactly twice the mono output -- a stereo image that folds down without
+  // anything cancelling, which for detuned copies is otherwise exactly what
+  // goes wrong.
+  s->side = spread * drive_gain * p->stereo_width * s->amp * p->out_gain;
 
   return out * s->amp * p->out_gain;
 }
