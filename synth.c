@@ -13,65 +13,30 @@
 // thing that has to track how hard the player is blowing -- a direct
 // multiply instead of a filter to tune.
 //
-// `out_gain` is not a taste control.  Each one is set so that all the presets
-// measure the same loudness on a full-range system -- equal LUFS, ITU-R
-// BS.1770, which is the standard model for that and the reason a bass voice
-// has to be numerically hotter than a lead to sound as loud.  Changing one
-// means re-running the loudness match, not just that voice.  The match is
+// `out_gain` is not a taste control.  Each one is set so that the presets
+// measure the same loudness -- equal LUFS, ITU-R BS.1770, which is the
+// standard model for perceived loudness and the reason one bass voice has to
+// be numerically much hotter than another to sound as loud.  Changing one
+// means re-running the match, not just adjusting that voice.  The match is
 // run over recordings/whistling.f32, a recording of the real instrument,
 // because it depends on the material: matched on synthetic test tones the
 // numbers come out several dB different.
+//
+// It is run through a model of the speaker rather than on the signal itself:
+// a QSC K10.2, flat to about 55Hz and then a ported cabinet's cliff.  Every
+// voice here is a bass voice and several of them put real energy under that
+// corner, so matching them full-range matches a system nobody is listening
+// on.  All of them land on -21.0 LUFS through that filter, and on a
+// full-range system they therefore do *not* measure equal.
+//
+// The one exception is `pluck`, which says so where it sits: a plucked
+// envelope has a high crest factor by design, an integrated meter always
+// reads that low, and it is set by peak instead.
+//
+// The ceiling on the whole table is `subbass`, which reaches 0.82 peak at
+// this target.  Nothing can go louder without it clipping.
 
 static const struct SynthParams presets[] = {
-  {
-    .name = "lead",
-    .tilt = 1.0f,
-    .octave = 0.5f,
-    .pwm_center = 0.34f, .pwm_slow_hz = 0.19f, .pwm_slow_depth = 0.11f,
-    .growl_hz = 5.0f, .growl_depth = 0.035f, .growl_onset_s = 0.45f,
-    .cutoff_soft = 1.3f, .cutoff_loud = 5.5f, .rolloff_exp = 2.0f,
-    .drive_soft = 0.7f, .drive_loud = 2.2f,
-    .unison = 3, .detune_cents = 4.0f, .harmonics = 10,
-    // Three copies: the outer two go left and right, the middle one holds the
-    // centre.  Set by measurement rather than taste -- this puts the L/R
-    // correlation at 0.68, which is wide and still solid.  0.6 measures 0.14
-    // and 1.0 goes negative, because three copies four cents apart really do
-    // null in the middle: at full spread the difference between the outer two
-    // is larger than their sum.
-    .stereo_width = 0.30f,
-    .level_full = 0.22f,
-    .attack_s = 0.007f, .release_s = 0.040f, .articulation_s = 0.005f, .glide_s = 0.005f,
-    .out_gain = 0.488f,
-  },
-  {
-    // Three octaves down puts a comfortable whistle around 100-300Hz, which
-    // is tenor trombone, and leaves room for a fiddle above and a piano
-    // underneath.
-    .name = "trombone",
-    .tilt = 0.7f,
-    .octave = 0.125f,
-    // Brass doesn't chorus, so almost no width sweep -- but it does growl,
-    // and it growls on the long notes, which is exactly what note length is
-    // wired to here.
-    .pwm_center = 0.34f, .pwm_slow_hz = 0.13f, .pwm_slow_depth = 0.05f,
-    .growl_hz = 5.0f, .growl_depth = 0.055f, .growl_onset_s = 0.50f,
-    // The widest brightness range of any preset: going from nothing to
-    // blazing as you lean on it is the single most recognizable thing about
-    // a brass instrument, more than any particular harmonic recipe.
-    .cutoff_soft = 1.1f, .cutoff_loud = 14.0f, .rolloff_exp = 2.0f,
-    .drive_soft = 0.8f, .drive_loud = 4.0f,
-    // One instrument, not a section: just enough spread to stop it sounding
-    // like a test tone.
-    .unison = 2, .detune_cents = 2.5f, .harmonics = 28,
-    // One instrument in a room, not a section spread across the stage: two
-    // copies at 0.35 measure 0.85, which is just off centre.
-    .stereo_width = 0.35f,
-    .level_full = 0.22f,
-    // Slower on and off than a lead, and a slower glide, which reads as the
-    // slide.  Too much more and runs start to smear.
-    .attack_s = 0.022f, .release_s = 0.055f, .articulation_s = 0.009f, .glide_s = 0.009f,
-    .out_gain = 0.455f,
-  },
   {
     // Four octaves down: a comfortable whistle lands around 50-160Hz, which
     // is where an electric bass actually plays.  (Five octaves, which an
@@ -93,7 +58,7 @@ static const struct SynthParams presets[] = {
     .unison = 1, .detune_cents = 0.0f, .harmonics = 32,
     .level_full = 0.22f,
     .attack_s = 0.004f, .release_s = 0.040f, .articulation_s = 0.008f, .glide_s = 0.003f,
-    .out_gain = 0.557f,
+    .out_gain = 0.604f,
   },
   {
     // Five octaves down, which is where the old `ebass` voice lived and what
@@ -129,7 +94,274 @@ static const struct SynthParams presets[] = {
     .min_partial_hz = 22.0f,
     .level_full = 0.22f,
     .attack_s = 0.005f, .release_s = 0.050f, .articulation_s = 0.012f, .glide_s = 0.004f,
-    .out_gain = 0.985f,
+    .out_gain = 0.996f,
+  },
+  {
+    // Octaveless: a Shepard tone you can play.  The partials are octaves
+    // rather than harmonics, and their loudness comes from a bell fixed in
+    // Hz, so whistling an octave higher slides the whole stack one slot along
+    // a curve that hasn't moved and lands on exactly the spectrum it started
+    // from.  Play a rising scale and it rises without ever arriving: what
+    // fades in at the bottom is what fades out at the top.
+    //
+    // The nominal fundamental is eight octaves down, which puts it at 2-12Hz.
+    // That is not a pitch, it is the spacing of the stack; what you hear is
+    // the bell, centred on 82Hz -- low E -- with nine octaves above the
+    // fundamental reaching 3.1kHz at the top of the whistle range.
+    //
+    // The sizing is the whole design.  The whistle spans 2.5 octaves and the
+    // stack spans 8, so the bell has about 5.5 octaves to sit in without
+    // either tail running off an end, which is what would break the wrap.  A
+    // sigma of 0.9 octaves fits with room to spare: the outermost component
+    // is 60dB down at both extremes of the range.
+    .name = "octaveless",
+    .octave = 0.00390625f,   // 2^-8
+    .octave_stack_hz = 82.0f, .octave_stack_width = 0.9f,
+    .unison = 1, .harmonics = 9,
+    // Nearly off, and that is a constraint rather than a taste.  Difference
+    // tones between octave-spaced partials are themselves octave-spaced and
+    // survive the wrap; the odd-order products at 3f and 5f are not, and they
+    // are what would put an audible seam in the illusion.  This is as much
+    // grit as the trick will take.
+    .drive_soft = 0.8f, .drive_loud = 1.3f,
+    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
+    .min_partial_hz = 25.0f,
+    .level_full = 0.22f,
+    // A longer glide than the other basses want, because the illusion needs
+    // continuity: heard as a smooth sweep the stack has no octave at all,
+    // and heard as discrete jumps the ear starts tracking one component and
+    // finds the seam.
+    .attack_s = 0.006f, .release_s = 0.090f, .articulation_s = 0.010f,
+    .glide_s = 0.020f,
+    .out_gain = 0.804f,
+  },
+  {
+    // Half a register.  The bell follows the pitch at half rate, so an octave
+    // of whistle moves the bass a fifth: the 2.5 octaves you can whistle map
+    // into 1.25 octaves of bass, which fits between what a PA reproduces and
+    // where a mandolin's low G starts.  The line keeps real contour and never
+    // runs out of either end.
+    //
+    // 95Hz at a 1316Hz whistle -- the middle of the range -- puts the bell
+    // between 61 and 147Hz across everything you can play.  The timbre still
+    // repeats exactly, every two octaves now rather than every one.
+    //
+    // Octaveless: a Shepard tone you can play.  The partials are octaves
+    // rather than harmonics, and their loudness comes from a bell fixed in
+    // Hz, so whistling an octave higher slides the whole stack one slot along
+    // a curve that hasn't moved and lands on exactly the spectrum it started
+    // from.  Play a rising scale and it rises without ever arriving: what
+    // fades in at the bottom is what fades out at the top.
+    //
+    // The nominal fundamental is eight octaves down, which puts it at 2-12Hz.
+    // That is not a pitch, it is the spacing of the stack; what you hear is
+    // the bell, centred on 82Hz -- low E -- with nine octaves above the
+    // fundamental reaching 3.1kHz at the top of the whistle range.
+    //
+    // The sizing is the whole design.  The whistle spans 2.5 octaves and the
+    // stack spans 8, so the bell has about 5.5 octaves to sit in without
+    // either tail running off an end, which is what would break the wrap.  A
+    // sigma of 0.9 octaves fits with room to spare: the outermost component
+    // is 60dB down at both extremes of the range.
+    .name = "octaveless-half",
+    .octave = 0.00390625f,   // 2^-8
+    .octave_stack_hz = 95.0f, .octave_stack_width = 0.9f,
+    .octave_stack_track = 0.5f, .octave_stack_ref_hz = 1316.0f,
+    .unison = 1, .harmonics = 9,
+    // Nearly off, and that is a constraint rather than a taste.  Difference
+    // tones between octave-spaced partials are themselves octave-spaced and
+    // survive the wrap; the odd-order products at 3f and 5f are not, and they
+    // are what would put an audible seam in the illusion.  This is as much
+    // grit as the trick will take.
+    .drive_soft = 0.8f, .drive_loud = 1.3f,
+    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
+    .min_partial_hz = 25.0f,
+    .level_full = 0.22f,
+    // A longer glide than the other basses want, because the illusion needs
+    // continuity: heard as a smooth sweep the stack has no octave at all,
+    // and heard as discrete jumps the ear starts tracking one component and
+    // finds the seam.
+    .attack_s = 0.006f, .release_s = 0.090f, .articulation_s = 0.010f,
+    .glide_s = 0.020f,
+    .out_gain = 0.742f,
+  },
+  {
+    // The Reese: two or three saws detuned far enough that the beating is the
+    // instrument.  Four octaves down, so a comfortable whistle is 50-160Hz --
+    // at the bottom of that the outer copies beat about twice a second, which
+    // is the slow churn the sound is named for, and at the top about six.
+    //
+    // Everything `bass` says about not detuning a bass is true and this
+    // ignores all of it on purpose: the smear *is* the patch.
+    .name = "reese",
+    .tilt = 1.0f,
+    .octave = 0.0625f,
+    .pwm_center = 0.28f, .pwm_slow_hz = 0.07f, .pwm_slow_depth = 0.03f,
+    .growl_hz = 5.0f, .growl_depth = 0.0f, .growl_onset_s = 1.0f,
+    .cutoff_soft = 3.0f, .cutoff_loud = 12.0f, .rolloff_exp = 2.0f,
+    // Enough peak to hear the corner move, not enough to whistle.
+    .resonance = 5.0f, .resonance_width = 0.35f,
+    .drive_soft = 1.2f, .drive_loud = 2.6f,
+    .unison = 3, .detune_cents = 9.0f, .harmonics = 32,
+    // The bottom two partials come from one copy.  Measured before that, the
+    // fundamental swung 31dB as the three copies drifted in and out of phase
+    // -- in stereo that is the sound of a Reese and in mono it is the bass
+    // falling out of the tune every couple of seconds.  The churn is still
+    // there, it just lives above the octave now.
+    .mono_partials = 2,
+    .level_full = 0.22f,
+    .attack_s = 0.008f, .release_s = 0.060f, .articulation_s = 0.008f,
+    .glide_s = 0.006f,
+    .out_gain = 0.501f,
+  },
+  {
+    // The 808: nearly a sine, with the pitch dropping half an octave over the
+    // first 35ms.  That drop is the whole sound -- it is what a drum machine
+    // put there to fake the thump of a skin, and without it this is just a
+    // sub.
+    //
+    // The release is 70ms, not the 300 an 808 actually rings for.  A record's
+    // 808 is one note every beat or two with space around it; a bass line
+    // under a dance tune is not, and at 300ms the notes run into each other
+    // and the line stops being playable.  The pitch drop is what makes this
+    // an 808, not the tail.
+    //
+    // Four octaves down rather than five, which is where the register wants
+    // to be for this and not just where the other sub voices sit: an 808 is
+    // its fundamental and almost nothing else, so it has to stay above
+    // `min_partial_hz`.  Five octaves puts most of the whistle range under
+    // 25Hz, and the voice would spend its time playing its second partial.
+    .name = "eight-oh-eight",
+    .tilt = 1.2f,
+    .octave = 0.0625f,
+    .pwm_center = 0.40f, .pwm_slow_hz = 0.05f, .pwm_slow_depth = 0.01f,
+    .growl_hz = 5.0f, .growl_depth = 0.0f, .growl_onset_s = 1.0f,
+    .cutoff_soft = 2.2f, .cutoff_loud = 6.0f, .rolloff_exp = 2.0f,
+    .drop_octaves = 0.6f, .drop_s = 0.035f,
+    // The dirt an 808 gets from being turned up.  Not a garnish: an 808 on a
+    // record has been through a desk and a PA and is audibly saturated, and
+    // that saturation is most of why it survives being played on a phone.
+    .drive_soft = 1.6f, .drive_loud = 4.0f,
+    .unison = 1, .detune_cents = 0.0f, .harmonics = 12,
+    .min_partial_hz = 25.0f,
+    .level_full = 0.22f,
+    .attack_s = 0.004f, .release_s = 0.070f, .articulation_s = 0.012f,
+    .glide_s = 0.004f,
+        // Deliberately 3.2dB off the equal-LUFS match the rest of the table
+    // keeps, which is the one thing the note at the top of this file says not
+    // to do.  The reason: measured full-range this voice is level with the
+    // others, and measured through a model of a K10.2 -- flat to about 55Hz,
+    // then a ported box's 24dB/octave cliff -- it is 3.2dB under the lead.
+    // So is every other bass voice, within a dB.  But this one is nearly pure
+    // fundamental, and a near-sine at 40-200Hz is the case where a K-weighted
+    // measurement most over-states what you actually hear.  Set by ear on the
+    // speaker it gets played through, which beats the model.
+    //
+    // If the bass voices as a family turn out to sit low on that box, the fix
+    // is to re-run the whole match against the same filter, not to keep
+    // nudging one preset.
+.out_gain = 0.562f,
+  },
+  {
+    // A plucked bass: the first voice here whose note has a shape of its own.
+    // Everything else sounds for exactly as long as you whistle, which is an
+    // organ; this one speaks hard and falls back to a quarter of its peak in
+    // a third of a second, so a run of notes has space between them and the
+    // pulse comes from the attacks rather than from the gaps.
+    .name = "pluck",
+    .tilt = 1.0f,
+    .octave = 0.0625f,
+    .pwm_center = 0.30f, .pwm_slow_hz = 0.09f, .pwm_slow_depth = 0.02f,
+    .growl_hz = 5.0f, .growl_depth = 0.0f, .growl_onset_s = 1.0f,
+    .cutoff_soft = 1.6f, .cutoff_loud = 7.0f, .rolloff_exp = 2.0f,
+    // The filter falls with the note, which is what a plucked string does and
+    // what makes the attack read as an attack rather than as a volume bump.
+    .resonance = 2.5f, .resonance_width = 0.40f,
+    .cutoff_env_octaves = 2.0f, .cutoff_env_s = 0.12f,
+    // At 110bpm an eighth note is 270ms, so the decay has to do most of its
+    // work inside that or the notes just run together at a lower level and
+    // nothing has been gained.  150ms to a tenth of the peak puts a note
+    // 11dB down by the time the next one lands.
+    .decay_s = 0.15f, .sustain_level = 0.12f,
+    .drive_soft = 1.0f, .drive_loud = 2.8f,
+    .unison = 1, .detune_cents = 0.0f, .harmonics = 32,
+    .min_partial_hz = 25.0f,
+    .level_full = 0.22f,
+    .attack_s = 0.003f, .release_s = 0.060f, .articulation_s = 0.008f,
+    .glide_s = 0.004f,
+        // Set by peak rather than by the K10.2 match the rest of the table uses,
+    // and so it measures about 3.5dB under them.  A plucked envelope has a
+    // high crest factor on purpose -- that is what an attack *is* -- so an
+    // integrated measurement always reads low against a voice that sits at
+    // one level, and matching it there put 0.18% of samples over 0.75 with
+    // the peak at 0.985.  It will not sound quiet: the attacks arrive at the
+    // same height as everything else, and on a dance floor the attack is the
+    // part being listened to.
+.out_gain = 1.004f,
+  },
+  {
+    // Two-operator FM, and the only voice here that isn't a pulse wave.  The
+    // modulator sits at the fundamental and the index runs 0.8 to 3.0 with
+    // how hard you blow.
+    //
+    // Worth having because of *how* it opens up rather than how it sounds
+    // standing still: a filter uncovers partials that were already there in
+    // order, while the index moves energy around by Bessel functions, so
+    // partials rise and fall out of order and some of them invert on the way.
+    // It is the sound of a DX bass and there is no filter setting that
+    // reaches it.
+    .name = "fm",
+    .octave = 0.0625f,
+    .fm_ratio = 1.0f, .fm_index_soft = 0.8f, .fm_index_loud = 3.0f,
+    .drive_soft = 1.0f, .drive_loud = 1.8f,
+    .unison = 1, .detune_cents = 0.0f, .harmonics = 1,
+    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
+    .min_partial_hz = 25.0f,
+    .level_full = 0.22f,
+    .attack_s = 0.004f, .release_s = 0.050f, .articulation_s = 0.008f,
+    .glide_s = 0.004f,
+    .out_gain = 0.569f,
+  },
+  {
+    // Valve grind.  The saturator is pushed off centre before it clips, which
+    // is the difference between a transistor and a valve: an odd function can
+    // only make odd harmonics however hard you drive it, and the bias is what
+    // puts the even ones in.  Those land an octave above the fundamental --
+    // in the gap between this and a mandolin's low G, which is otherwise the
+    // emptiest part of the arrangement.
+    .name = "grind",
+    .tilt = 1.0f,
+    .octave = 0.0625f,
+    .pwm_center = 0.32f, .pwm_slow_hz = 0.08f, .pwm_slow_depth = 0.02f,
+    .growl_hz = 5.0f, .growl_depth = 0.0f, .growl_onset_s = 1.0f,
+    .cutoff_soft = 2.5f, .cutoff_loud = 9.0f, .rolloff_exp = 2.0f,
+    .drive_soft = 2.0f, .drive_loud = 5.0f, .drive_bias = 0.45f,
+    .unison = 1, .detune_cents = 0.0f, .harmonics = 32,
+    .min_partial_hz = 25.0f,
+    .level_full = 0.22f,
+    .attack_s = 0.005f, .release_s = 0.050f, .articulation_s = 0.008f,
+    .glide_s = 0.004f,
+    .out_gain = 0.519f,
+  },
+  {
+    // A hollow square and nothing else: width exactly 0.5, which nulls every
+    // even partial, no detune, no sweep, and as little drive as the voice
+    // will take.  There is no trick in it.  It is here because a plain square
+    // bass is a real sound with a long history and this table had no
+    // deliberately plain voice in it to check the others against.
+    .name = "square",
+    .tilt = 1.0f,
+    .octave = 0.0625f,
+    .pwm_center = 0.50f, .pwm_slow_hz = 0.0f, .pwm_slow_depth = 0.0f,
+    .growl_hz = 0.0f, .growl_depth = 0.0f, .growl_onset_s = 1.0f,
+    .cutoff_soft = 2.0f, .cutoff_loud = 8.0f, .rolloff_exp = 2.0f,
+    .drive_soft = 0.6f, .drive_loud = 1.0f,
+    .unison = 1, .detune_cents = 0.0f, .harmonics = 32,
+    .min_partial_hz = 25.0f,
+    .level_full = 0.22f,
+    .attack_s = 0.003f, .release_s = 0.040f, .articulation_s = 0.008f,
+    .glide_s = 0.003f,
+    .out_gain = 1.122f,
   },
 };
 
@@ -146,9 +378,33 @@ const char* synth_preset_name(int preset) {
   return presets[preset].name;
 }
 
-// Where partial n actually sits, as a multiple of the fundamental.
+// Where partial n actually sits, as a multiple of the fundamental.  The
+// octave stack isn't a harmonic series: its partial n is the nth octave.
 static float synth_partial_ratio(const struct SynthParams* p, int n) {
+  if (p->octave_stack_hz > 0) {
+    return exp2f((float)(n - 1));
+  }
   return n * (1 + p->stretch * (n - 1));
+}
+
+// Whether the partials are far enough off the harmonic series that the
+// Chebyshev recurrence can't reach them and each one needs its own phase.
+static bool synth_needs_partial_phase(const struct SynthParams* p) {
+  return p->stretch > 0 || p->octave_stack_hz > 0;
+}
+
+// White noise in -1..1.  Xorshift rather than an LCG, and not for the usual
+// reasons: the low bits of a power-of-two LCG cycle with period 2, 4, 8...,
+// so taking the whole word puts a periodic component *in* the noise, and
+// through a band that emphasizes nothing in particular it is audible as a
+// buzz rather than as air.  Xorshift's bits are all equally good.
+static float synth_noise(struct Synth* s) {
+  uint32_t x = s->noise_state ? s->noise_state : 0x9e3779b9u;
+  x ^= x << 13;
+  x ^= x >> 17;
+  x ^= x << 5;
+  s->noise_state = x;
+  return (float)(int32_t)x * (1.0f / 2147483648.0f);
 }
 
 // One-pole coefficient reaching ~63% of the way in `seconds`.
@@ -157,6 +413,20 @@ static float coeff(float seconds, float sample_rate) {
     return 1;
   }
   return 1 - expf(-1.0f / (seconds * sample_rate));
+}
+
+// The pitch actually being played: the note, plus whatever the per-note drop
+// and the vibrato are adding to it right now.  In log2 Hz, like log_freq.
+static float synth_pitch_log(const struct Synth* s) {
+  const struct SynthParams* p = s->params;
+  float v = s->log_freq + s->drop;
+  if (p->vibrato_cents > 0) {
+    float onset = p->vibrato_onset_s > 0
+        ? fminf(1, s->note_age / p->vibrato_onset_s) : 1;
+    v += onset * (p->vibrato_cents / 1200.0f) *
+         sinf(2 * (float)M_PI * s->vibrato_pos);
+  }
+  return v;
 }
 
 static float atan_norm(float v) {
@@ -213,6 +483,37 @@ void synth_sanitize_params(struct SynthParams* p) {
   if (p->stereo_width > 1) {
     p->stereo_width = 1;
   }
+  // Both widths are divisors, and only mean anything when the thing they
+  // shape is switched on.
+  if (p->octave_stack_hz > 0 && !(p->octave_stack_width > 1e-3f)) {
+    p->octave_stack_width = 1;
+  }
+  if (p->resonance > 0 && !(p->resonance_width > 1e-3f)) {
+    p->resonance_width = 0.25f;
+  }
+  if (!(p->breath >= 0)) {
+    p->breath = 0;
+  }
+  if (p->mono_partials < 0) {
+    p->mono_partials = 0;
+  }
+  if (p->mono_partials > SYNTH_MAX_HARMONICS) {
+    p->mono_partials = SYNTH_MAX_HARMONICS;
+  }
+  if (!(p->sustain_level >= 0)) {
+    p->sustain_level = 0;
+  }
+  if (p->sustain_level > 1) {
+    p->sustain_level = 1;
+  }
+  // Both are divisors or multipliers that only mean anything when the thing
+  // they belong to is switched on.
+  if ((p->fm_index_soft > 0 || p->fm_index_loud > 0) && !(p->fm_ratio > 0)) {
+    p->fm_ratio = 1;
+  }
+  if (p->octave_stack_track > 0 && !(p->octave_stack_ref_hz > 1)) {
+    p->octave_stack_ref_hz = 1000;
+  }
 }
 
 void synth_set_params(struct Synth* s, const struct SynthParams* params) {
@@ -237,6 +538,9 @@ void synth_set_params(struct Synth* s, const struct SynthParams* params) {
       : 0;
     s->detune[u] = exp2f(spread * params->detune_cents / 1200.0f);
     s->pan[u] = spread;
+    // The first copy carries the low partials alone, at the level the rest
+    // get from `unison` copies summing in power.
+    s->low_gain[u] = u == 0 ? sqrtf((float)unison) : 0.0f;
   }
 }
 
@@ -257,6 +561,9 @@ void synth_init(struct Synth* s, float sample_rate, int preset) {
   for (int u = 0; u < SYNTH_UNISON; u++) {
     s->phase[u] = 0;
   }
+  // Not zero: a plucked voice whose envelope hasn't been armed yet should be
+  // at full, not silent, or the very first note is missing its attack.
+  s->pluck = 1;
   synth_set_preset(s, preset);
 }
 
@@ -293,11 +600,22 @@ static void update_controls(struct Synth* s, bool voiced) {
   width = fmaxf(0.06f, fminf(0.5f, width));
 
   float cutoff = p->cutoff_soft + (p->cutoff_loud - p->cutoff_soft) * dynamics;
+  // Both cutoff modulations are in octaves and multiply, so a wobble stays
+  // the same wobble wherever the dynamics and the note envelope have put the
+  // filter.  cutoff_env is what the note has left of its opening sweep.
+  if (p->wobble_octaves > 0) {
+    cutoff *= exp2f(p->wobble_octaves * sinf(2 * (float)M_PI * s->wobble_pos));
+  }
+  if (p->cutoff_env_octaves > 0) {
+    cutoff *= exp2f(s->cutoff_env);
+  }
   s->drive = p->drive_soft + (p->drive_loud - p->drive_soft) * dynamics;
+  s->fm_index =
+    p->fm_index_soft + (p->fm_index_loud - p->fm_index_soft) * dynamics;
 
   // Stop before Nyquist rather than aliasing back down.  The highest unison
   // voice is the one that runs out of room first.
-  float f0 = exp2f(s->log_freq) * p->octave * s->detune[s->unison - 1];
+  float f0 = exp2f(synth_pitch_log(s)) * p->octave * s->detune[s->unison - 1];
   int active = p->harmonics;
   if (active > SYNTH_MAX_HARMONICS) {
     active = SYNTH_MAX_HARMONICS;
@@ -308,10 +626,11 @@ static void update_controls(struct Synth* s, bool voiced) {
   }
   s->harmonics_active = active;
 
+  float base = exp2f(synth_pitch_log(s)) * p->octave;
+
   // Drop partials too low for anything to reproduce.
   int lowest = 1;
   if (p->min_partial_hz > 0) {
-    float base = exp2f(s->log_freq) * p->octave;
     while (lowest <= active &&
            base * synth_partial_ratio(p, lowest) < p->min_partial_hz) {
       lowest++;
@@ -324,12 +643,36 @@ static void update_controls(struct Synth* s, bool voiced) {
   }
   for (int i = lowest - 1; i < active; i++) {
     int n = i + 1;
-    float rolloff = 1 / (1 + powf(n / cutoff, p->rolloff_exp));
-    // Negative is meaningful and wanted: past the first null the pulse series
-    // flips sign, and that is part of the PWM sound.
-    s->harmonic_target[i] =
-      sinf(n * (float)M_PI * width) / powf((float)n, p->tilt) * rolloff;
-    power += s->harmonic_target[i] * s->harmonic_target[i];
+    float amp;
+    if (p->octave_stack_hz > 0) {
+      // A bell fixed in Hz, not in partial number.  That is the whole trick:
+      // the components move under a weighting that doesn't, so an octave of
+      // played pitch slides the stack one slot and lands back on itself.
+      float hz = base * synth_partial_ratio(p, n);
+      float bell = p->octave_stack_hz;
+      if (p->octave_stack_track > 0) {
+        // Moves `track` octaves for every octave of played pitch.  At 0 this
+        // is the fixed bell that makes the voice octaveless; anything above
+        // trades some of that for melodic contour.
+        bell *= exp2f(p->octave_stack_track *
+                      (synth_pitch_log(s) - log2f(p->octave_stack_ref_hz)));
+      }
+      float x = log2f(hz / bell) / p->octave_stack_width;
+      amp = expf(-0.5f * x * x);
+    } else {
+      float rolloff = 1 / (1 + powf(n / cutoff, p->rolloff_exp));
+      if (p->resonance > 0) {
+        // A bump at the cutoff, on top of the rolloff rather than replacing
+        // it, so the peak rides the same sweep the corner does.
+        float d = log2f(n / cutoff) / p->resonance_width;
+        rolloff *= 1 + p->resonance * expf(-0.5f * d * d);
+      }
+      // Negative is meaningful and wanted: past the first null the pulse
+      // series flips sign, and that is part of the PWM sound.
+      amp = sinf(n * (float)M_PI * width) / powf((float)n, p->tilt) * rolloff;
+    }
+    s->harmonic_target[i] = amp;
+    power += amp * amp;
   }
   for (int i = active; i < SYNTH_MAX_HARMONICS; i++) {
     s->harmonic_target[i] = 0;
@@ -358,6 +701,12 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     s->note_age = 0;
     s->level = hint->level;
     s->control_countdown = 0;   // this note's dynamics, not the last one's
+    // Both per-note sweeps are armed here and decay from here on.  They are
+    // set rather than added to, so a fast run gets the same swoop on every
+    // note instead of stacking them up.
+    s->drop = p->drop_octaves;
+    s->cutoff_env = p->cutoff_env_octaves;
+    s->pluck = 1;
   } else if (hint->voiced) {
     // Otherwise track continuously.  Glide is in the log domain so a bend
     // takes the same time everywhere, and it is fast enough to feel instant
@@ -405,7 +754,13 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   s->loudness_env +=
     coeff(p->articulation_s, s->sample_rate) * (s->loudness - s->loudness_env);
 
+  // Three envelopes multiplied: the note starting and stopping, how hard the
+  // player is blowing, and -- for the plucked voices -- where in the note's
+  // own decay we are.
   s->amp = s->gate * s->loudness_env;
+  if (p->decay_s > 0) {
+    s->amp *= s->pluck;
+  }
 
   if (hint->voiced) {
     s->note_age += 1.0f / s->sample_rate;
@@ -421,6 +776,23 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   if (s->growl_pos >= 1) {
     s->growl_pos -= 1;
   }
+  // Free-running, like the growl: a wobble is a property of the patch, not of
+  // where in the note you are, and restarting it per note is the one thing
+  // that stops it sounding like a wobble at all.
+  s->wobble_pos += p->wobble_hz / s->sample_rate;
+  if (s->wobble_pos >= 1) {
+    s->wobble_pos -= 1;
+  }
+  s->vibrato_pos += p->vibrato_hz / s->sample_rate;
+  if (s->vibrato_pos >= 1) {
+    s->vibrato_pos -= 1;
+  }
+
+  s->drop -= coeff(p->drop_s, s->sample_rate) * s->drop;
+  s->cutoff_env -= coeff(p->cutoff_env_s, s->sample_rate) * s->cutoff_env;
+  if (p->decay_s > 0) {
+    s->pluck += coeff(p->decay_s, s->sample_rate) * (p->sustain_level - s->pluck);
+  }
 
   // Everything that comes out of update_controls steps at the control rate,
   // and anything that reaches the output unsmoothed puts a tone there: a
@@ -432,13 +804,14 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     s->harmonic_amp[i] += smooth * (s->harmonic_target[i] - s->harmonic_amp[i]);
   }
   s->drive_smoothed += smooth * (s->drive - s->drive_smoothed);
+  s->fm_index_smoothed += smooth * (s->fm_index - s->fm_index_smoothed);
 
   if (s->amp < 1e-5f && !hint->voiced) {
     s->side = 0;
     return 0;
   }
 
-  float f0 = exp2f(s->log_freq) * p->octave;
+  float f0 = exp2f(synth_pitch_log(s)) * p->octave;
   float out = 0;
   // The same sum again, but weighted by where each copy sits.  Accumulated
   // here rather than reconstructed later because this is the only place the
@@ -448,7 +821,24 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     float base = f0 * s->detune[u];
     float voice = 0;
 
-    if (p->stretch > 0) {
+    if (p->fm_index_loud > 0 || p->fm_index_soft > 0) {
+      // Two-operator FM instead of the additive sum.  Nothing above the
+      // fundamental is chosen here -- the index decides how much energy sits
+      // where, and the Bessel envelope it produces moves in a way no
+      // arrangement of `cutoff` and `tilt` reaches.  Scaled to 0.7 so it
+      // arrives at the drive at the same level the additive path does.
+      s->fm_phase[u] += base * p->fm_ratio / s->sample_rate;
+      if (s->fm_phase[u] >= 1) {
+        s->fm_phase[u] -= (int)s->fm_phase[u];
+      }
+      s->phase[u] += base / s->sample_rate;
+      if (s->phase[u] >= 1) {
+        s->phase[u] -= (int)s->phase[u];
+      }
+      float mod = sinf(2 * (float)M_PI * s->fm_phase[u]);
+      voice = 0.7f * sinf(2 * (float)M_PI * s->phase[u] +
+                          s->fm_index_smoothed * mod);
+    } else if (synth_needs_partial_phase(p)) {
       // Partials aren't multiples of anything, so each one carries its own
       // phase and costs a sinf.
       for (int i = 0; i < s->harmonics_active; i++) {
@@ -457,7 +847,11 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
         if (*ph >= 1) {
           *ph -= (int)*ph;
         }
-        voice += s->harmonic_amp[i] * sinf(2 * (float)M_PI * *ph);
+        float a = s->harmonic_amp[i];
+        if (i < p->mono_partials) {
+          a *= s->low_gain[u];
+        }
+        voice += a * sinf(2 * (float)M_PI * *ph);
       }
     } else {
       s->phase[u] += base / s->sample_rate;
@@ -472,7 +866,11 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
       float sin_prev = 0;              // sin(0)
       float sin_cur = sinf(theta);     // sin(theta)
       for (int i = 0; i < s->harmonics_active; i++) {
-        voice += s->harmonic_amp[i] * sin_cur;
+        float a = s->harmonic_amp[i];
+        if (i < p->mono_partials) {
+          a *= s->low_gain[u];
+        }
+        voice += a * sin_cur;
         float next = 2 * cos1 * sin_cur - sin_prev;
         sin_prev = sin_cur;
         sin_cur = next;
@@ -488,7 +886,16 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // also most of what makes the voice cut: it fills in the partials above the
   // ones we synthesize.
   float undriven = out;
-  out = atan_norm(out * s->drive_smoothed);
+  if (p->drive_bias != 0) {
+    // Off centre going in, and the saturator's value at that offset taken
+    // back out so nothing is left at DC.  An odd function driven hard makes
+    // only odd harmonics; this is what puts the even ones in.
+    float b = p->drive_bias;
+    out = atan_norm((out + b) * s->drive_smoothed) -
+          atan_norm(b * s->drive_smoothed);
+  } else {
+    out = atan_norm(out * s->drive_smoothed);
+  }
 
   // The gain the saturation just applied.  The side signal is scaled by this
   // rather than being saturated itself: running a difference of two copies
@@ -498,6 +905,46 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // had before the drive.
   float drive_gain = fabsf(undriven) > 1e-6f
       ? out / undriven : atan_norm(s->drive_smoothed);
+
+  // Breath, added after the drive rather than through it: on a real flute the
+  // noise is made at the embouchure and shares the tube, not the reed, so
+  // saturating it along with the tone reads as a fuzzbox rather than as air.
+  // The band tracks the note because the tube's resonances do.
+  //
+  // The level is set by the unweighted tone-to-noise ratio and not by LUFS,
+  // which is misleading here: a K-weighted measurement of a 100Hz near-sine
+  // against a noise band two octaves above it called the air "0.9LU over the
+  // tone" when the actual ratio was 6.6dB, which is not any flute.  A real
+  // flute's low register runs 15-25dB and the breathy big ones about 10-15.
+  if (p->breath > 0) {
+    float n = synth_noise(s);
+    // A resonant bandpass, not a pair of gentle slopes.  Air in a tube is a
+    // *band* -- the noise excites the bore and comes back with the bore's
+    // shape on it -- and white noise with a tilt on it is not that.  A
+    // Chamberlin state variable filter is two adds and two multiplies and
+    // gives a real resonant band, which the cascaded one-poles could not:
+    // any arrangement of one-poles is a slope, and a slope up to a couple of
+    // kHz is what a snare sounds like.
+    //
+    // Centred low, at two and a half times the fundamental, because that is
+    // where a large flute's air sits.  Capped in absolute Hz so the top of
+    // the range doesn't drag the band up into the hiss again.
+    float fc = fminf(900.0f, f0 * 2.5f);
+    float f = 2 * sinf((float)M_PI * fc / s->sample_rate);
+    const float q = 1.0f / 1.2f;
+    s->breath_lp += f * s->breath_bp;
+    float high = n - s->breath_lp - q * s->breath_bp;
+    s->breath_bp += f * high;
+
+    // Modulated by the tone, but only slightly.  The jet at the embouchure
+    // makes both the note and the noise, so some correlation is right and it
+    // is what puts the noise around the harmonics rather than under them --
+    // but at any depth worth noticing it stops being a flute and becomes a
+    // snare, which is a band of noise switched on and off at a low pitch.
+    // 15% is enough to bind the air to the note and not enough to rattle.
+    out += s->breath_bp * p->breath * (1.0f - 0.4f * s->dynamics) *
+           (0.9f + 0.15f * out);
+  }
 
   // High-pass after the drive, since the drive is what puts energy back below
   // the partials we were careful not to synthesize.

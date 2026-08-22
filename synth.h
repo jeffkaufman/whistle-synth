@@ -2,6 +2,8 @@
 #ifndef SYNTH_H
 #define SYNTH_H
 
+#include <stdint.h>
+
 #include "pitch.h"
 
 // Most detuned copies of the oscillator a preset may ask for, and the most
@@ -129,6 +131,117 @@ struct SynthParams {
   float glide_s;
 
   float out_gain;
+
+  // ------------------------------------------------------- prototypes ---
+  //
+  // Everything below is here for the bass voices being auditioned.  All of
+  // it is off at zero, so the presets above are unaffected.
+
+  // Octave stack.  When >0 the partials are not a harmonic series at all:
+  // partial n sits at 2^(n-1) times the fundamental, and its amplitude comes
+  // from a bell curve fixed in *absolute* Hz -- centred at octave_stack_hz,
+  // this many octaves wide.  Playing an octave higher slides every component
+  // one slot along a weighting that hasn't moved, so the spectrum repeats
+  // exactly and the voice has no octave: it is a Shepard tone you can play.
+  //
+  // Replaces pwm/tilt/cutoff/resonance entirely for a preset that asks for
+  // it, since a fixed-in-Hz envelope is the only shape that survives the
+  // wrap.  Fixed-in-Hz processing after it is fine, which is why the drive
+  // and the high-pass still apply.
+  float octave_stack_hz;
+  float octave_stack_width;    // gaussian sigma, in octaves
+
+  // How far the bell follows the pitch, in octaves per octave.  0 is the pure
+  // Shepard above -- the bell never moves and the voice has no register.  1
+  // would track exactly and be an ordinary voice built out of octaves.
+  //
+  // In between is the useful part: at 0.5 an octave of whistle moves the bass
+  // a fifth, so a 2.5 octave whistle range maps into 1.25 octaves of bass and
+  // the line keeps real melodic contour while never leaving the window
+  // between what a PA can reproduce and where the mandolin starts.  The
+  // timbre still repeats exactly, just every 1/(1-track) octaves instead of
+  // every one.
+  //
+  // `ref_hz` is the *whistled* pitch at which the bell sits exactly where
+  // octave_stack_hz puts it, so it reads in the range the player thinks in.
+  float octave_stack_track;
+  float octave_stack_ref_hz;
+
+  // A resonant peak on top of the rolloff, centred at the cutoff: height is
+  // the linear boost there, width its sigma in octaves.  This is the
+  // difference between a filter and a tone control -- without it a cutoff
+  // sweep only gets brighter and darker, and with it the sweep is audible as
+  // a filter moving, which is what gives `pluck` its attack.
+  float resonance;
+  float resonance_width;
+
+  // Free-running LFO on the cutoff, in octaves.  The wobble.
+  float wobble_hz;
+  float wobble_octaves;
+
+  // Per-note cutoff envelope: each note starts this many octaves above where
+  // the dynamics put the cutoff and falls back with this time constant.
+  float cutoff_env_octaves;
+  float cutoff_env_s;
+
+  // Per-note pitch envelope: each note starts this far sharp and falls to
+  // pitch with this time constant.  An 808's thump and a hoover's swoop are
+  // the same mechanism at two settings.
+  float drop_octaves;
+  float drop_s;
+
+  // Vibrato, fading in over a held note the way the growl does.
+  float vibrato_hz;
+  float vibrato_cents;
+  float vibrato_onset_s;
+
+  // How many of the lowest partials come from one oscillator instead of from
+  // all the detuned copies.  0 means every copy plays every partial.
+  //
+  // This is a mono fix and it matters here because mono is what this gets
+  // played through.  Detuned copies beat, and beating is cancellation: three
+  // copies nine cents apart swing the fundamental over 31dB as they drift in
+  // and out of phase, which spread across a stereo image is the sound of a
+  // Reese and summed to one speaker is the bass falling out of the tune.
+  // Taking the bottom partial or two from a single copy keeps the low end
+  // rock steady and leaves the churn where it belongs, in the harmonics.
+  //
+  // The copy that plays them is scaled by sqrt(unison), because the partials
+  // above it get their level from `unison` copies summing in power.
+  int mono_partials;
+
+  // Note envelope beyond on-and-off: how fast a note falls from its attack to
+  // a held level, and what that level is as a fraction of the peak.  0
+  // disables, which is what every voice did before -- they sound for exactly
+  // as long as you whistle, which is an organ.  A dance bass wants to speak
+  // hard and get out of the way.
+  float decay_s;
+  float sustain_level;
+
+  // Two-operator FM, which replaces the additive pulse entirely: the carrier
+  // is at the fundamental, the modulator at `fm_ratio` times it, and the
+  // index is how many radians of phase the modulator pushes the carrier
+  // through.  Index takes the place of cutoff here -- opening up an FM voice
+  // moves harmonic energy around by Bessel functions rather than by
+  // uncovering partials that were already there, and it sounds different in a
+  // way no filter setting reaches.
+  float fm_ratio;
+  float fm_index_soft;
+  float fm_index_loud;
+
+  // Offset into the saturator, in units of the signal.  atan is an odd
+  // function, so it can only make odd harmonics however hard it is driven;
+  // pushing the signal off centre first breaks that symmetry and puts even
+  // harmonics in, which is what a valve amp does and what the octave between
+  // a bass and a mandolin's low G is otherwise missing.  The saturator's
+  // value at the offset is subtracted back out, so this adds no DC.
+  float drive_bias;
+
+  // Breath noise, as a fraction of the tone.  Banded around the note rather
+  // than white, and louder when the player backs off, which is how a large
+  // flute actually behaves -- on a contrabass flute the breath is nearly as
+  // loud as the note.
+  float breath;
 };
 
 struct Synth {
@@ -155,7 +268,28 @@ struct Synth {
   float dynamics;      // level mapped to 0..1, drives brightness and drive
   float note_age;      // seconds since the last onset
 
-  float pwm_pos, growl_pos;
+  float pwm_pos, growl_pos, wobble_pos, vibrato_pos;
+
+  // The plucked part of the note envelope, falling from 1 to sustain_level.
+  float pluck;
+
+  // FM modulator phases, and the index smoothed the way drive is.
+  float fm_phase[SYNTH_UNISON];
+  float fm_index;
+  float fm_index_smoothed;
+
+  // Per-copy gain for the partials below mono_partials: sqrt(unison) on the
+  // first copy and zero on the rest.
+  float low_gain[SYNTH_UNISON];
+
+  // Per-note envelopes that decay towards zero, in octaves.
+  float drop;
+  float cutoff_env;
+
+  // Breath noise: the generator, and the two integrators of the state
+  // variable filter that bands it.
+  uint32_t noise_state;
+  float breath_lp, breath_bp;
 
   // Two one-pole high-pass stages, for the low voices only.
   float hp_x[2], hp_y[2];
