@@ -21,6 +21,11 @@
 		563F434F91A58423F2448024 /* VoiceParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217E4A3DBA016DA7E40B3780 /* VoiceParameters.swift */; };
 		C63D28A4E1F8E58A197FF37B /* AudioDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC7F8A6A61B8F7792B98FE5D /* AudioDevice.swift */; };
 		6C2C33F80B97C9FB97B35ECB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D04D732E88BD12D84B2340A1 /* Assets.xcassets */; };
+		A1C0DE01F0000001AA000001 /* AudioLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE01F0000001AA000002 /* AudioLifecycle.swift */; };
+		A1C0DE01F0000001AA000003 /* HelpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE01F0000001AA000004 /* HelpView.swift */; };
+		A1C0DE01F0000001AA000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1C0DE01F0000001AA000006 /* PrivacyInfo.xcprivacy */; };
+		A1C0DE01F0000002BB000001 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1C0DE01F0000002BB000002 /* AudioToolbox.framework */; };
+		A1C0DE01F0000002BB000003 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1C0DE01F0000002BB000004 /* CoreAudio.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +49,11 @@
 		217E4A3DBA016DA7E40B3780 /* VoiceParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VoiceParameters.swift; path = WhistleSynth/VoiceParameters.swift; sourceTree = "<group>"; };
 		CC7F8A6A61B8F7792B98FE5D /* AudioDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AudioDevice.swift; path = WhistleSynth/AudioDevice.swift; sourceTree = "<group>"; };
 		D04D732E88BD12D84B2340A1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = WhistleSynth/Assets.xcassets; sourceTree = "<group>"; };
+		A1C0DE01F0000001AA000002 /* AudioLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AudioLifecycle.swift; path = WhistleSynth/AudioLifecycle.swift; sourceTree = "<group>"; };
+		A1C0DE01F0000001AA000004 /* HelpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HelpView.swift; path = WhistleSynth/HelpView.swift; sourceTree = "<group>"; };
+		A1C0DE01F0000001AA000006 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = WhistleSynth/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A1C0DE01F0000002BB000002 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
+		A1C0DE01F0000002BB000004 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		CABFDE9ED8F5F20FDD1E20EB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = WhistleSynth/Info.plist; sourceTree = "<group>"; };
 		34C8875DD4DBF5B1BF05DBBB /* WhistleSynth.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = WhistleSynth.entitlements; path = WhistleSynth/WhistleSynth.entitlements; sourceTree = "<group>"; };
 		A81AB08D87637DB0A207B91C /* WhistleSynth.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhistleSynth.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -54,6 +64,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1C0DE01F0000002BB000001 /* AudioToolbox.framework in Frameworks */,
+				A1C0DE01F0000002BB000003 /* CoreAudio.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -95,12 +107,24 @@
 				4219978B14914B68BF77D949 /* SynthController.swift */,
 				217E4A3DBA016DA7E40B3780 /* VoiceParameters.swift */,
 				CC7F8A6A61B8F7792B98FE5D /* AudioDevice.swift */,
+				A1C0DE01F0000001AA000002 /* AudioLifecycle.swift */,
+				A1C0DE01F0000001AA000004 /* HelpView.swift */,
 				D04D732E88BD12D84B2340A1 /* Assets.xcassets */,
+				A1C0DE01F0000001AA000006 /* PrivacyInfo.xcprivacy */,
 				CABFDE9ED8F5F20FDD1E20EB /* Info.plist */,
 				34C8875DD4DBF5B1BF05DBBB /* WhistleSynth.entitlements */,
 				5B4B5CEAB6D0C61A5493EEC9 /* Bridging-Header.h */,
 			);
 			name = App;
+			sourceTree = "<group>";
+		};
+		A1C0DE01F0000002BB000005 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A1C0DE01F0000002BB000002 /* AudioToolbox.framework */,
+				A1C0DE01F0000002BB000004 /* CoreAudio.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		6CEFC86D26B2C4AE5C07A502 /* Products */ = {
@@ -117,6 +141,7 @@
 				61435302EECCA6DF3ABB067B /* App */,
 				504E20DF24C45AF47CA37A54 /* Core */,
 				42E3998A9FC3D0D272BD6BFF /* Engine */,
+				A1C0DE01F0000002BB000005 /* Frameworks */,
 				6CEFC86D26B2C4AE5C07A502 /* Products */,
 			);
 			name = WhistleSynth;
@@ -180,6 +205,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6C2C33F80B97C9FB97B35ECB /* Assets.xcassets in Resources */,
+				A1C0DE01F0000001AA000005 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -203,6 +229,8 @@
 				C1F410CF4E7314EEE74302D8 /* SynthController.swift in Sources */,
 				563F434F91A58423F2448024 /* VoiceParameters.swift in Sources */,
 				C63D28A4E1F8E58A197FF37B /* AudioDevice.swift in Sources */,
+				A1C0DE01F0000001AA000001 /* AudioLifecycle.swift in Sources */,
+				A1C0DE01F0000001AA000003 /* HelpView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

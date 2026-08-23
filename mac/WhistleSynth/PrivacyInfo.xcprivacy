@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Not required for macOS today: the required-reason-API rules cover
+	     iOS, iPadOS, tvOS and watchOS.  Included anyway because it is a few
+	     lines, it is checked against the App Privacy answers in App Store
+	     Connect, and the app does use one declared-reason API. -->
+
+	<!-- No tracking, no networking of any kind: the app has neither the
+	     network entitlement nor any code that would use it. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!-- Nothing is collected.  Microphone audio is analysed in memory as it
+	     arrives and is never recorded, written to disk, or sent anywhere,
+	     which is why it is not a collected data type. -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!-- Voice, volume, gate, device choices, and per-voice edits, all
+			     in this app's own container and read back only by this app. -->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

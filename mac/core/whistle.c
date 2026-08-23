@@ -11,7 +11,7 @@
 /* ---------------------------------------------------------- the engine --- */
 
 // Touched only by the audio thread once a stream is running, and only by the
-// main thread when one is not.  Everything the UI wants to change reaches it
+// lifecycle thread when one is not.  Everything the UI wants to change reaches it
 // through the published values below.
 static struct Engine engine;
 
@@ -208,9 +208,9 @@ void whistle_note_dropouts(int count) {
 
 /* --------------------------------------------------------- stream info --- */
 
-// Written by the main thread with no stream running, read by the UI.  Guarded
-// by `info_gen`: odd while being written, so a reader can tell it caught a
-// half-updated copy and try again.
+// Written by the lifecycle thread with no stream running, read by the UI on
+// the main thread.  Guarded by the generation counter: odd while being
+// written, so a reader can tell it caught a half-updated copy and try again.
 static struct {
   _Atomic unsigned gen;
   bool running;

@@ -195,6 +195,80 @@ static AudioDeviceID device_for_uid(const char* uid, bool input) {
   return default_device(input);
 }
 
+/* ------------------------------------------------------- the built-ins --- */
+
+// A built-in device's data source, which is how one device ID covers both the
+// speakers and whatever is in the headphone jack: the ID stays put and the
+// source changes underneath it.  Spelled out rather than written as
+// multi-character literals, which are implementation-defined.
+static const UInt32 SOURCE_INTERNAL_SPEAKER = 0x6973706b;   // 'ispk'
+static const UInt32 SOURCE_INTERNAL_MIC     = 0x696d6963;   // 'imic'
+
+// 0 for a device with no data source property, which matches neither of the
+// above -- so anything we cannot ask about is treated as not built in, and
+// the player gets to play.  Guessing wrong in the other direction would mean
+// refusing to run on hardware that is perfectly fine.
+static UInt32 data_source(AudioDeviceID device,
+                          AudioObjectPropertyScope scope) {
+  UInt32 source = 0;
+  get_property(device, kAudioDevicePropertyDataSource, scope, &source,
+               sizeof(source));
+  return source;
+}
+
+static bool is_builtin(AudioDeviceID device) {
+  UInt32 transport = 0;
+  if (get_property(device, kAudioDevicePropertyTransportType,
+                   kAudioObjectPropertyScopeGlobal, &transport,
+                   sizeof(transport)) != noErr) {
+    return false;
+  }
+  return transport == kAudioDeviceTransportTypeBuiltIn;
+}
+
+// Headphones in the jack are the same device with a different data source,
+// so this is false for them -- which is the point: headphones are the fix,
+// not another case of the problem.
+static bool is_builtin_speaker(AudioDeviceID device) {
+  return is_builtin(device) &&
+         data_source(device, kAudioDevicePropertyScopeOutput)
+             == SOURCE_INTERNAL_SPEAKER;
+}
+
+static bool is_builtin_mic(AudioDeviceID device) {
+  return is_builtin(device) &&
+         data_source(device, kAudioDevicePropertyScopeInput)
+             == SOURCE_INTERNAL_MIC;
+}
+
+void whistle_resolve_route(const struct WhistleConfig* config,
+                           struct WhistleRoute* out) {
+  memset(out, 0, sizeof(*out));
+
+  AudioDeviceID input = device_for_uid(config->input_uid, true);
+  AudioDeviceID output = device_for_uid(config->output_uid, false);
+
+  out->have_input = input != kAudioObjectUnknown &&
+                    channel_count(input, kAudioDevicePropertyScopeInput) > 0;
+  out->have_output = output != kAudioObjectUnknown &&
+                     channel_count(output, kAudioDevicePropertyScopeOutput) > 0;
+
+  if (out->have_input) {
+    copy_cfstring(input, kAudioObjectPropertyName,
+                  kAudioObjectPropertyScopeGlobal, out->input_name,
+                  sizeof(out->input_name));
+  }
+  if (out->have_output) {
+    copy_cfstring(output, kAudioObjectPropertyName,
+                  kAudioObjectPropertyScopeGlobal, out->output_name,
+                  sizeof(out->output_name));
+  }
+
+  out->builtin_loop = out->have_input && out->have_output &&
+                      is_builtin_mic(input) && is_builtin_speaker(output);
+  out->usable = out->have_input && out->have_output && !out->builtin_loop;
+}
+
 static void (*devices_changed_callback)(void* context);
 static void* devices_changed_context;
 
@@ -238,6 +312,40 @@ void whistle_set_devices_changed_callback(void (*callback)(void* context),
 
 /* ----------------------------------------------------- device settings --- */
 
+// The nominal sample rate belongs to the device, not to us: a device runs at
+// one rate for everything using it, so changing it changes it for every other
+// app on that device, and it stays changed after we quit unless we put it
+// back.  So remember what a device was doing before we touched it, and
+// restore it on the way out.  At most two devices are ever involved, one in
+// each direction.
+//
+// The buffer size measures as per-client rather than shared (see
+// request_buffer_frames), so restoring it is insurance rather than a
+// correction -- cheap, and it costs nothing to be wrong about which.
+static struct {
+  AudioDeviceID device;
+  bool had_rate;
+  Float64 rate;
+  bool had_frames;
+  UInt32 frames;
+} saved_settings[2];
+static int saved_count;
+
+static size_t saved_slot(AudioDeviceID device) {
+  for (int i = 0; i < saved_count; i++) {
+    if (saved_settings[i].device == device) {
+      return (size_t)i;
+    }
+  }
+  if (saved_count < (int)(sizeof(saved_settings) / sizeof(saved_settings[0]))) {
+    int slot = saved_count++;
+    memset(&saved_settings[slot], 0, sizeof(saved_settings[slot]));
+    saved_settings[slot].device = device;
+    return (size_t)slot;
+  }
+  return (size_t)0;   // unreachable: only ever an input and an output
+}
+
 // Best effort.  A device that will not run at the asked-for rate keeps its
 // own, and we run at that instead -- the engine takes its rate as an
 // argument, so there is nothing to break.
@@ -256,13 +364,32 @@ static void request_sample_rate(AudioDeviceID device, double rate) {
     kAudioDevicePropertyNominalSampleRate, kAudioObjectPropertyScopeGlobal,
     kAudioObjectPropertyElementMain };
   Float64 wanted = (Float64)rate;
-  AudioObjectSetPropertyData(device, &address, 0, NULL, sizeof(wanted),
-                             &wanted);
+  if (AudioObjectSetPropertyData(device, &address, 0, NULL, sizeof(wanted),
+                                 &wanted) != noErr) {
+    return;
+  }
+  // Only after the set succeeded, and only the first time: a restart must not
+  // overwrite the original with our own value from the previous run.
+  size_t slot = saved_slot(device);
+  if (!saved_settings[slot].had_rate && current > 0) {
+    saved_settings[slot].had_rate = true;
+    saved_settings[slot].rate = current;
+  }
 }
 
-// The latency knob.  The device clamps to what it supports, and this changes
-// the buffer size for everything else using the device while we run -- the
-// same tradeoff the command-line build made with paMacCorePro.
+// The latency knob.  The device clamps to what it supports.
+//
+// This does *not* change the buffer size other apps get, which is worth
+// stating because the obvious reading of the API is that it would, and
+// because the command-line build's comments assumed it did.  Measured on
+// macOS 26: with this code holding the default output device at 64 frames, a
+// separate process reading kAudioDevicePropertyBufferFrameSize on the same
+// device still gets 512.  The HAL keeps a size per client and adapts.  The
+// device's hardware I/O cycle does get shorter, which costs a little power,
+// but nothing else's latency or block size changes.
+//
+// Restored anyway, on the principle that what we changed we put back, and
+// because the measurement is one OS version on one device.
 static void request_buffer_frames(AudioDeviceID device, int frames) {
   if (frames <= 0) {
     return;
@@ -278,12 +405,51 @@ static void request_buffer_frames(AudioDeviceID device, int frames) {
       frames = (int)range.mMaximum;
     }
   }
+  UInt32 current = 0;
+  bool have_current = get_property(device, kAudioDevicePropertyBufferFrameSize,
+                                   kAudioObjectPropertyScopeGlobal, &current,
+                                   sizeof(current)) == noErr && current > 0;
+  if (have_current && current == (UInt32)frames) {
+    return;
+  }
   AudioObjectPropertyAddress address = {
     kAudioDevicePropertyBufferFrameSize, kAudioObjectPropertyScopeGlobal,
     kAudioObjectPropertyElementMain };
   UInt32 wanted = (UInt32)frames;
-  AudioObjectSetPropertyData(device, &address, 0, NULL, sizeof(wanted),
-                             &wanted);
+  if (AudioObjectSetPropertyData(device, &address, 0, NULL, sizeof(wanted),
+                                 &wanted) != noErr) {
+    return;
+  }
+  size_t slot = saved_slot(device);
+  if (!saved_settings[slot].had_frames && have_current) {
+    saved_settings[slot].had_frames = true;
+    saved_settings[slot].frames = current;
+  }
+}
+
+// Hand the devices back the way we found them.  Called once the streams are
+// closed, so the device is free to take the change.
+static void restore_device_settings(void) {
+  for (int i = 0; i < saved_count; i++) {
+    AudioDeviceID device = saved_settings[i].device;
+    if (saved_settings[i].had_frames) {
+      AudioObjectPropertyAddress address = {
+        kAudioDevicePropertyBufferFrameSize, kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain };
+      UInt32 frames = saved_settings[i].frames;
+      AudioObjectSetPropertyData(device, &address, 0, NULL, sizeof(frames),
+                                 &frames);
+    }
+    if (saved_settings[i].had_rate) {
+      AudioObjectPropertyAddress address = {
+        kAudioDevicePropertyNominalSampleRate, kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain };
+      Float64 rate = saved_settings[i].rate;
+      AudioObjectSetPropertyData(device, &address, 0, NULL, sizeof(rate),
+                                 &rate);
+    }
+  }
+  saved_count = 0;
 }
 
 static int actual_buffer_frames(AudioDeviceID device) {
@@ -684,6 +850,8 @@ static void teardown(void) {
     output_unit = NULL;
   }
   free_scratch();
+  // After the units are gone, so the device will accept the change.
+  restore_device_settings();
   stream_running = false;
 }
 
@@ -707,6 +875,14 @@ bool whistle_start(const struct WhistleConfig* config) {
   }
   if (output_device == kAudioObjectUnknown) {
     fail("no audio output device is available", noErr);
+    return false;
+  }
+  // See WhistleRoute.builtin_loop.  Checked here as well as in the UI so that
+  // there is one place this is decided, whatever route the call came in by.
+  if (is_builtin_mic(input_device) && is_builtin_speaker(output_device)) {
+    fail("this Mac's microphone and its speakers cannot be used together: "
+         "the speakers are pointed at the microphone, so the synth would "
+         "hear itself. Connect headphones or an audio interface.", noErr);
     return false;
   }
 

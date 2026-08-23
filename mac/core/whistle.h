@@ -1,8 +1,11 @@
 // The C side of the Mac app: owns the engine, the audio device, and the
 // handoff between the UI thread and the audio thread.
 //
-// Everything here is safe to call from the main thread while audio is
-// running.  Nothing here allocates or locks on the audio thread.
+// The controls and the status are safe to call from the main thread while
+// audio is running.  The lifecycle calls -- whistle_start and whistle_stop --
+// are not: they are synchronous CoreAudio work and belong on one thread of
+// their own, which is what AudioLifecycle on the Swift side is for.  Nothing
+// here allocates or locks on the audio thread.
 //
 // The engine itself (pitch.c, synth.c, engine.c) knows nothing about any of
 // this and is shared verbatim with the command-line build.
@@ -58,8 +61,36 @@ struct WhistleConfig {
   int buffer_frames;
 };
 
+/* ---------------------------------------------------------------- route --- */
+
+// Which devices a config actually resolves to, and whether that pairing can
+// be played at all.  Asked before starting and again whenever the device
+// list changes, so the UI can say what is wrong while it is still wrong
+// rather than only at the moment someone presses a key.
+struct WhistleRoute {
+  bool have_input;
+  bool have_output;
+  char input_name[WHISTLE_NAME_MAX];
+  char output_name[WHISTLE_NAME_MAX];
+
+  // The Mac's own microphone into the Mac's own speakers.  Refused: the
+  // speakers are a few inches from the microphone and pointed at it, so the
+  // synth hears itself and every voice turns into a howl within a second.
+  // No gate setting fixes it -- the detector is tracking its own output.
+  // Headphones, or any separate input or output device, and it is fine.
+  bool builtin_loop;
+
+  // Nothing above is a problem and whistle_start has something to work with.
+  bool usable;
+};
+
+// Never fails: a route with `usable` false is the answer, not an error.
+void whistle_resolve_route(const struct WhistleConfig* config,
+                           struct WhistleRoute* out);
+
 // Returns true on success.  On failure whistle_last_error() says why, in a
-// sentence meant to be shown to the player.
+// sentence meant to be shown to the player.  A route that is not `usable`
+// fails here too, so this stays the only thing that has to be gotten right.
 bool whistle_start(const struct WhistleConfig* config);
 void whistle_stop(void);
 const char* whistle_last_error(void);

@@ -14,7 +14,7 @@ struct VoiceView: View {
                     // at this tab, would change what you hear behind your back.
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Passthrough has no sound of its own to edit.")
-                        Button("Switch to \(SynthController.name(ofVoice: 1))") {
+                        Button("Switch to \(SynthController.displayName(ofVoice: 1))") {
                             synth.voice = 1
                         }
                     }
@@ -23,7 +23,8 @@ struct VoiceView: View {
                 Section {
                     Picker("Editing", selection: $synth.voice) {
                         ForEach(1..<synth.voiceCount, id: \.self) { voice in
-                            Text(SynthController.name(ofVoice: voice)).tag(voice)
+                            Text(SynthController.displayName(ofVoice: voice))
+                                .tag(voice)
                         }
                     }
                     HStack {
@@ -103,8 +104,12 @@ private struct ParamRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else if let step = spec.step {
             Slider(value: binding, in: spec.range, step: step)
+                .accessibilityLabel(spec.label)
+                .accessibilityValue(spec.format(value))
         } else {
             Slider(value: binding, in: spec.range)
+                .accessibilityLabel(spec.label)
+                .accessibilityValue(spec.format(value))
         }
     }
 

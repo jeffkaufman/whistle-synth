@@ -6,7 +6,9 @@
 
 // Builds the engine for a stream about to start, at the rate the device
 // actually settled on, and applies whatever the UI has published so far.
-// Called from the main thread with no audio running.
+// Called with no audio running, from whichever thread drives the stream's
+// lifecycle -- one thread only, which the app guarantees with a serial
+// queue.  See AudioLifecycle.
 void whistle_engine_prepare(double sample_rate);
 
 // One block, mono in to stereo out, on the audio thread.  Realtime safe.
@@ -18,7 +20,9 @@ void whistle_engine_process(const float* in, float* left, float* right,
 void whistle_note_xrun(void);
 void whistle_note_dropouts(int count);
 
-// Stream facts, published for whistle_status.  Main thread, stream stopped.
+// Stream facts, published for whistle_status.  Called from the lifecycle
+// thread with the stream stopped; read from the main thread at any time,
+// which the generation counter in the implementation is what makes safe.
 void whistle_publish_stream(bool running,
                             double sample_rate,
                             int buffer_frames,

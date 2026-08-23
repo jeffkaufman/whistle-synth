@@ -9,7 +9,7 @@ struct PlayView: View {
     /// of voice names, so an edited voice reports what it will actually do.
     private var sustainExemption: String {
         guard !synth.isPassthrough, synth.currentParams.no_sustain else { return "" }
-        return " \(synth.currentVoiceName) opts out of this: its whole shape is a note speaking and getting out of the way, and a tail is the opposite instruction."
+        return " \(synth.currentVoiceDisplayName) opts out of this: its whole shape is a note speaking and getting out of the way, and a tail is the opposite instruction."
     }
 
     var body: some View {
@@ -17,7 +17,8 @@ struct PlayView: View {
             Section {
                 Picker("Voice", selection: $synth.voice) {
                     ForEach(0..<synth.voiceCount, id: \.self) { voice in
-                        Text(SynthController.name(ofVoice: voice)).tag(voice)
+                        Text(SynthController.displayName(ofVoice: voice))
+                            .tag(voice)
                     }
                 }
                 .pickerStyle(.radioGroup)
@@ -113,6 +114,10 @@ struct StepSlider: View {
                 value: Binding(get: { Double(value) },
                                set: { value = Int($0.rounded()) }),
                 in: 0...9, step: 1)
+                // Unlabelled, VoiceOver reads out a percentage and
+                // nothing else -- true of every slider in the app.
+                .accessibilityLabel(title)
+                .accessibilityValue("\(value) of 9")
             Text(caption)
                 .font(.caption)
                 .foregroundStyle(.secondary)

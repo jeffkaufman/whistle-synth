@@ -59,6 +59,9 @@ cp mac/WhistleSynth/Info.plist "$APP/Contents/Info.plist"
 # (which ships with Xcode, not the Command Line Tools) we use the .icns that
 # mac/tools/make-icon.swift wrote from the same drawing.
 cp mac/WhistleSynth/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# Xcode copies this in as a resource; the store reads it out of the bundle
+# root of Contents/Resources either way.
+cp mac/WhistleSynth/PrivacyInfo.xcprivacy "$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # The sandbox only applies to a signed binary, so even a local test build has

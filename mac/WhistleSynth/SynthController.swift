@@ -1,4 +1,5 @@
 import AVFoundation
+import AppKit
 import Combine
 import Foundation
 
@@ -69,8 +70,17 @@ final class SynthController: ObservableObject {
 
     @Published private(set) var devices: [AudioDevice] = []
     @Published private(set) var running = false
+    /// A start is in flight on the audio queue.  Worth showing, because
+    /// opening a device is not always instant and a window that says nothing
+    /// for half a second reads as broken.
+    @Published private(set) var starting = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var permission: AVAuthorizationStatus
+    /// What the device settings resolve to, and whether it can be played.
+    /// Kept up to date whether or not anything is running, so the window can
+    /// say "connect headphones" the whole time it is true rather than only
+    /// when someone tries to start.
+    @Published private(set) var route = AudioRoute()
 
     @Published private(set) var inputPeak: Float = 0
     @Published private(set) var outputPeak: Float = 0
@@ -93,7 +103,9 @@ final class SynthController: ObservableObject {
 
     private let defaults = UserDefaults.standard
     private var meterTimer: Timer?
+    private var routeTimer: Timer?
     private var restartWork: DispatchWorkItem?
+    private var activationObserver: NSObjectProtocol?
 
     // MARK: - Setup
 
@@ -104,10 +116,18 @@ final class SynthController: ObservableObject {
             Key.gate: 5,
             Key.fifth: false,
             Key.sustain: false,
-            Key.sampleRate: 48_000,
-            // The device's own minimum is usually smaller, but 64 frames is
-            // already past the point where the hardware's fixed converter and
-            // safety offset dominate, and it leaves room for a slow machine.
+            // 0 means "leave the device alone", and the sample rate stays
+            // there: a device runs at one rate for everything using it, so
+            // picking one is a decision about the whole machine and not ours
+            // to make for someone who never asked.
+            Key.sampleRate: 0,
+            // The buffer size is not shared -- measured, not assumed: with
+            // this app running at 64 frames, another process on the same
+            // device still reads 512.  The HAL gives each client its own and
+            // adapts.  So this one is ours to set, and 64 is the point of the
+            // app: the device's own minimum is usually smaller, but 64 is
+            // already past where the hardware's fixed converter and safety
+            // offset dominate, and it leaves room for a slow machine.
             Key.bufferFrames: 64,
         ])
 
@@ -130,6 +150,14 @@ final class SynthController: ObservableObject {
         whistle_set_sustain(sustain)
         publishProgram()
         watchDevices()
+        refreshRoute()
+        watchActivation()
+    }
+
+    deinit {
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+        }
     }
 
     /// What a first run should sound like: the plainest voice in the table,
@@ -148,13 +176,48 @@ final class SynthController: ObservableObject {
         return 1
     }
 
+    /// The internal name, which is what the preset table and the
+    /// command-line build call it, and what stored edits are keyed by.  Not
+    /// for showing to anyone.
     static func name(ofVoice voice: Int) -> String {
         String(cString: whistle_voice_name(Int32(voice)))
     }
 
+    /// What the UI calls it.  Written out by hand rather than derived,
+    /// because the derivations all get something wrong: `fm` wants both
+    /// letters capital, `subbass` is two words, `eight-oh-eight` is a number
+    /// spelled out.  A voice with no entry falls back to its internal name
+    /// with the first letter raised, which is wrong in a small way rather
+    /// than absent, and is the thing to notice when adding a preset.
+    static func displayName(ofVoice voice: Int) -> String {
+        let internalName = name(ofVoice: voice)
+        if let display = displayNames[internalName] {
+            return display
+        }
+        return internalName.prefix(1).uppercased() + internalName.dropFirst()
+    }
+
+    private static let displayNames = [
+        "raw input (passthrough)": "Passthrough (raw input)",
+        "bass": "Bass",
+        "subbass": "Sub Bass",
+        "octaveless": "Octaveless",
+        "reese": "Reese",
+        "eight-oh-eight": "808",
+        "pluck": "Pluck",
+        "fm": "FM",
+        "fm-sub": "FM Sub",
+        "grind": "Grind",
+        "square": "Square",
+    ]
+
     var voiceCount: Int { Int(whistle_preset_count()) + 1 }
 
     var currentVoiceName: String { SynthController.name(ofVoice: voice) }
+
+    var currentVoiceDisplayName: String {
+        SynthController.displayName(ofVoice: voice)
+    }
 
     var isPassthrough: Bool { voice == 0 }
 
@@ -172,35 +235,136 @@ final class SynthController: ObservableObject {
         }
     }
 
+    /// Someone who denies the microphone, goes to System Settings, grants it,
+    /// and picks "Later" at the "Quit & Reopen" prompt comes back to this
+    /// window.  Without a re-check that window stays dead for the rest of the
+    /// launch, with nothing on it but the button that sent them to Settings.
+    func refreshPermission() {
+        let current = AVCaptureDevice.authorizationStatus(for: .audio)
+        guard current != permission else { return }
+        permission = current
+        if current == .authorized {
+            start()
+        } else if running {
+            stop()
+        }
+    }
+
+    /// Coming back to the app is when a permission granted elsewhere is worth
+    /// noticing, and it is also when the devices are most likely to have
+    /// changed under us -- headphones get plugged in while the app is behind
+    /// something else.
+    private func watchActivation() {
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.refreshPermission()
+                self.devicesChanged()
+            }
+        }
+    }
+
     // MARK: - Running
 
-    func start() {
-        guard permission == .authorized else { return }
-
+    /// Everything `whistle_start` needs, in one place, so that the route
+    /// check and the start itself cannot disagree about what they are
+    /// talking about.
+    private var config: WhistleConfig {
         var config = WhistleConfig()
         setCString(&config.input_uid, inputUID)
         setCString(&config.output_uid, outputUID)
         config.sample_rate = Double(sampleRate)
         config.buffer_frames = Int32(bufferFrames)
+        return config
+    }
 
-        if whistle_start(&config) {
-            running = true
-            errorMessage = nil
-        } else {
-            running = false
-            let message = String(cString: whistle_last_error())
-            errorMessage = message.isEmpty ? "The audio device would not start." : message
+    private func refreshRoute() {
+        route = AudioLifecycle.route(for: config)
+        watchBlockedRoute()
+    }
+
+    /// Headphones going into the jack fire no CoreAudio notification worth
+    /// listening for: the device list does not change, the default output
+    /// does not change, and the device ID does not change -- it is the same
+    /// built-in device reporting a different data source.  There is nothing
+    /// to subscribe to, so while the route is refused, ask.
+    ///
+    /// Once a second, and only while blocked, which is the only state where
+    /// anyone is waiting on the answer.  A USB interface or a pair of AirPods
+    /// does change the device list and arrives through the callback like
+    /// everything else; this is for the one case that does not.
+    private func watchBlockedRoute() {
+        let wanted = route.problem != nil && permission == .authorized
+        guard wanted != (routeTimer != nil) else { return }
+
+        routeTimer?.invalidate()
+        routeTimer = nil
+        guard wanted else { return }
+
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.devicesChanged() }
         }
-        refreshStatus()
-        startMetering()
+        RunLoop.main.add(timer, forMode: .common)
+        routeTimer = timer
+    }
+
+    func start() {
+        refreshRoute()
+        guard permission == .authorized, route.usable else {
+            // Nothing to play into, or nothing we are willing to play into.
+            // The window says which; there is no point starting to find out.
+            if running || starting { stop() }
+            return
+        }
+
+        starting = true
+        errorMessage = nil
+        AudioLifecycle.start(config) { [weak self] error in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.starting = false
+                if let error {
+                    self.running = false
+                    self.errorMessage = error.isEmpty
+                        ? "The audio device would not start." : error
+                } else {
+                    self.errorMessage = nil
+                }
+                // `running` comes from the C side rather than from which
+                // callback this is, so a start that was overtaken by a newer
+                // one cannot leave a stale answer behind.
+                self.refreshStatus()
+                self.startMetering()
+            }
+        }
     }
 
     func stop() {
         meterTimer?.invalidate()
         meterTimer = nil
-        whistle_stop()
+        restartWork?.cancel()
+        starting = false
         running = false
-        refreshStatus()
+        AudioLifecycle.stop { [weak self] in
+            MainActor.assumeIsolated { self?.refreshStatus() }
+        }
+    }
+
+    /// The app is going away.  An async stop would race the process exiting,
+    /// and the device has to be handed back -- with the sample rate and
+    /// buffer size we changed put back -- before that happens.
+    func shutdown() {
+        meterTimer?.invalidate()
+        meterTimer = nil
+        routeTimer?.invalidate()
+        routeTimer = nil
+        restartWork?.cancel()
+        starting = false
+        running = false
+        AudioLifecycle.shutdown()
     }
 
     /// Settings that need the stream rebuilt.  Coalesced, because dragging
@@ -209,8 +373,7 @@ final class SynthController: ObservableObject {
     private func restart() {
         restartWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.permission == .authorized else { return }
-            self.start()
+            MainActor.assumeIsolated { self?.start() }
         }
         restartWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
@@ -230,13 +393,22 @@ final class SynthController: ObservableObject {
     }
 
     private func devicesChanged() {
-        devices = AudioDevice.all()
+        let found = AudioDevice.all()
+        let resolved = AudioLifecycle.route(for: config)
+        // Asked on every activation as well as on every CoreAudio
+        // notification, so it has to be free when nothing moved: restarting
+        // the stream each time the window is clicked would be a gap in the
+        // sound for no reason.
+        guard found != devices || resolved != route else { return }
+        devices = found
+        route = resolved
+        watchBlockedRoute()
+
         // The stream holds a device ID, and IDs do not survive a device going
         // away.  Rebuilding is cheap and is the only way to follow a player
-        // unplugging their interface mid-tune.
-        if running {
-            restart()
-        }
+        // unplugging their interface mid-tune -- or plugging headphones in,
+        // which is what turns a refused route into a playable one.
+        restart()
     }
 
     func inputDevices() -> [AudioDevice] { devices.filter(\.canRecord) }

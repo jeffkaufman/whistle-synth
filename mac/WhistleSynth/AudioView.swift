@@ -54,7 +54,7 @@ struct AudioView: View {
             } header: {
                 Text("Timing")
             } footer: {
-                Text("Smaller buffers answer sooner and ask more of the machine. If the dropout count climbs while you play, go up a size. The buffer size belongs to the device, so this affects other apps using it while Whistle Synth is running.")
+                Text("Smaller buffers answer sooner and ask more of the machine. If the dropout count climbs while you play, go up a size. The buffer size is this app's own — other apps on the same device keep theirs. The sample rate is not: a device runs at one rate for everything using it, so changing it here changes it for them too. Whistle Synth puts it back when it stops.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
