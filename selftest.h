@@ -27,6 +27,12 @@ enum SelfTestMode {
   // stops, how a real note trails off, and what a real breath noise floor
   // looks like are all guesses until there's a recording of the real thing.
   SELFTEST_RECORD,
+  // The same, but asking for what a *holding* voice has to be judged on.
+  // RECORD's script is about whether the detector tracks, and has almost no
+  // rests in it; a voice that carries a note through a rest is judged on the
+  // rests, on what it picks to carry, and on leaving alone the playing that
+  // has no rests in it at all.  See build_record_hold.
+  SELFTEST_RECORD_HOLD,
   // Plays the synth so it can be heard, and records the microphone and the
   // synth output side by side.  For chasing an artifact the player can hear
   // and provoke but that hasn't shown up in analysis: they drive it, and the
@@ -69,6 +75,10 @@ struct SelfTest {
 float selftest_init(struct SelfTest* t, float sample_rate,
                     enum SelfTestMode mode);
 void selftest_free(struct SelfTest* t);
+
+// Whether a mode plays nothing and only records the player.  The two record
+// scripts differ in what they ask for and in nothing else.
+bool selftest_is_record(enum SelfTestMode mode);
 
 // Next stimulus sample to play.  Realtime safe.
 float selftest_stimulus(struct SelfTest* t);

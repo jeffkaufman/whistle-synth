@@ -3,7 +3,7 @@
 // microphone in the loop.
 //
 //   make zeros2-offline
-//   ./zeros2-offline <voice> <volume> <gate> < in.f32 > out.f32
+//   ./zeros2-offline <voice> <volume> <gate> [fifth] [sustain] < in.f32 > out.f32
 //
 // Raw mono 32-bit float at SAMPLE_RATE in and out; use ffmpeg to get to and
 //
@@ -22,17 +22,35 @@
 int main(int argc, char** argv) {
   if (argc < 4) {
     fprintf(stderr,
-            "usage: %s voice volume gate [--trace] < in.f32 > out.f32\n",
+            "usage: %s voice volume gate [fifth] [sustain] [--trace]"
+            " < in.f32 > out.f32\n",
             argv[0]);
     return -1;
   }
-  bool trace = argc > 4 && strcmp(argv[4], "--trace") == 0;
+  // The trailing arguments are optional and --trace may go anywhere among
+  // them; the numbers are positional, the fifth control and then the sustain
+  // control.  --trace asks for hints instead of audio.
+  bool trace = false;
+  int fifth = 0;
+  int sustain = 0;
+  int numbers = 0;
+  for (int i = 4; i < argc; i++) {
+    if (strcmp(argv[i], "--trace") == 0) {
+      trace = true;
+    } else if (numbers++ == 0) {
+      fifth = atoi(argv[i]);
+    } else {
+      sustain = atoi(argv[i]);
+    }
+  }
 
   static struct Engine engine;
   engine_init(&engine, SAMPLE_RATE);
   engine_set_voice(&engine, atoi(argv[1]));
   engine_set_volume(&engine, atoi(argv[2]));
   engine_set_gate(&engine, atoi(argv[3]));
+  engine_set_fifth(&engine, fifth);
+  engine_set_sustain(&engine, sustain);
 
   if (trace) {
     printf("sample\tseconds\tvoiced\tonset\tfreq\tconfidence\tlevel\n");

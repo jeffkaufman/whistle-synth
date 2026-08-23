@@ -9,6 +9,9 @@
 // Most detuned copies of the oscillator a preset may ask for, and the most
 // partials each one gets.  The low voices need the partial count: three
 // octaves down, twelve partials only reaches 2kHz and sounds like a blanket.
+// How many independent slow LFOs move the partials of a sustained note.
+#define SYNTH_SHIMMER_LFOS 3
+
 #define SYNTH_UNISON 3
 #define SYNTH_MAX_HARMONICS 32
 
@@ -120,6 +123,22 @@ struct SynthParams {
   // Note shaping: how the sound starts and stops.
   float attack_s;
   float release_s;
+
+  // Opts a voice out of the sustain control entirely, so that switching it on
+  // leaves this one exactly as it is.  For a voice whose whole shape is a
+  // note speaking and getting out of the way, a tail is the opposite
+  // instruction, and what comes out is neither: measured, `pluck`'s tails
+  // land a median 8.2dB under the end of the note that made them against
+  // `reese`'s 6.1, with a p10 of -22dB -- a fifth of them inaudible -- and
+  // 19dB duller, because the per-note filter sweep has long since closed.
+  bool no_sustain;
+
+  // How deep the tail's movement is for this voice, overriding
+  // SYNTH_TAIL_SHIMMER.  Zero means the default.  A voice whose partials are
+  // an octave apart moves very differently under the same number from one
+  // whose partials are a harmonic series -- there are nine of them rather
+  // than thirty-two, and each is a whole octave from its neighbour.
+  float shimmer_depth;
 
   // How fast the level may move *within* a note, in both directions.  This
   // has to be much quicker than release_s, and it is the difference between
@@ -237,115 +256,6 @@ struct SynthParams {
   // value at the offset is subtracted back out, so this adds no DC.
   float drive_bias;
 
-  // ------------------------------------------------------------- pad ---
-  //
-  // A latching drone rather than a note: a steady whistle arms it, it holds
-  // on its own, and it fades without being held.  A non-zero pad_arm_s
-  // switches the whole voice into this mode, and most of the parameters
-  // above stop applying -- there is no gate, no articulation, no growl, and
-  // the note envelope is replaced entirely.
-  //
-  // How long the pitch has to hold still to count as a chord change, and how
-  // far it may wander while doing so.
-  float pad_arm_s;
-  float pad_steady_cents;
-
-  // The envelope, in the terms it was asked for: ramp up over attack_s, hold
-  // for hold_s, then halve every halflife_s.  Re-whistling the note the pad
-  // is already on refreshes the hold rather than starting a second chord.
-  float pad_attack_s;
-  float pad_hold_s;
-  float pad_halflife_s;
-
-  // How fast the previous chord gets out of the way when a new one arrives.
-  float pad_duck_s;
-
-  // Which partials of the fundamental sound, as a bitmask -- bit n-1 for
-  // partial n.  0 means all of them, which is what every non-pad voice does.
-  //
-  // This is how the chord is built and why it has no third.  Partials 2, 3,
-  // 4, 6, 8, 12, 16, 24 and 32 are the root, its fifth, and octaves of both,
-  // and nothing else: partial 5 and partial 10 are the major third and are
-  // left out, so the pad never says whether the tune is major or minor.
-  // Building the chord out of one harmonic series rather than out of
-  // separate oscillators is also what makes it fuse into a single rich tone
-  // instead of reading as a stack of pitches -- it is how an organ mixture
-  // works, for the same reason.
-  uint32_t partial_mask;
-
-  // The spectral envelope, fixed in absolute Hz: a body bell low down and a
-  // quieter one up top, with the gap between them left empty on purpose.
-  // Fixed in Hz rather than in partial number because a pad has to stay in
-  // its lane in the arrangement whatever it is playing -- the body under the
-  // mandolin, the shimmer above it, and 300-800Hz left clear for the tune.
-  float bell_hz, bell_width;
-  float shimmer_hz, shimmer_width, shimmer_level;
-
-  // ---- Movement.  All of it shallow on purpose: the point is that the
-  // sound never sits still, not that any one of these is audible as an
-  // effect in its own right. ----
-
-  // Per-partial pitch wander, in cents.  This is the ensemble in the pad --
-  // what a stack of detuned oscillators would normally provide, done in a way
-  // that survives mono.  Detuned *copies* cancel, because two things at
-  // almost the same frequency beat; a single partial nudged a few cents has
-  // nothing to beat against, so it thickens without a null anywhere.
-  float drift_cents;
-
-  // A slow sweep of the shimmer bell, and how far the same bell is pulled
-  // down while the chord is still swelling.  Together they are the filter
-  // opening and closing that a pad is expected to do -- one on a clock, one
-  // on the note.
-  float sweep_hz, sweep_octaves;
-  float bright_env_octaves;
-
-  // A rotating speaker.  Amplitude and pitch modulated in quadrature, which
-  // is what makes it read as something moving rather than as tremolo plus
-  // vibrato; the partials below leslie_split_hz get the bass rotor, which
-  // turns slower and much shallower than the horn above it.
-  float leslie_hz, leslie_am, leslie_cents, leslie_split_hz;
-
-  // Slow independent level drift, per partial, at rates spread around
-  // drift_hz so no two partials ever come back into step.
-  //
-  // This is where a pad's richness has to come from here.  The usual source
-  // is a stack of detuned copies, and detuned copies cancel in mono -- see
-  // mono_partials, where that cost `reese` 31dB of its fundamental.  A pad
-  // is all sustain, so the cancellation would have time to sweep every
-  // partial in turn.  Drifting the levels of partials that stay exactly in
-  // tune gives movement with nothing to cancel.
-  float drift_hz, drift_depth;
-
-  // Concert pitch, as the frequency of A.  Non-zero snaps the chord's root to
-  // the nearest equal-tempered semitone; 0 leaves it wherever it was
-  // whistled.
-  //
-  // Only the pad does this, and the asymmetry is the point.  A bass line
-  // wants every cent of what was played -- the scoops, the slides, and the
-  // fact that a whistle is a fretless instrument are the expression.  A chord
-  // has no such freedom: it is either in tune with the mandolin or it is
-  // wrong, and 30 cents flat under a fretted instrument is a beat rather than
-  // a colour.
-  //
-  // It is a frequency and not a flag so a band that tunes to 442 can say so.
-  float pad_snap_hz;
-
-  // The bottom of the one octave the chord's root is allowed to live in.
-  // Whatever is whistled, the root is folded into [pad_fold_hz, 2x) -- so the
-  // pad is always in the same register and you never have to whistle in a
-  // particular octave to place it.
-  //
-  // Folding rather than compressing, and that distinction is the whole
-  // reason this parameter is a frequency and not a rate.  Compressing the
-  // register -- moving the pad half an octave per octave of whistle, the way
-  // `octaveless-half` moves -- halves every interval too: whistling D then G
-  // then A asks for +5 and +7 semitones and gets +2.5 and +3.5, which are
-  // quarter-tones, out of tune with the band and unable to state I-IV-V at
-  // all.  That is tolerable in a bass line, where a compressed contour still
-  // reads as a line.  It is not tolerable in a chord.  Folding keeps the
-  // pitch class exact and moves only the octave.
-  float pad_fold_hz;
-
   // Breath noise, as a fraction of the tone.  Banded around the note rather
   // than white, and louder when the player backs off, which is how a large
   // flute actually behaves -- on a contrabass flute the breath is nearly as
@@ -353,42 +263,22 @@ struct SynthParams {
   float breath;
 };
 
-// Most partials a pad chord can use, and how many chords can be sounding at
-// once.
-//
-// Four layers, and the number falls straight out of the timings: a chord can
-// be armed every pad_arm_s, and a ducking one is inaudible after about four
-// pad_duck_s.  At 0.10 and 0.12 that is 0.48s of fading against a new chord
-// every 0.10s, so five could overlap in the worst case -- but the ones that
-// matter are the recent ones, and by the fourth the first is 29dB down.
-// Three would put it at 22dB, which is audible when it gets cut.
-#define PAD_PARTIALS 16
-#define PAD_LAYERS 4
-
-// One sounding chord.  Each partial carries its own phase rather than coming
-// off the Chebyshev recurrence, because they no longer sit at exact multiples
-// of anything: drift and leslie move each one independently, which is where
-// the pad's movement comes from.
-struct PadLayer {
-  float log_root;    // log2 Hz of this chord's fundamental
-  float env;         // ramp / hold / decay
-  float hold_left;   // seconds of hold remaining; <=0 means decaying
-  float duck;        // 1, until a newer chord supersedes this one
-  float gain;        // how hard the whistle that armed it was
-  float level;       // env * duck * gain, smoothed
-
-  int n_partials;
-  int partial[PAD_PARTIALS];        // which harmonics of log_root these are
-  float phase[PAD_PARTIALS];
-  float pitch_mul[PAD_PARTIALS];    // drift and leslie, stepped at control rate
-  float leslie_am[PAD_PARTIALS];    // applied after normalization, see below
-  float amp[PAD_PARTIALS];          // smoothed
-  float amp_target[PAD_PARTIALS];
-};
-
 struct Synth {
   float sample_rate;
   const struct SynthParams* params;
+
+  // What the preset's `octave` is multiplied by before anything is
+  // synthesized: 1 normally, and 2/3 when the fifth is switched on.  It lives
+  // on the synth rather than in the params because it is a player control
+  // that applies across the whole table, and the presets are const.
+  float octave_mul;
+
+  // Whether the sustain control is on, which is what turns a note the player
+  // held into one that outlives the breath that made it.  Like the fifth this
+  // is a property of how the player is using the instrument rather than of
+  // the voice, so it survives a voice change and applies to all of them.  See
+  // synth_set_sustain.
+  bool sustain;
 
   float phase[SYNTH_UNISON];
   float detune[SYNTH_UNISON];
@@ -405,12 +295,55 @@ struct Synth {
   float gate;
   float loudness_env;
   float amp;           // gate * loudness_env
+  // Seconds of full-level hold the note has left now that the player has
+  // stopped, when the sustain control is on.  The gate does not move at all
+  // until this runs out.
+  float release_hold;
   float level;         // smoothed hint level
+  // A holding preset's running level-weighted pitch, as a leaky numerator and
+  // denominator whose quotient is the average.  This is the pitch such a
+  // preset holds *at*, rather than the one it happened to be playing when the
+  // note ended.  See synth_process.
+  float pitch_num, pitch_den;
+  // And the same average of the note's *level*, over the same weights, which
+  // is the level its tail holds at.  A trail-off is quiet, so it counts for
+  // almost nothing here, which is what lets the level itself follow one all
+  // the way down without the tail inheriting where it ended up.
+  float level_num;
+  // How far into the sustain it is: 0 while the note is being played and 1
+  // once it has fully arrived, moving both the pitch and the level.  The
+  // pitch it set out from is kept because the slide is a ramp between two
+  // points rather than a filter towards one -- a fixed 250ms whatever the
+  // interval, which is what makes it read as a slide.
+  float settle, settle_from_log;
+  // The level the slide sets out from, kept for the same reason
+  // settle_from_log is: the move onto the sustain is a ramp between two
+  // points rather than a filter towards one, and both ends of it are fixed
+  // when the player stops.
+  float settle_from_level;
+  // How long the player has stayed on this note.  A tail is something a note
+  // earns by being held rather than something every note gets: see
+  // SYNTH_HOLD_MIN_NOTE_S.
+  float note_playing;
   float loudness;      // level mapped to 0..1, drives the envelope
   float dynamics;      // level mapped to 0..1, drives brightness and drive
   float note_age;      // seconds since the last onset
 
   float pwm_pos, growl_pos, wobble_pos, vibrato_pos;
+  // Three free-running phases for the movement in a tail; see
+  // SYNTH_TAIL_SHIMMER.  Separate accumulators rather than multiples of one,
+  // so each can wrap without stepping the others.
+  float shimmer_pos[SYNTH_SHIMMER_LFOS];
+  // Their current values, computed once per control hop and shared by every
+  // partial in a group rather than recomputed per partial.
+  float shimmer_gain[SYNTH_SHIMMER_LFOS];
+  // How far the LFOs have come up to speed, 0 to 1: see
+  // SYNTH_TAIL_SHIMMER_S.
+  float shimmer_rate;
+  // How much louder this spectrum has to be played to be heard as loudly as
+  // one sitting where the cabinet and the ear are at their best.  See
+  // synth_audibility.
+  float audibility_comp;
 
   // The plucked part of the note envelope, falling from 1 to sustain_level.
   float pluck;
@@ -423,18 +356,6 @@ struct Synth {
   // Per-copy gain for the partials below mono_partials: sqrt(unison) on the
   // first copy and zero on the rest.
   float low_gain[SYNTH_UNISON];
-
-  // Pad mode.  `pad_active` is the layer accepting the current chord; the
-  // other one is either silent or ducking.
-  struct PadLayer pad[PAD_LAYERS];
-  int pad_active;
-  float pad_semitone;    // the snapped note currently held, semitones from A
-  float pad_steady_s;    // how long the pitch has held still
-  float pad_steady_log;  // the pitch it has been holding at
-  float pad_gap_s;       // how long the detector has been unvoiced
-  float drift_phase[PAD_PARTIALS];
-  float leslie_phase;
-  float sweep_phase;
 
   // Per-note envelopes that decay towards zero, in octaves.
   float drop;
@@ -478,6 +399,40 @@ void synth_sanitize_params(struct SynthParams* p);
 
 void synth_init(struct Synth* s, float sample_rate, int preset);
 void synth_set_preset(struct Synth* s, int preset);
+
+// Plays a just fifth below what the preset would otherwise play -- frequency
+// times exactly 2/3 -- or puts it back.  Whatever you whistle is then the
+// fifth of what you hear rather than the root, so a tune whistled in D comes
+// out in G.
+//
+// This used to be a preset of its own (`fm-fifth`, at octave 1/24 against
+// `fm`'s 1/16), but the interval has nothing to do with the timbre and there
+// is no reason only one voice should have it.  Survives a voice change, since
+// which voice you are playing and what interval you are playing it at are
+// separate decisions.
+//
+// A just fifth rather than a tempered one: dividing by exactly three is the
+// harmonic relationship, and it lands about 2 cents flat of equal temperament,
+// which down here is one beat every twenty seconds against a fretted
+// instrument -- well inside how accurately anyone whistles.
+void synth_set_fifth(struct Synth* s, bool on);
+
+// Whether a note the player holds outlives the breath that made it.
+//
+// Off, every voice sounds for exactly as long as you whistle, which is an
+// organ: the bass line stops when you take a breath.  On, a note held for
+// SYNTH_HOLD_MIN_NOTE_S slides onto the nearest real note, settles under
+// itself, sits there for SYNTH_HOLD_S and then fades -- so one note every
+// couple of bars holds a drone under a tune, and the line carries through the
+// breath and under the next phrase.  It is still monophonic, so a new note
+// takes the tail with it: what you get is a line that never stops, not two
+// notes at once.
+//
+// Notes too short to have been meant that way are untouched, which is what
+// lets this be a switch rather than a voice: with it on, a fast phrase sounds
+// exactly as it does with it off, and the tail only appears where a note was
+// deliberately held.  See the SYNTH_HOLD_* block in synth.c.
+void synth_set_sustain(struct Synth* s, bool on);
 
 // Plays `params` instead of a preset.  The struct is borrowed, not copied, so
 // it must outlive the synth -- and since the audio thread reads it every

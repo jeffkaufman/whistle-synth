@@ -52,11 +52,11 @@ zeros2-offline: offline.c $(DSP)
 
 run2-linux: zeros2-linux
 	./zeros2-linux \
-    $(CURDIR)/device-index $(CURDIR)/current-voice $(CURDIR)/current-volume $(CURDIR)/current-gate
+    $(CURDIR)/device-index $(CURDIR)/current-voice $(CURDIR)/current-volume $(CURDIR)/current-gate $(CURDIR)/current-fifth $(CURDIR)/current-sustain
 
 run2-mac: zeros2-mac
 	./zeros2-mac \
-    $(CURDIR)/device-index $(CURDIR)/current-voice $(CURDIR)/current-volume $(CURDIR)/current-gate
+    $(CURDIR)/device-index $(CURDIR)/current-voice $(CURDIR)/current-volume $(CURDIR)/current-gate $(CURDIR)/current-fifth $(CURDIR)/current-sustain
 
 # ----------------------------------------------------------------------- --
 

@@ -54,7 +54,31 @@
 
 // Below this confidence we assume an exact 2x error is likelier than a real
 // octave leap.  A clean leap reads well above it.
-#define OCTAVE_GUARD_CONF 0.75f
+//
+// 0.75 was too low, and the failure it let through is worth describing
+// because it is not the obvious one.  A whistle does not stop, it decays, and
+// on the way down the estimator's confidence decays with it -- but not
+// monotonically, and it passes through the high 0.70s while the signal is
+// already 4 to 27dB under the note.  An exact halving arriving right there
+// reads as confident enough to be a leap.  Measured over four real takes,
+// every single disagreement between 0.75 and 0.90 -- 22 of them in 187
+// seconds -- was an exact 2:1 error at low level in a burst of 1 to 32ms, and
+// none was a real leap: the deliberate-leap passage covers the same
+// 1072-2198Hz either way.
+//
+//    guard   holding   scoop-up   up-down   whistling
+//    0.75       39         0          5         26      octave glitches
+//    0.85       17         0          2         17
+//    0.90        3         0          0          4
+//    0.95        3         0          0          2
+//
+// 0.90 takes nearly all of it and keeps a real escape hatch; past that the
+// curve is flat and all that is left is giving up on leaps.
+//
+// Most voices ride out a 30ms octave blip -- it is gone before the ear has
+// resolved it.  `reese-hold` is the one that cannot: it can be the last thing
+// it hears before the player stops, and then it holds it for six seconds.
+#define OCTAVE_GUARD_CONF 0.90f
 
 // The guard only starts protecting a note once it has been going this long.
 // At an onset the window is still mostly whatever preceded the note, so the

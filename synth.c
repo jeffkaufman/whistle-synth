@@ -36,6 +36,203 @@
 // The ceiling on the whole table is `subbass`, which reaches 0.82 peak at
 // this target.  Nothing can go louder without it clipping.
 
+// The sustain: what a note does after the player stops, when the control is
+// on.  Everything here is measured over recordings/holding.f32 and
+// recordings/scoop-up.f32, and all of it follows from one fact about the
+// input -- a whistle does not stop, it trails off, and by the last hop the
+// detector still calls voiced the input is a median 22-30dB under the note,
+// having got there in about 40ms.
+//
+// The voice follows that all the way down, because while there is input this
+// is the voice it always was and nothing here is allowed to change that.  So
+// the tail cannot inherit where the note ended; it inherits the note, through
+// the weighted averages below.
+//
+//
+//
+// The window the held pitch is averaged over, weighted by how loud the note
+// was at the time.  Level-squared rather than level, which is the same idea
+// carried one step further: the scoop into the note and the fade out of it are
+// both quiet, and weighting by power rather than amplitude discounts them
+// harder.  Measured over notes longer than 300ms, the held pitch lands a
+// median of 5.4 cents from the note's level-weighted pitch, against 83 cents
+// for the pitch at the last voiced hop.
+//
+// This is the half that carries the pitch, rather than the droop test above:
+// weighting by power makes *when* the note was let go stop mattering, because
+// the quiet end of it was contributing almost nothing either way.
+#define SYNTH_HOLD_PITCH_S 0.5f
+//
+// And the sustain the note moves into once it is being held: this far under
+// the level it was played at, arrived at over this long, in pitch and in
+// level together.
+//
+// A note that held at exactly the level it was played at was the obvious
+// thing to build first and the wrong thing to play -- a bass line and its own
+// tail at the same volume is two bass lines.  6dB under is the tail sitting
+// beneath the next phrase instead of competing with it.
+//
+// The 250ms is a ramp rather than a filter, so it takes 250ms whatever the
+// interval, and it is shaped to leave and arrive at zero velocity.  That
+// matters more here than anywhere else in the file: this is the one move in
+// the whole synth that is not the player's, so if it can be heard happening
+// it will be heard as a fault.
+//
+// Coming back out of it is much quicker -- the preset's own attack -- because
+// a note struck while the last one is still sustaining has to speak at full
+// straight away.  It is also what makes a wrong guess about the note ending
+// cheap: the median one lasts 76ms, which gets 22% into the ramp, so 1.3dB
+// and a fifth of the pitch correction, both undone in 25ms.
+// 0.57 rather than a round -6dB, because what it scales is the note's
+// power-weighted mean level rather than the body of the note, and the mean
+// sits a little under the body because it averages the whole of it.
+// Measured over recordings/holding.f32 against the rendered level across the
+// body of the note that made each tail, this lands them a median 6.0dB under.
+// The number to keep true is that measurement, not this constant.
+// How long a held note keeps sounding at full after the player stops, and how
+// it fades once that runs out.  These were the `reese-hold` preset's
+// release_hold_s and release_s before the sustain became a control; they are
+// properties of the tail rather than of any voice, so every voice gets the
+// same ones.
+//
+// Held and *then* released, which is two numbers rather than one long
+// release.  A slow release alone starts fading the instant the note ends, so
+// staying up means re-whistling; the flat stretch in the middle is what makes
+// the tail feel deliberate.  0.6s is a time constant, so the tail is 8.7dB
+// down a second after the hold expires and 60dB down 4.1s after it.
+#define SYNTH_HOLD_S 2.0f
+#define SYNTH_HOLD_RELEASE_S 0.6f
+
+#define SYNTH_HOLD_SUSTAIN 0.52f
+#define SYNTH_HOLD_SETTLE_S 0.25f
+//
+// Concert pitch, as the frequency of A.  The sustain -- and only the sustain
+// -- lands on the nearest equal-tempered semitone.
+//
+// It is the one place in this program that has an opinion about absolute
+// pitch, and the asymmetry is the point.  A bass line wants every cent of
+// what was played: the scoops, the slides and the fact that a whistle is
+// fretless are the expression.  A note left ringing under the tune has no
+// such freedom -- it is either in tune with the mandolin or it is a beat, and
+// nothing about it is moving to disguise that.  So the note you play is
+// exactly what you whistled, and what it settles into is a real note.
+//
+// No hysteresis, unlike the pad that used to do this: the average is frozen
+// when the note ends, so there is one snap per note and nothing to dither.
+// A band that tunes to 442 changes this number.
+#define SYNTH_HOLD_SNAP_HZ 440.0f
+//
+// Three things a holding voice has to decide that the voices which follow the
+// whistle never have to, because they are silent whenever the player is.  All
+// three were measured over recordings/holding.f32, which is what
+// `--record-hold` asks for.
+//
+// An onset arriving while a tail is sounding, at a level this far under what
+// is being held, is the detector re-triggering on the noise floor of a rest
+// rather than a note starting.  Over that recording the two are not close: of
+// the 194 onsets that landed on a sounding tail, eight came in at 0.8-1.8% of
+// the level being held and the next one up was at 8.1%.  4% sits in the
+// middle of an empty gap.
+//
+// It has to be caught because an onset is the one event that resets
+// everything at once -- the level, the timbre and the running pitch average
+// -- so a spurious one both craters the tail and parks it on the detector's
+// reading of room noise.  Measured, they held 1736Hz and 2063Hz against a
+// whistle around 1080Hz, at a level 27dB under the sustain the same note gets
+// when no spurious onset lands in it.
+#define SYNTH_HOLD_ONSET_FLOOR 0.04f
+//
+// How long the player has to stay on a note before it earns a tail.  Every
+// note getting one is what makes a fast phrase snap: nothing else
+// distinguishes the gap between two tongued notes from the end of a phrase.
+//
+// Swept over the same recording, against notes from the sections where a hold
+// is wanted and the sections where it is not:
+//
+//                  holds wanted     holds unwanted
+//     0.35s          30/34              9/117
+//     0.50           23/34              8/117
+//     0.75           15/34              3/117
+//
+// There is no threshold that separates them cleanly, because a deliberate
+// note and a long note in a phrase are the same thing played with different
+// intent.  0.5s is the strict end of the useful range: it costs a third of
+// the notes that wanted a tail and buys back nearly all of the ones that did
+// not.
+//
+// The steadiness of the pitch, which would be the other half of "held at one
+// note", turns out not to be worth testing: over the same notes the
+// deliberate ones sit a median 7.4 cents from their own median pitch and the
+// continuous ones 12.0, which is not a separation.  The length does the work.
+#define SYNTH_HOLD_MIN_NOTE_S 0.5f
+//
+// Movement in the tail.  A sustained note has to be worth listening to for
+// several seconds, and only `reese` gets that for free: its three copies are
+// detuned against each other, so its partials wax and wane on their own.
+// Every other voice here is one oscillator with nothing to beat against, and
+// held still it is an organ note.
+//
+// So the partials are moved directly, in SYNTH_SHIMMER_LFOS groups on that
+// many slow incommensurate LFOs.  Applied to each partial's amplitude before
+// the power normalisation, so what moves is the *balance* between partials
+// and not the level -- a drone that pumps is worse than one that sits still,
+// and the whole point of the normalisation is that the timbre can move
+// without the loudness following it.
+//
+// Scaled by the settle ramp, so it is exactly zero while the player is on the
+// note and fades in as the tail arrives.  This belongs to the tail, not to
+// the voice: with the sustain off, or on a note too short to earn a tail,
+// none of it exists.
+//
+// The FM voices take it on the index instead, because their whole spectrum is
+// one number and there are no partial amplitudes to move.  Tuned separately
+// rather than shared, since the two numbers do not mean the same thing: an
+// index wobble moves energy across the whole Bessel envelope at once.
+// And how long the LFOs take to come up to speed.  They start stopped, at
+// phase zero, and accelerate to the rates above over this long.
+//
+// Fading the *depth* in was the obvious way to make the movement arrive and
+// it is not as good, because it fades in movement that is already underway:
+// the LFOs are free-running, so whatever phase they happen to be at when the
+// player stops is where the partials get pulled towards, and the note leans
+// somewhere for no reason.  Starting them from rest instead means the first
+// motion is the slowest motion, which is what "coming from nowhere" actually
+// requires.
+//
+// There is a second reason, and it is the one that makes this exact rather
+// than merely gentle.  All three start at phase zero, so at that instant they
+// are equal, and multiplying every partial by the same number is precisely
+// what the power normalisation below divides back out.  The movement is not
+// small at the moment the player stops -- it is zero, identically -- and it
+// emerges only as the LFOs drift apart.  Nothing has to be faded at all.
+//
+// A second, not two.  The tail is two seconds at full level and then a 0.6s
+// release, so what is actually audible is about three; spending half of that
+// getting up to speed leaves the movement no room to be movement.  Measured
+// over the tails in recordings/holding.f32, band wander across the whole tail
+// against `reese`'s natural 4.44dB:
+//
+//                 0.0s   1.0s   1.5s   2.0s     (acceleration time)
+//    bass         3.94   1.57   0.91   0.51
+//    eight-oh-eight 3.38 2.75   2.46   1.75
+//    square       2.11   1.66   1.35   0.79
+//
+// At 1.0s the movement is still emerging rather than switching on -- it has
+// moved the spectrum 0.1dB at a quarter second, against 1.3dB when the depth
+// was faded on the settle ramp -- and there is still a tail left to move.
+#define SYNTH_TAIL_SHIMMER_S 0.5f
+// The most the audibility compensation may ask for, as an amplitude ratio.
+// 4x is 12dB.
+#define SYNTH_AUDIBILITY_MAX 4.0f
+
+// How many FM sidebands either side of the carrier to count.  The index stays
+// under 5 and J_n(x) is negligible past about x + 5.
+#define SYNTH_FM_TERMS 12
+
+#define SYNTH_TAIL_SHIMMER 0.35f
+#define SYNTH_TAIL_SHIMMER_FM 0.30f
+static const float synth_shimmer_hz[SYNTH_SHIMMER_LFOS] = { 0.31f, 0.53f, 0.79f };
+
 static const struct SynthParams presets[] = {
   {
     // Four octaves down: a comfortable whistle lands around 50-160Hz, which
@@ -58,7 +255,7 @@ static const struct SynthParams presets[] = {
     .unison = 1, .detune_cents = 0.0f, .harmonics = 32,
     .level_full = 0.22f,
     .attack_s = 0.004f, .release_s = 0.040f, .articulation_s = 0.008f, .glide_s = 0.003f,
-    .out_gain = 0.604f,
+    .out_gain = 0.286f,
   },
   {
     // Five octaves down, which is where the old `ebass` voice lived and what
@@ -94,7 +291,7 @@ static const struct SynthParams presets[] = {
     .min_partial_hz = 22.0f,
     .level_full = 0.22f,
     .attack_s = 0.005f, .release_s = 0.050f, .articulation_s = 0.012f, .glide_s = 0.004f,
-    .out_gain = 0.996f,
+    .out_gain = 0.422f,
   },
   {
     // Octaveless: a Shepard tone you can play.  The partials are octaves
@@ -115,6 +312,12 @@ static const struct SynthParams presets[] = {
     // sigma of 0.9 octaves fits with room to spare: the outermost component
     // is 60dB down at both extremes of the range.
     .name = "octaveless",
+    // Deeper than the rest, and it takes it: nine partials an octave apart
+    // move far more audibly than thirty-two in a harmonic series, and this is
+    // the one voice with no register of its own to hold the interest.  At the
+    // table's 0.35 it wandered 2.1dB across a tail against `reese`'s 4.6; at
+    // 0.9 it is 5.5.  Kept under 1 so no partial's amplitude crosses zero.
+    .shimmer_depth = 0.9f,
     .octave = 0.00390625f,   // 2^-8
     .octave_stack_hz = 82.0f, .octave_stack_width = 0.9f,
     .unison = 1, .harmonics = 9,
@@ -133,57 +336,7 @@ static const struct SynthParams presets[] = {
     // finds the seam.
     .attack_s = 0.006f, .release_s = 0.090f, .articulation_s = 0.010f,
     .glide_s = 0.020f,
-    .out_gain = 0.804f,
-  },
-  {
-    // Half a register.  The bell follows the pitch at half rate, so an octave
-    // of whistle moves the bass a fifth: the 2.5 octaves you can whistle map
-    // into 1.25 octaves of bass, which fits between what a PA reproduces and
-    // where a mandolin's low G starts.  The line keeps real contour and never
-    // runs out of either end.
-    //
-    // 95Hz at a 1316Hz whistle -- the middle of the range -- puts the bell
-    // between 61 and 147Hz across everything you can play.  The timbre still
-    // repeats exactly, every two octaves now rather than every one.
-    //
-    // Octaveless: a Shepard tone you can play.  The partials are octaves
-    // rather than harmonics, and their loudness comes from a bell fixed in
-    // Hz, so whistling an octave higher slides the whole stack one slot along
-    // a curve that hasn't moved and lands on exactly the spectrum it started
-    // from.  Play a rising scale and it rises without ever arriving: what
-    // fades in at the bottom is what fades out at the top.
-    //
-    // The nominal fundamental is eight octaves down, which puts it at 2-12Hz.
-    // That is not a pitch, it is the spacing of the stack; what you hear is
-    // the bell, centred on 82Hz -- low E -- with nine octaves above the
-    // fundamental reaching 3.1kHz at the top of the whistle range.
-    //
-    // The sizing is the whole design.  The whistle spans 2.5 octaves and the
-    // stack spans 8, so the bell has about 5.5 octaves to sit in without
-    // either tail running off an end, which is what would break the wrap.  A
-    // sigma of 0.9 octaves fits with room to spare: the outermost component
-    // is 60dB down at both extremes of the range.
-    .name = "octaveless-half",
-    .octave = 0.00390625f,   // 2^-8
-    .octave_stack_hz = 95.0f, .octave_stack_width = 0.9f,
-    .octave_stack_track = 0.5f, .octave_stack_ref_hz = 1316.0f,
-    .unison = 1, .harmonics = 9,
-    // Nearly off, and that is a constraint rather than a taste.  Difference
-    // tones between octave-spaced partials are themselves octave-spaced and
-    // survive the wrap; the odd-order products at 3f and 5f are not, and they
-    // are what would put an audible seam in the illusion.  This is as much
-    // grit as the trick will take.
-    .drive_soft = 0.8f, .drive_loud = 1.3f,
-    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
-    .min_partial_hz = 25.0f,
-    .level_full = 0.22f,
-    // A longer glide than the other basses want, because the illusion needs
-    // continuity: heard as a smooth sweep the stack has no octave at all,
-    // and heard as discrete jumps the ear starts tracking one component and
-    // finds the seam.
-    .attack_s = 0.006f, .release_s = 0.090f, .articulation_s = 0.010f,
-    .glide_s = 0.020f,
-    .out_gain = 0.742f,
+    .out_gain = 0.363f,
   },
   {
     // The Reese: two or three saws detuned far enough that the beating is the
@@ -212,7 +365,7 @@ static const struct SynthParams presets[] = {
     .level_full = 0.22f,
     .attack_s = 0.008f, .release_s = 0.060f, .articulation_s = 0.008f,
     .glide_s = 0.006f,
-    .out_gain = 0.501f,
+    .out_gain = 0.276f,
   },
   {
     // The 808: nearly a sine, with the pitch dropping half an octave over the
@@ -260,7 +413,7 @@ static const struct SynthParams presets[] = {
     // If the bass voices as a family turn out to sit low on that box, the fix
     // is to re-run the whole match against the same filter, not to keep
     // nudging one preset.
-.out_gain = 0.562f,
+.out_gain = 0.254f,
   },
   {
     // A plucked bass: the first voice here whose note has a shape of its own.
@@ -283,6 +436,8 @@ static const struct SynthParams presets[] = {
     // nothing has been gained.  150ms to a tenth of the peak puts a note
     // 11dB down by the time the next one lands.
     .decay_s = 0.15f, .sustain_level = 0.12f,
+    // The one voice the sustain control does not apply to; see no_sustain.
+    .no_sustain = true,
     .drive_soft = 1.0f, .drive_loud = 2.8f,
     .unison = 1, .detune_cents = 0.0f, .harmonics = 32,
     .min_partial_hz = 25.0f,
@@ -297,7 +452,7 @@ static const struct SynthParams presets[] = {
     // the peak at 0.985.  It will not sound quiet: the attacks arrive at the
     // same height as everything else, and on a dance floor the attack is the
     // part being listened to.
-.out_gain = 1.004f,
+.out_gain = 0.567f,
   },
   {
     // Two-operator FM, and the only voice here that isn't a pulse wave.  The
@@ -320,41 +475,7 @@ static const struct SynthParams presets[] = {
     .level_full = 0.22f,
     .attack_s = 0.004f, .release_s = 0.050f, .articulation_s = 0.008f,
     .glide_s = 0.004f,
-    .out_gain = 0.569f,
-  },
-  {
-    // The same FM again, but the whistle is no longer the note.  `octave` is
-    // 1/24 rather than 1/16 or 1/32, so what comes out is the fundamental
-    // whose *third harmonic* is what you whistled: whistle a C and it plays
-    // an F, whistle a D and it plays a G.  You are playing the fifth of the
-    // chord and hearing its root.
-    //
-    // Dividing by three rather than by a power of two is also what puts it
-    // between `fm` and `fm-sub` in register -- 1/24 is log2 -4.585, which
-    // sits between four octaves down and five -- so the interval and the
-    // position are the same decision.  A comfortable whistle lands at
-    // 23-131Hz.
-    //
-    // A just fifth, not a tempered one: dividing by exactly three is the
-    // harmonic relationship the voice is named for, and it lands 2.2 cents
-    // flat of where equal temperament would put it.  That is 0.05Hz of beating
-    // against a mandolin down here, one beat every twenty seconds, and far
-    // inside how accurately anyone whistles.
-    .name = "fm-fifth",
-    .octave = 0.0416667f,   // 1/24
-    // Between its neighbours at both ends, for the same reason its register
-    // is: the fundamental is reproducible at the top of the range and gone at
-    // the bottom, so the index has to carry more of the note than `fm` needs
-    // and less than `fm-sub` does.
-    .fm_ratio = 1.0f, .fm_index_soft = 1.0f, .fm_index_loud = 3.5f,
-    .drive_soft = 1.0f, .drive_loud = 1.7f,
-    .unison = 1, .detune_cents = 0.0f, .harmonics = 1,
-    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
-    .min_partial_hz = 22.0f,
-    .level_full = 0.22f,
-    .attack_s = 0.004f, .release_s = 0.052f, .articulation_s = 0.009f,
-    .glide_s = 0.004f,
-    .out_gain = 0.724f,
+    .out_gain = 0.307f,
   },
   {
     // The same FM, five octaves down instead of four: a comfortable whistle
@@ -389,7 +510,7 @@ static const struct SynthParams presets[] = {
     .level_full = 0.22f,
     .attack_s = 0.005f, .release_s = 0.055f, .articulation_s = 0.010f,
     .glide_s = 0.004f,
-    .out_gain = 0.881f,
+    .out_gain = 0.394f,
   },
   {
     // Valve grind.  The saturator is pushed off centre before it clips, which
@@ -410,7 +531,7 @@ static const struct SynthParams presets[] = {
     .level_full = 0.22f,
     .attack_s = 0.005f, .release_s = 0.050f, .articulation_s = 0.008f,
     .glide_s = 0.004f,
-    .out_gain = 0.519f,
+    .out_gain = 0.246f,
   },
   {
     // A hollow square and nothing else: width exactly 0.5, which nulls every
@@ -430,115 +551,7 @@ static const struct SynthParams presets[] = {
     .level_full = 0.22f,
     .attack_s = 0.003f, .release_s = 0.040f, .articulation_s = 0.008f,
     .glide_s = 0.003f,
-    .out_gain = 1.122f,
-  },
-  {
-    // A drone you arm rather than hold.  75ms of steady whistling starts it,
-    // it swells over 150ms, holds 1.2 seconds, and then halves every second -- so one note every few seconds keeps a
-    // chord under the tune while both hands are on a mandolin and both feet
-    // are on drums.  Whistling the note it is already on refreshes the hold;
-    // whistling a different one starts a new chord and ducks the old out in
-    // 0.2s, so only one is ever really sounding.
-    //
-    // 75ms is close to the floor and the floor is the player, not the code: a
-    // whistled note scoops into pitch over a few tens of milliseconds, and an
-    // arm shorter than the scoop fires partway up it and again when the note
-    // settles.  Measured over 104s of real whistling, the share of chords
-    // arriving within 150ms of the previous one -- which is the signature of
-    // one note being heard as several -- runs 0% at 150ms, 3% at 100, 18% at
-    // 75, 29% at 50 and 65% at 10.  Snapping to concert pitch makes the
-    // failure louder rather than quieter, because a chord caught mid-scoop
-    // lands on a definite wrong semitone instead of an ambiguous smear.
-    //
-    // The movement below is four separate things, none of them deep enough
-    // to name on its own: partials drifting in level, partials drifting in
-    // pitch, the shimmer bell sweeping on a slow clock and opening as the
-    // chord arrives, and a rotating speaker.  A pad is the one voice where
-    // the ear will sit and listen for a while, and anything that repeats or
-    // holds still gets found.
-    //
-    // The chord is root, fifth and octaves of both, and no third, because a
-    // contra tune does not tell you in advance whether it is major or minor.
-    // Built as partials of one series rather than as separate oscillators,
-    // which is why it fuses into a single rich tone instead of reading as a
-    // stack of notes: an organ mixture, and for the same reason.
-    //
-    // The root is folded into C2-B2 (65-130Hz), so whistling a D anywhere in
-    // your range gives the same D chord in the same register.  Contra keys
-    // land where you would want them: D at 73Hz, G at 98, A at 110.
-    .name = "pad",
-    .pad_snap_hz = 440.0f, .pad_fold_hz = 65.0f,
-    .pad_arm_s = 0.075f, .pad_steady_cents = 100.0f,
-    .pad_attack_s = 0.15f, .pad_hold_s = 1.2f, .pad_halflife_s = 1.0f,
-    .pad_duck_s = 0.12f,
-    // 2 3 4 6 8 12 16 24 32: the root, its fifth, and octaves of each.  5 and
-    // 10 would be the major third and are the whole point of the exclusion.
-    .partial_mask = (1u << 1) | (1u << 2) | (1u << 3) | (1u << 5) |
-                    (1u << 7) | (1u << 11) | (1u << 15) | (1u << 23) |
-                    (1u << 31),
-    // Body under the mandolin, shimmer above it, and the 300-800Hz where the
-    // tune lives left 15-20dB down between them.
-    .bell_hz = 110.0f, .bell_width = 0.80f,
-    .shimmer_hz = 1600.0f, .shimmer_width = 0.9f, .shimmer_level = 0.42f,
-    .drift_hz = 0.08f, .drift_depth = 0.30f, .drift_cents = 4.0f,
-    .sweep_hz = 0.055f, .sweep_octaves = 0.55f,
-    .bright_env_octaves = 1.1f,
-    .leslie_hz = 0.75f, .leslie_am = 0.16f, .leslie_cents = 5.0f,
-    .leslie_split_hz = 300.0f,
-    .drive_soft = 0.0f, .drive_loud = 0.0f,
-    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
-    .growl_onset_s = 1.0f,
-    .unison = 1, .harmonics = 1,
-    .level_full = 0.22f,
-    .articulation_s = 0.010f,
-        // Set 3dB under what `bass` measures on the same material, rather than
-    // level with the rest of the table.  Two reasons it can't just join the
-    // -21.0 match: it is the only voice that can't be measured over
-    // recordings/whistling.f32, because that recording's notes are mostly too
-    // short to arm it, so its reference is prototypes/in-pad.f32 instead --
-    // and the numbers from the two recordings are 6.4dB apart for the same
-    // preset, so they are not comparable.  And it sounds nearly all the time
-    // where a bass line sounds half of it, so equal-while-sounding would put
-    // far more pad than bass into the room.
-.out_gain = 0.202f,
-  },
-  {
-    // The same with the ninth added -- partials 9 and 18, which are a major
-    // second two and three octaves above the root.  A second is as
-    // noncommittal as a fifth is: it belongs to the major and the minor scale
-    // alike, so it colours the chord without saying which one the tune is in.
-    // Whether that reads as air or as mud is the thing to listen for.
-    .name = "pad-ninth",
-    .pad_snap_hz = 440.0f, .pad_fold_hz = 65.0f,
-    .pad_arm_s = 0.075f, .pad_steady_cents = 100.0f,
-    .pad_attack_s = 0.15f, .pad_hold_s = 1.2f, .pad_halflife_s = 1.0f,
-    .pad_duck_s = 0.12f,
-    .partial_mask = (1u << 1) | (1u << 2) | (1u << 3) | (1u << 5) |
-                    (1u << 7) | (1u << 8) | (1u << 11) | (1u << 15) |
-                    (1u << 17) | (1u << 23) | (1u << 31),
-    .bell_hz = 110.0f, .bell_width = 0.80f,
-    .shimmer_hz = 1600.0f, .shimmer_width = 0.9f, .shimmer_level = 0.42f,
-    .drift_hz = 0.08f, .drift_depth = 0.30f, .drift_cents = 4.0f,
-    .sweep_hz = 0.055f, .sweep_octaves = 0.55f,
-    .bright_env_octaves = 1.1f,
-    .leslie_hz = 0.75f, .leslie_am = 0.16f, .leslie_cents = 5.0f,
-    .leslie_split_hz = 300.0f,
-    .drive_soft = 0.0f, .drive_loud = 0.0f,
-    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
-    .growl_onset_s = 1.0f,
-    .unison = 1, .harmonics = 1,
-    .level_full = 0.22f,
-    .articulation_s = 0.010f,
-        // Set 3dB under what `bass` measures on the same material, rather than
-    // level with the rest of the table.  Two reasons it can't just join the
-    // -21.0 match: it is the only voice that can't be measured over
-    // recordings/whistling.f32, because that recording's notes are mostly too
-    // short to arm it, so its reference is prototypes/in-pad.f32 instead --
-    // and the numbers from the two recordings are 6.4dB apart for the same
-    // preset, so they are not comparable.  And it sounds nearly all the time
-    // where a bass line sounds half of it, so equal-while-sounding would put
-    // far more pad than bass into the room.
-.out_gain = 0.202f,
+    .out_gain = 0.493f,
   },
 };
 
@@ -606,8 +619,113 @@ static float synth_pitch_log(const struct Synth* s) {
   return v;
 }
 
+// Level mapped to the 0..1 the envelope runs on.  A slight compression, no
+// more, or the voice stops responding to how hard it is being pushed.
+static float synth_loudness_of(const struct Synth* s, float level) {
+  return fminf(1.0f, powf(fmaxf(0, level / s->params->level_full), 0.8f));
+}
+
+// How much a partial at this frequency contributes to what a listener hears,
+// as a power weight: the cabinet's response times the ear's.
+//
+// This is what makes a voice hold its loudness across the range.  Weighting
+// every partial equally holds the *electrical* power constant, which is not
+// the same thing at all once the note is low enough that the cabinet has
+// stopped reproducing its fundamental: measured over a ladder of notes at
+// identical input level, `square` was 12.1dB louder at the top of the whistle
+// range than at the bottom and `eight-oh-eight` 13.9dB.  Weighting by
+// audibility instead means a note whose fundamental has fallen off the bottom
+// is normalised on the harmonics that are actually carrying it, which is also
+// what a listener is hearing it by.
+//
+// Analytic rather than the digital filters BS.1770 specifies, so that it does
+// not depend on the sample rate: a 24dB/octave cabinet corner, the RLB
+// high-pass, and the 4dB shelf.  Checked against a real BS.1770 meter over
+// the whole whistle range; see the loudness section of prototypes/README.md.
+static float synth_audibility(float hz) {
+  if (!(hz > 1)) {
+    return 0;
+  }
+  // The cabinet: flat at and above 55Hz, a ported box's cliff below it.
+  float u = hz / 55.0f;
+  float u4 = u * u * u * u;
+  float u8 = u4 * u4;
+  float cab = u8 / (1 + u8);
+  // The ear, as BS.1770 weights it: a high-pass and a shelf, with the corners
+  // and the order fitted to the standard's own digital filters rather than
+  // guessed.  Over 20-5000Hz this tracks them to 0.66dB worst case and 0.26dB
+  // rms, which matters -- the first version of this was eyeballed and its
+  // 2.2dB error at 41Hz came straight back out as loudness that still moved
+  // with the pitch.
+  float hp = powf(hz / 53.2f, 2.90f);
+  hp = hp / (1 + hp);
+  float x = hz / 2957.0f;
+  float x2 = x * x;
+  float shelf = (1 + 4.0f * x2) / (1 + x2);
+  // Scaled so a partial at 1kHz weighs exactly 1, which is only so that the
+  // compensation reads as a number near 1 rather than an arbitrary one.
+  return cab * hp * shelf * (1.0f / 1.3071f);
+}
+
+// J_n(x) squared for n = 0..n_max, by the power series with a running term.
+// The FM voices keep their index under 5, so this converges in a handful of
+// terms and needs no library beyond multiplication.
+static void synth_bessel_sq(float x, float* out, int n_max) {
+  float h = 0.5f * x;
+  for (int n = 0; n <= n_max; n++) {
+    float t = 1;
+    for (int k = 1; k <= n; k++) {
+      t *= h / (float)k;
+    }
+    float sum = t;
+    for (int k = 1; k < 24; k++) {
+      t *= -(h * h) / ((float)k * (float)(n + k));
+      sum += t;
+      if (fabsf(t) < 1e-9f) {
+        break;
+      }
+    }
+    out[n] = sum * sum;
+  }
+}
+
 static float atan_norm(float v) {
   return atanf(v) / (float)(M_PI / 2);
+}
+
+// The nearest equal-tempered semitone to a log2 Hz pitch, also in log2 Hz.
+static float synth_snap_log(float log_hz) {
+  float ref = log2f(SYNTH_HOLD_SNAP_HZ);
+  return ref + floorf((log_hz - ref) * 12 + 0.5f) / 12.0f;
+}
+
+// How far below the whistle this voice is playing: the preset's own octave,
+// times whatever the fifth control is asking for.  Everything that turns a
+// played pitch into a frequency goes through here.
+static float synth_octave(const struct Synth* s) {
+  return s->params->octave * s->octave_mul;
+}
+
+// What sits between the pitch this voice is playing and the note a listener
+// hears, in log2 Hz -- split into the part that is musical and the part that
+// is an artifact of how the voice is built.  The snap has to see through both,
+// and it uses them differently.
+//
+// Musical: the octave, and the fifth when it is on.  An octave is a power of
+// two and lands on the same grid either way, but 2/3 is 2.0 cents off the
+// tempered fifth, so under the fifth this is real.
+static float synth_musical_offset(const struct Synth* s) {
+  return log2f(synth_octave(s));
+}
+
+// Artifact: the detune, when `mono_partials` takes the bottom partials from
+// one copy rather than from all of them.  That copy is the flat one by
+// construction, so `reese` sounds 9 cents under what it is playing.  At 73Hz
+// that is a beat every 2.6 seconds against a fretted instrument, two of them
+// inside one sustain -- and nothing else in the synth cares, because nothing
+// else claims to be in tune with anybody.
+static float synth_artifact_offset(const struct Synth* s) {
+  return s->params->mono_partials > 0 ? log2f(s->detune[0]) : 0.0f;
 }
 
 void synth_preset_defaults(int preset, struct SynthParams* out) {
@@ -677,6 +795,8 @@ void synth_sanitize_params(struct SynthParams* p) {
   if (p->mono_partials > SYNTH_MAX_HARMONICS) {
     p->mono_partials = SYNTH_MAX_HARMONICS;
   }
+  // A hold is a countdown, so a negative one has to read as "no hold" rather
+  // than as a countdown that never expires.
   if (!(p->sustain_level >= 0)) {
     p->sustain_level = 0;
   }
@@ -690,33 +810,6 @@ void synth_sanitize_params(struct SynthParams* p) {
   }
   if (p->octave_stack_track > 0 && !(p->octave_stack_ref_hz > 1)) {
     p->octave_stack_ref_hz = 1000;
-  }
-  if (p->pad_arm_s > 0) {
-    // Divisors and log arguments, all of them only meaningful in pad mode.
-    if (!(p->pad_fold_hz > 1)) {
-      p->pad_fold_hz = 65;
-    }
-    if (!(p->bell_hz > 1)) {
-      p->bell_hz = 100;
-    }
-    if (!(p->bell_width > 1e-3f)) {
-      p->bell_width = 1;
-    }
-    if (!(p->shimmer_hz > 1)) {
-      p->shimmer_hz = 1000;
-    }
-    if (!(p->shimmer_width > 1e-3f)) {
-      p->shimmer_width = 1;
-    }
-    if (!(p->pad_attack_s > 0)) {
-      p->pad_attack_s = 0.01f;
-    }
-    if (!(p->pad_halflife_s > 0)) {
-      p->pad_halflife_s = 0.01f;
-    }
-    if (!(p->pad_steady_cents > 0)) {
-      p->pad_steady_cents = 50;
-    }
   }
 }
 
@@ -755,9 +848,19 @@ void synth_set_preset(struct Synth* s, int preset) {
   synth_set_params(s, &presets[preset]);
 }
 
+void synth_set_fifth(struct Synth* s, bool on) {
+  // 2/3 exactly, not exp2f(-7.02/12).  See synth.h.
+  s->octave_mul = on ? 2.0f / 3.0f : 1.0f;
+}
+
+void synth_set_sustain(struct Synth* s, bool on) {
+  s->sustain = on;
+}
+
 void synth_init(struct Synth* s, float sample_rate, int preset) {
   memset(s, 0, sizeof(*s));
   s->sample_rate = sample_rate;
+  s->octave_mul = 1;
   s->log_freq = log2f(440.0f);
   s->control_countdown = 0;
   // All together: detune pulls them apart within a second, and starting them
@@ -768,11 +871,19 @@ void synth_init(struct Synth* s, float sample_rate, int preset) {
   // Not zero: a plucked voice whose envelope hasn't been armed yet should be
   // at full, not silent, or the very first note is missing its attack.
   s->pluck = 1;
+  s->audibility_comp = 1;
   synth_set_preset(s, preset);
 }
 
 // Recomputes timbre and drive.  Called at SYNTH_CONTROL_HOP, not per sample.
-static void update_controls(struct Synth* s, bool voiced) {
+// Whether a note has been held long enough to have earned a tail.  Read in
+// two places, so it lives here rather than being recomputed.
+static bool synth_earned(const struct Synth* s) {
+  return s->sustain && !s->params->no_sustain &&
+         s->note_playing >= SYNTH_HOLD_MIN_NOTE_S;
+}
+
+static void update_controls(struct Synth* s, bool playing) {
   const struct SynthParams* p = s->params;
 
   float reach = fmaxf(0, s->level / p->level_full);
@@ -781,8 +892,12 @@ static void update_controls(struct Synth* s, bool voiced) {
   // or the lead stops responding to how hard it's being pushed.  It is frozen
   // once the note is released, because from there the gate does the fading
   // and having both fall would halve the release time.
-  if (voiced) {
-    s->loudness = fminf(1, powf(reach, 0.8f));
+  //
+  // Sustaining is the exception, because the level does not fall once
+  // the player stops -- it eases onto the note's own average and stays there,
+  // so there is nothing here to double up with the gate.
+  if (playing || synth_earned(s)) {
+    s->loudness = synth_loudness_of(s, s->level);
   }
 
   // Brightness and drive get a soft knee instead: they should keep responding
@@ -792,6 +907,17 @@ static void update_controls(struct Synth* s, bool voiced) {
   // rather than buzzing at full brightness the whole way down.
   float dynamics = 1 - expf(-2.2f * reach);
   s->dynamics = dynamics;
+
+  // The depth is simply the settle, which is zero whenever a note is being
+  // played or no tail was earned -- that is what keeps this out of the voice.
+  // How the movement *arrives* is not this: it is the LFOs accelerating from
+  // rest, which they do over SYNTH_TAIL_SHIMMER_S.
+  float fade = s->settle * s->settle * (3 - 2 * s->settle);
+  float shimmer = fade * (p->shimmer_depth > 0 ? p->shimmer_depth
+                                               : SYNTH_TAIL_SHIMMER);
+  for (int g = 0; g < SYNTH_SHIMMER_LFOS; g++) {
+    s->shimmer_gain[g] = sinf(2 * (float)M_PI * s->shimmer_pos[g]);
+  }
 
   // How long they have been on this note.  Note length rather than level,
   // because these want to do different jobs: brightness has to arrive on
@@ -816,10 +942,14 @@ static void update_controls(struct Synth* s, bool voiced) {
   s->drive = p->drive_soft + (p->drive_loud - p->drive_soft) * dynamics;
   s->fm_index =
     p->fm_index_soft + (p->fm_index_loud - p->fm_index_soft) * dynamics;
+  // The FM voices have no partial amplitudes to move, so their tail moves on
+  // the index; see SYNTH_TAIL_SHIMMER_FM.
+  s->fm_index *= 1 + fade * SYNTH_TAIL_SHIMMER_FM * s->shimmer_gain[0];
 
   // Stop before Nyquist rather than aliasing back down.  The highest unison
   // voice is the one that runs out of room first.
-  float f0 = exp2f(synth_pitch_log(s)) * p->octave * s->detune[s->unison - 1];
+  float f0 = exp2f(synth_pitch_log(s)) * synth_octave(s) *
+             s->detune[s->unison - 1];
   int active = p->harmonics;
   if (active > SYNTH_MAX_HARMONICS) {
     active = SYNTH_MAX_HARMONICS;
@@ -830,7 +960,7 @@ static void update_controls(struct Synth* s, bool voiced) {
   }
   s->harmonics_active = active;
 
-  float base = exp2f(synth_pitch_log(s)) * p->octave;
+  float base = exp2f(synth_pitch_log(s)) * synth_octave(s);
 
   // Drop partials too low for anything to reproduce.
   int lowest = 1;
@@ -842,6 +972,7 @@ static void update_controls(struct Synth* s, bool voiced) {
   }
 
   float power = 0;
+  float heard = 0;
   for (int i = 0; i < lowest - 1 && i < SYNTH_MAX_HARMONICS; i++) {
     s->harmonic_target[i] = 0;
   }
@@ -875,8 +1006,14 @@ static void update_controls(struct Synth* s, bool voiced) {
       // series flips sign, and that is part of the PWM sound.
       amp = sinf(n * (float)M_PI * width) / powf((float)n, p->tilt) * rolloff;
     }
+    // The tail's movement, before the normalisation so the level does not
+    // follow it.  See SYNTH_TAIL_SHIMMER.
+    if (shimmer > 0) {
+      amp *= 1 + shimmer * s->shimmer_gain[i % SYNTH_SHIMMER_LFOS];
+    }
     s->harmonic_target[i] = amp;
     power += amp * amp;
+    heard += amp * amp * synth_audibility(base * synth_partial_ratio(p, n));
   }
   for (int i = active; i < SYNTH_MAX_HARMONICS; i++) {
     s->harmonic_target[i] = 0;
@@ -885,6 +1022,12 @@ static void update_controls(struct Synth* s, bool voiced) {
   // Hold the level steady as the timbre moves, so the only thing changing how
   // loud this is is how hard the player is blowing.  Unison voices are
   // mutually detuned and so sum in power, not amplitude.
+  //
+  // Plain power, not audibility-weighted, and deliberately: this is what
+  // feeds the saturator, and a drive that sees a different level at every
+  // pitch is a different voice at every pitch.  Making the *heard* level
+  // steady is a separate job, done after the saturator -- see
+  // audibility_comp below.
   float norm = sqrtf(power * s->unison * 0.5f);
   if (norm < 1e-6f) {
     norm = 1e-6f;
@@ -892,341 +1035,164 @@ static void update_controls(struct Synth* s, bool voiced) {
   for (int i = lowest - 1; i < active; i++) {
     s->harmonic_target[i] *= 0.7f / norm;
   }
-}
 
-// --------------------------------------------------------------- pad ---
-//
-// A different instrument sharing the same file.  Everything above is a note
-// that sounds while you whistle; this is a chord that a whistle *arms* and
-// that then holds and fades on its own, so a player with both hands and both
-// feet busy can put a drone under a tune by whistling one note every few
-// seconds.
-
-// Where a whistle puts this chord's fundamental, in log2 Hz.  The pitch class
-// is whatever was whistled and the octave is thrown away: the root is folded
-// into the single octave starting at pad_fold_hz, so the same note always
-// gives the same voicing wherever in your range you happen to whistle it.
-//
-// Returns the fundamental, which is an octave below the root -- the root is
-// partial 2 of the series the chord is built from.
-//
-// The root is also snapped to the nearest equal-tempered semitone on the way
-// through, with hysteresis: to leave the note already sounding the player has
-// to get 65 cents away from it, not 50.  Without that, a whistle parked near
-// a semitone boundary alternates between two chords -- and at a 100ms arm it
-// does so several times a second, because a 100-cent jump is past the 60-cent
-// threshold that decides a new chord from a refresh.
-static float pad_snap_log(struct Synth* s, float whistle_log) {
-  const struct SynthParams* p = s->params;
-  if (!(p->pad_snap_hz > 0)) {
-    return whistle_log;
-  }
-  float ref = log2f(p->pad_snap_hz);
-  float raw = (whistle_log - ref) * 12;
-  if (fabsf(raw - s->pad_semitone) >= 0.65f) {
-    s->pad_semitone = floorf(raw + 0.5f);
-  }
-  return ref + s->pad_semitone / 12.0f;
-}
-
-static float pad_root_log(struct Synth* s, float whistle_log) {
-  const struct SynthParams* p = s->params;
-  float w = pad_snap_log(s, whistle_log);
-  float lo = log2f(p->pad_fold_hz);
-  float x = w - lo;
-  return lo + (x - floorf(x)) - 1.0f;
-}
-
-// Which partials this chord uses.  Built when the chord is armed; their levels
-// move afterwards, but which ones exist does not.
-//
-// `fresh` says the layer was silent and can be started from scratch.  When it
-// wasn't -- a chord arriving before the layer it reuses has finished fading --
-// the phases and the amplitudes are left alone deliberately.  Zeroing the
-// amplitudes would take whatever was still sounding to nothing in one sample,
-// which is a click; leaving them lets the old partials slide to the new
-// chord's frequencies with their levels continuous, which is a small pitch
-// move instead.  The partial *numbers* are the same either way, since the
-// mask belongs to the preset rather than to the chord.
-static void pad_set_partials(struct Synth* s, struct PadLayer* layer,
-                             bool fresh) {
-  const struct SynthParams* p = s->params;
-  float f0 = exp2f(layer->log_root);
-  layer->n_partials = 0;
-  for (int i = 0; i < SYNTH_MAX_HARMONICS && layer->n_partials < PAD_PARTIALS;
-       i++) {
-    if (p->partial_mask && !(p->partial_mask & (1u << i))) {
-      continue;
+  // And how far under that the listener actually hears it.  A note low enough
+  // that the cabinet has given up on its fundamental is carried by harmonics
+  // that are worth less than the electrical power says, and this is the gain
+  // that puts it back.  Applied after the saturator, because applying it
+  // before just drives the saturator harder and it hands most of it back:
+  // tried that way first, and `square` moved 12.1dB to 11.7dB.
+  //
+  // Capped, because the bottom of the range is a place where a few dB of
+  // "heard" costs a great deal of excursion, and an uncapped inverse of a
+  // 24dB/octave cliff runs away.
+  if (p->fm_index_loud > 0 || p->fm_index_soft > 0) {
+    // The FM voices are not the sum above -- they have one partial in it and
+    // a whole spectrum in the oscillator -- so their audibility is worked out
+    // from where the sidebands actually are.  A two-operator FM signal has
+    // constant envelope, so its total power is 1 whatever the index does, and
+    // all the index moves is where that power sits: J_n(index)^2 of it at the
+    // carrier plus n modulators.  That is the entire reason this voice needs
+    // its own case, and also why the answer is exact rather than fitted.
+    float sq[SYNTH_FM_TERMS];
+    synth_bessel_sq(s->fm_index, sq, SYNTH_FM_TERMS - 1);
+    float fmod = base * p->fm_ratio;
+    heard = sq[0] * synth_audibility(base);
+    for (int n = 1; n < SYNTH_FM_TERMS; n++) {
+      heard += sq[n] * (synth_audibility(base + n * fmod) +
+                        synth_audibility(fabsf(base - n * fmod)));
     }
-    if (f0 * (i + 1) > s->sample_rate * 0.45f) {
-      break;
-    }
-    int k = layer->n_partials++;
-    layer->partial[k] = i + 1;
-    if (fresh) {
-      // Spread rather than aligned: starting every partial at zero puts the
-      // whole chord's energy into one spike once per period of the
-      // fundamental, which is both a needless peak and an audible buzz.
-      layer->phase[k] = (float)fmod(k * 0.6180339887, 1.0);
-      layer->amp[k] = 0;
-    }
-    layer->pitch_mul[k] = 1;
-  }
-}
-
-// Everything that moves, stepped at the control rate: the two bells and where
-// the sweep has put the upper one, the per-partial level drift, and the
-// rotating speaker.  Amplitudes come out as targets and are smoothed on the
-// way to the oscillator; pitches are slow enough to use as they are.
-static void pad_update_layer(struct Synth* s, struct PadLayer* layer) {
-  const struct SynthParams* p = s->params;
-  float f0 = exp2f(layer->log_root);
-
-  // Where the shimmer bell is right now: a slow sweep on a clock, plus a
-  // pull-down that lets go as the chord arrives.  A pad that opens as it
-  // swells is most of what makes a swell sound like one.
-  float bright = p->sweep_octaves * sinf(2 * (float)M_PI * s->sweep_phase) -
-                 p->bright_env_octaves * (1 - layer->env);
-  float shimmer_hz = p->shimmer_hz * exp2f(bright);
-
-  float leslie = 2 * (float)M_PI * s->leslie_phase;
-  float power = 0;
-
-  for (int k = 0; k < layer->n_partials; k++) {
-    float hz = f0 * layer->partial[k];
-
-    float x = log2f(hz / p->bell_hz) / p->bell_width;
-    float a = expf(-0.5f * x * x);
-    if (p->shimmer_level > 0) {
-      float y = log2f(hz / shimmer_hz) / p->shimmer_width;
-      a += p->shimmer_level * expf(-0.5f * y * y);
-    }
-
-    // Level drift, at a rate this partial does not share with any other.
-    if (p->drift_hz > 0) {
-      a *= 1 + p->drift_depth * sinf(2 * (float)M_PI * s->drift_phase[k]);
-    }
-
-    // The rotor.  Bass below the split, horn above: slower, and a fraction of
-    // the depth, which is what a real cabinet does and what keeps the low end
-    // of the chord from wobbling.
-    float cents = 0;
-    if (p->leslie_hz > 0) {
-      bool horn = hz >= p->leslie_split_hz;
-      float phase = horn ? leslie : leslie * 0.85f;
-      float depth = horn ? 1.0f : 0.25f;
-      // Quadrature: the doppler leads the level by a quarter turn, which is
-      // the difference between something rotating and tremolo plus vibrato
-      // happening to run at the same speed.
-      layer->leslie_am[k] = 1 + p->leslie_am * depth * cosf(phase);
-      cents += p->leslie_cents * depth * sinf(phase);
-    } else {
-      layer->leslie_am[k] = 1;
-    }
-    if (p->drift_cents > 0) {
-      cents += p->drift_cents *
-               sinf(2 * (float)M_PI * (s->drift_phase[k] + 0.25f));
-    }
-    layer->pitch_mul[k] = exp2f(cents / 1200.0f);
-
-    layer->amp_target[k] = a;
-    power += a * a;
+    power = 1;
   }
 
-  // Normalize on the bells and the drift, then let the rotor through
-  // afterwards.  The order matters and it is not a detail: normalizing a
-  // constant total power divides out anything that scales the whole chord,
-  // so a leslie applied before this point is measurable as a change in
-  // spectrum and as *nothing at all* in level -- which is the one thing a
-  // rotating horn is supposed to do.  The drift stays inside the
-  // normalization on purpose, because there the intent really is to move
-  // energy between partials and not to move the pad's level around.
-  float norm = sqrtf(power);
-  if (norm < 1e-6f) {
-    norm = 1e-6f;
+  if (heard > 1e-12f) {
+    s->audibility_comp = fminf(SYNTH_AUDIBILITY_MAX, sqrtf(power / heard));
+  } else {
+    s->audibility_comp = 1;
   }
-  for (int k = 0; k < layer->n_partials; k++) {
-    layer->amp_target[k] *= 0.7f * layer->leslie_am[k] / norm;
-  }
-}
-
-// The free-running modulators, shared by every layer: a chord change should
-// not restart the rotor.
-static void pad_update_lfos(struct Synth* s) {
-  const struct SynthParams* p = s->params;
-  float dt = SYNTH_CONTROL_HOP / s->sample_rate;
-  s->leslie_phase += p->leslie_hz * dt;
-  if (s->leslie_phase >= 1) {
-    s->leslie_phase -= 1;
-  }
-  s->sweep_phase += p->sweep_hz * dt;
-  if (s->sweep_phase >= 1) {
-    s->sweep_phase -= 1;
-  }
-  for (int k = 0; k < PAD_PARTIALS; k++) {
-    // Rates spread by the golden ratio, so no two partials share a period and
-    // the ensemble never comes back into step.
-    float spread = 0.6f + 0.8f * (float)fmod(k * 0.6180339887, 1.0);
-    s->drift_phase[k] += p->drift_hz * spread * dt;
-    if (s->drift_phase[k] >= 1) {
-      s->drift_phase[k] -= 1;
-    }
-  }
-}
-
-// Has the player held a pitch still for long enough to mean it?  Returns the
-// pitch if so, and NAN otherwise.
-static float pad_armed_pitch(struct Synth* s, const struct PitchHint* hint) {
-  const struct SynthParams* p = s->params;
-  float dt = 1.0f / s->sample_rate;
-
-  if (!hint->voiced) {
-    // A short dropout is the detector losing its grip, not the player
-    // stopping.  Longer than that and the note is over.
-    s->pad_gap_s += dt;
-    if (s->pad_gap_s > 0.08f) {
-      s->pad_steady_s = 0;
-    }
-    return NAN;
-  }
-  s->pad_gap_s = 0;
-
-  float lg = log2f(fmaxf(1, hint->freq));
-  if (fabsf(lg - s->pad_steady_log) * 1200 > p->pad_steady_cents) {
-    s->pad_steady_log = lg;
-    s->pad_steady_s = 0;
-    return NAN;
-  }
-  s->pad_steady_s += dt;
-  if (s->pad_steady_s < p->pad_arm_s) {
-    return NAN;
-  }
-  // Don't fire again on the next sample, or on every sample after it.
-  s->pad_steady_s = 0;
-  return lg;
-}
-
-static float pad_process(struct Synth* s, const struct PitchHint* hint) {
-  const struct SynthParams* p = s->params;
-  float dt = 1.0f / s->sample_rate;
-
-  // The level still has to be tracked, because how hard the arming whistle
-  // was is what sets the chord's gain.
-  if (hint->voiced) {
-    s->level += coeff(p->articulation_s, s->sample_rate) * (hint->level - s->level);
-  }
-
-  float armed = pad_armed_pitch(s, hint);
-  if (!isnan(armed)) {
-    struct PadLayer* cur = &s->pad[s->pad_active];
-    float root = pad_root_log(s, armed);
-    float gain = 0.7f + 0.3f * fminf(1, s->loudness);
-
-    if (cur->level > 1e-4f && fabsf(root - cur->log_root) * 1200 < 60) {
-      // The same chord again: refresh what is already sounding rather than
-      // crossfading it with a copy of itself.  This is the gesture that
-      // keeps a drone up without holding it.
-      cur->hold_left = p->pad_hold_s;
-      cur->gain = gain;
-    } else {
-      // Take whichever layer is quietest.  With a duck this fast the player
-      // can arm a third chord while the first is still audibly fading, and
-      // reusing a layer mid-fade would cut it off with a click.
-      int pick = 0;
-      for (int l = 1; l < PAD_LAYERS; l++) {
-        if (s->pad[l].level < s->pad[pick].level) {
-          pick = l;
-        }
-      }
-      s->pad_active = pick;
-      struct PadLayer* next = &s->pad[pick];
-      bool fresh = next->level < 1e-4f;
-      next->log_root = root;
-      next->env = fresh ? 0 : next->level / fmaxf(1e-4f, gain);
-      next->hold_left = p->pad_hold_s;
-      next->duck = 1;
-      next->gain = gain;
-      pad_set_partials(s, next, fresh);
-    }
-  }
-
-  if (--s->control_countdown <= 0) {
-    update_controls(s, hint->voiced);
-    pad_update_lfos(s);
-    for (int l = 0; l < PAD_LAYERS; l++) {
-      if (s->pad[l].level > 1e-5f || l == s->pad_active) {
-        pad_update_layer(s, &s->pad[l]);
-      }
-    }
-    s->control_countdown = SYNTH_CONTROL_HOP;
-  }
-
-  float smooth = coeff(0.004f, s->sample_rate);
-  float out = 0;
-
-  for (int l = 0; l < PAD_LAYERS; l++) {
-    struct PadLayer* layer = &s->pad[l];
-
-    if (layer->hold_left > 0) {
-      layer->hold_left -= dt;
-      layer->env += dt / fmaxf(1e-3f, p->pad_attack_s);
-      if (layer->env > 1) {
-        layer->env = 1;
-      }
-    } else {
-      layer->env *= exp2f(-dt / fmaxf(1e-3f, p->pad_halflife_s));
-    }
-    if (l != s->pad_active) {
-      layer->duck -= coeff(p->pad_duck_s, s->sample_rate) * layer->duck;
-    }
-
-    float target = layer->env * layer->duck * layer->gain;
-    layer->level += smooth * (target - layer->level);
-    if (layer->level < 1e-5f) {
-      continue;
-    }
-
-    float f0 = exp2f(layer->log_root);
-    float voice = 0;
-    for (int k = 0; k < layer->n_partials; k++) {
-      layer->amp[k] += smooth * (layer->amp_target[k] - layer->amp[k]);
-      layer->phase[k] +=
-        f0 * layer->partial[k] * layer->pitch_mul[k] / s->sample_rate;
-      if (layer->phase[k] >= 1) {
-        layer->phase[k] -= (int)layer->phase[k];
-      }
-      voice += layer->amp[k] * sinf(2 * (float)M_PI * layer->phase[k]);
-    }
-    out += voice * layer->level;
-  }
-
-  // No saturator at all when the preset asks for none, and the pad presets
-  // do.  A drive of any size intermodulates the partials it is given, and
-  // partials 2 and 3 sum to partial 5 -- which is the major third, the one
-  // interval this chord exists in order not to state.  Measured at drive
-  // 0.9/1.4 it came back at -17.8dB, which is plainly audible.  A chord built
-  // this carefully has to be left alone on the way out.
-  if (p->drive_loud > 0) {
-    s->drive_smoothed += smooth * (s->drive - s->drive_smoothed);
-    out = atan_norm(out * s->drive_smoothed);
-  }
-
-  s->side = 0;
-  s->amp = 0;
-  for (int l = 0; l < PAD_LAYERS; l++) {
-    s->amp = fmaxf(s->amp, s->pad[l].level);
-  }
-  return out * p->out_gain;
 }
 
 float synth_process(struct Synth* s, const struct PitchHint* hint) {
   const struct SynthParams* p = s->params;
 
-  if (p->pad_arm_s > 0) {
-    return pad_process(s, hint);
+  // Whether the player is still on this note.  This is the detector's call and
+  // nothing else's, for every preset including this one: while there is input
+  // the voice follows it, and the tail is only ever about what happens when
+  // the input stops.
+  //
+  // An earlier version of this voice second-guessed `voiced` here, on the
+  // grounds that a whistle trails off and the detector hangs on through the
+  // trail-off.  That much is true -- and it is what the level average below
+  // is for -- but it is a
+  // question about what to *hold*, not about whether the player has stopped,
+  // and answering it here meant the voice could decide a note was over while
+  // it was still being whistled.  It did, routinely: on a note with a hard
+  // attack, whose body sits 6dB under its own first 50ms, it gave up 167ms in
+  // and the bass dropped out from under a note the player was still on.  What
+  // to hold is settled by the weighted average below and by the fall time
+  // above, both of which discount a trail-off without ever refusing to follow
+  // one.
+  //
+  // An onset is the one event that resets everything at once -- the level,
+  // the timbre and the running pitch average -- so a holding voice, which is
+  // sounding when they arrive rather than silent, has to be sure it is a
+  // note.  One that comes in at nothing against what is already being held is
+  // the detector re-triggering on the noise floor of a rest: see
+  // SYNTH_HOLD_ONSET_FLOOR.  Ignoring it leaves the tail exactly as it was.
+  // Whether a tail is sounding right now, which is the state everything below
+  // keys off.  Not simply "the control is on": a note too short to have been
+  // meant as a held one never earns a tail, and with nothing ringing there is
+  // nothing here to protect -- so the voice behaves exactly as it does with
+  // the control off.  That is what makes this a switch rather than a mode.
+  bool holding = synth_earned(s) && s->gate > 0.01f;
+
+  bool onset = hint->onset;
+  if (holding && onset && hint->level < SYNTH_HOLD_ONSET_FLOOR * s->level) {
+    onset = false;
   }
 
-  if (hint->onset) {
+  // Not on the onset sample, where `level` still belongs to the previous note.
+  bool playing = hint->voiced;
+
+  // How long the player has stayed on this note.  A tail is earned, not
+  // given: this is the one question a tail raises that a voice which simply
+  // follows the whistle never has to ask.  Held once, it stays true for the
+  // rest of the note, so a note that qualified and is now trailing off still
+  // gets one.
+  if (onset) {
+    s->note_playing = 0;
+  }
+  if (playing) {
+    s->note_playing += 1.0f / s->sample_rate;
+  }
+  bool earned = synth_earned(s);
+  bool settling = earned && !playing;
+
+  // How far into the sustain we are, and the pitch it set out from.  Advanced
+  // before anything reads it, and `settle_from_log` therefore holds the last
+  // pitch the note was actually played at.
+  //
+  // Linear into the sustain so the slide takes 250ms whatever the interval,
+  // and a one-pole at the preset's own attack coming back out of it, so a
+  // note struck over a sustaining one speaks at full immediately.  Coming
+  // back out is also what a note that never earned a tail does, and what the
+  // hold-off does while it waits: in both the pitch and the level simply stay
+  // where the droop test froze them, and nothing slides anywhere.
+  // Whenever there is a tail or a control asking for one.  This is also where
+  // `settle` comes back to zero: a short note that never earns a tail still
+  // has to unwind whatever the last one left behind, and so does switching
+  // the control off part-way through a tail.
+  if (s->sustain || s->settle > 0) {
+    if (playing) {
+      // Where the slide onto the sustain sets out from.  Not the pitch the
+      // note ended on: the level is allowed to follow a trail-off all the way
+      // down, and the pitch follows it too, so the last thing played is a
+      // median 62-83 cents from what the note was -- drifting, usually
+      // upward, as the whistle gives out.  Sliding from there means the tail
+      // arrives by moving, and the move is audible because the level is
+      // swelling back up underneath it at the same time.  A note held as
+      // level as the player can hold it went up and then came back down.
+      //
+      // So it sets out from the note's own average, which is where the slide
+      // was always trying to end up anyway; what is left for it to travel is
+      // the snap, fifty cents at the outside.  That does put a step in the
+      // pitch at the moment the player stops -- but that moment is the bottom
+      // of the fade, 20dB or more under the note, which is the quietest the
+      // voice ever is while it is still sounding.  It is the one place a step
+      // costs nothing.
+      s->settle_from_log = s->pitch_den > 1e-12f
+          ? s->pitch_num / s->pitch_den : s->log_freq;
+      s->settle_from_level = s->level;
+    }
+    if (settling) {
+      // The first sample of a tail: start the movement from rest and from
+      // phase zero, so it emerges rather than cutting in wherever the LFOs
+      // had got to.  `settle` is exactly zero until here, which is what makes
+      // this a usable edge.
+      if (s->settle == 0) {
+        s->shimmer_rate = 0;
+        for (int g = 0; g < SYNTH_SHIMMER_LFOS; g++) {
+          s->shimmer_pos[g] = 0;
+        }
+      }
+      s->settle = fminf(1.0f, s->settle +
+                        1.0f / (SYNTH_HOLD_SETTLE_S * s->sample_rate));
+      s->shimmer_rate = fminf(1.0f, s->shimmer_rate +
+                              1.0f / (SYNTH_TAIL_SHIMMER_S * s->sample_rate));
+    } else {
+      s->settle -= coeff(p->attack_s, s->sample_rate) * s->settle;
+      // Exactly zero, not asymptotically close to it, so that "no tail" is a
+      // state the rest of this can test for rather than a small number.
+      if (s->settle < 1e-6f) {
+        s->settle = 0;
+      }
+    }
+  }
+  // Eased at both ends, so the move starts and stops at zero velocity rather
+  // than cornering into and out of the sustain.
+  float settle = s->settle * s->settle * (3 - 2 * s->settle);
+
+  if (onset) {
     // Land on the note rather than gliding onto it, and restart the growl
     // timer so the wobble belongs to this note.  Take the level as read too,
     // so the attack has this note's dynamics and not the last one's.
@@ -1234,19 +1200,45 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     s->note_age = 0;
     s->level = hint->level;
     s->control_countdown = 0;   // this note's dynamics, not the last one's
+    // The running pitch average starts from this note and knows nothing of
+    // the last one.
+    s->pitch_num = hint->level * hint->level * s->log_freq;
+    s->pitch_den = hint->level * hint->level;
+    s->level_num = hint->level * hint->level * hint->level;
     // Both per-note sweeps are armed here and decay from here on.  They are
     // set rather than added to, so a fast run gets the same swoop on every
     // note instead of stacking them up.
     s->drop = p->drop_octaves;
     s->cutoff_env = p->cutoff_env_octaves;
     s->pluck = 1;
-  } else if (hint->voiced) {
+  } else if (playing) {
     // Otherwise track continuously.  Glide is in the log domain so a bend
     // takes the same time everywhere, and it is fast enough to feel instant
     // while still smoothing the detector's hop-to-hop jitter.  When the hint
     // is not trustworthy its freq simply hasn't moved, so this holds.
     float target = log2f(fmaxf(1, hint->freq));
     s->log_freq += coeff(p->glide_s, s->sample_rate) * (target - s->log_freq);
+  } else if (earned) {
+    // A note being held slides onto the pitch it was *played* at rather than
+    // the one it ended on.  The last few tens of milliseconds of a whistle are
+    // where the pitch is worst -- the player is letting go and the detector is
+    // working from a signal that has nearly gone -- and a hold parks there for
+    // six seconds, so it is the one voice that cannot use it.
+    //
+    // And then onto the nearest real note, because that average is still
+    // whatever the player's intonation was: see SYNTH_HOLD_SNAP_HZ.
+    //
+    // *Which* semitone it lands on is a question about what the player meant,
+    // so it is asked of the musical offset alone: a whistle 42 cents flat of
+    // G is a G, and it should not come out an F# because this voice happens
+    // to detune.  Landing on it exactly then has to account for both, since
+    // the artifact is in what the listener hears whether it was meant or not.
+    float musical = synth_musical_offset(s);
+    float target = s->pitch_den > 1e-12f
+        ? synth_snap_log(s->pitch_num / s->pitch_den + musical) - musical -
+          synth_artifact_offset(s)
+        : s->settle_from_log;
+    s->log_freq = s->settle_from_log + settle * (target - s->settle_from_log);
   }
 
   // The level drives the timbre, and tracks the input quickly while a note is
@@ -1258,29 +1250,94 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // way out and no longer covers it.  Freezing the timbre and letting the
   // gate do the fading costs a little realism (real instruments do get
   // duller as they decay) and removes the artifact.
-  if (hint->voiced) {
-    s->level +=
-      coeff(p->articulation_s, s->sample_rate) * (hint->level - s->level);
+  //
+  if (playing) {
+    s->level += coeff(p->articulation_s, s->sample_rate)
+                * (hint->level - s->level);
+  } else if (earned && s->pitch_den > 1e-12f) {
+    // What the tail inherits.  While there is input the level follows it
+    // exactly as `reese` does, trail-off and all, which is what makes this
+    // the same instrument to play; but that means by the time the player
+    // stops it is at the bottom of a fade a median 22-30dB under the note,
+    // and the loudness and the brightness that hang off it are down there
+    // with it.  A tail that inherited that would be the quiet dark drone
+    // this voice exists to avoid -- and freezing the level early to dodge it
+    // is what used to make the voice stop following notes it was still being
+    // given.
+    //
+    // So it inherits the note rather than the fade: the same weighted
+    // average that carries the pitch, asked for level instead.  A trail-off
+    // is quiet and the weight is power, so it counts for almost nothing.
+    //
+    // On `settle`, the same ramp as the pitch slide and the drop, and for a
+    // reason worth stating: those three are one gesture and have to move
+    // together.  On a one-pole of its own this started climbing the moment
+    // the player stopped while the drop waited out the hold-off, so a level
+    // note went up into its own tail and then came back down -- audible on
+    // every note, and exactly the kind of move that reads as a fault because
+    // it is the one move here that is not the player's.
+    float avg = s->level_num / s->pitch_den;
+    s->level = s->settle_from_level +
+               settle * (avg - s->settle_from_level);
+  }
+
+  // Where the held pitch comes from: a running average weighted by how loud
+  // the note was, so the quiet ends of it -- the scoop in, the fade out --
+  // count for almost nothing against the part that was actually played.  The
+  // weight is the level squared, which is the note's power.
+  if (s->sustain && playing) {
+    float k = coeff(SYNTH_HOLD_PITCH_S, s->sample_rate);
+    float w = hint->level * hint->level;
+    s->pitch_num += k * (w * s->log_freq - s->pitch_num);
+    s->pitch_den += k * (w - s->pitch_den);
+    s->level_num += k * (w * hint->level - s->level_num);
   }
 
   // Note the pre-decrement placement: `countdown-- <= 0` after setting
   // SYNTH_CONTROL_HOP fires every HOP+1 samples, not every HOP.
   if (--s->control_countdown <= 0) {
-    update_controls(s, hint->voiced);
+    update_controls(s, playing);
     s->control_countdown = SYNTH_CONTROL_HOP;
   }
-  if (hint->onset) {
+
+  if (onset && !holding) {
     // Start at this note's dynamics rather than ramping up into them.
+    //
+    // Not when a tail is already sounding, which is the case only a holding
+    // voice has: every other preset is at gate 0 when a note starts, so
+    // snapping the envelope is inaudible, while here it is a step straight
+    // into the listener's ears from whatever the tail was at.  Measured over
+    // recordings/holding.f32 before this, the rendered envelope stepped down
+    // a median of 8.7dB at an onset and as much as 47dB.  Leaving it alone
+    // lets the one-pole below cover the distance at articulation_s instead.
     s->loudness_env = s->loudness;
   }
 
   // The note starting and stopping.  This is the only thing that starts or
   // stops sound -- there is no hard gate anywhere, so an uncertain detector
   // costs a fade rather than a click.
-  float gate_target = hint->voiced ? 1.0f : 0.0f;
-  float gate_coeff = coeff(
-      gate_target > s->gate ? p->attack_s : p->release_s, s->sample_rate);
-  s->gate += gate_coeff * (gate_target - s->gate);
+  //
+  // A note that earned a tail freezes the gate for SYNTH_HOLD_S once the
+  // player stops, and only then releases.  The clock is reset by anything that counts
+  // as still playing, so a guess that the note was ending costs nothing when
+  // it turns out to be wrong: the level comes back up, this resets, and the
+  // whole hold has to expire again before the note starts leaving.  Measured,
+  // the longest wrong guess inside a real note is 148ms against a 2s hold.
+  if (playing) {
+    s->release_hold = earned ? SYNTH_HOLD_S : 0;
+  } else if (s->release_hold > 0) {
+    s->release_hold -= 1.0f / s->sample_rate;
+  }
+  if (playing || s->release_hold <= 0) {
+    float gate_target = playing ? 1.0f : 0.0f;
+    // Only a note that earned a tail gets the tail's slow fade; anything
+    // shorter releases at the voice's own release_s, exactly as it does with
+    // the sustain switched off.
+    float release = earned ? SYNTH_HOLD_RELEASE_S : p->release_s;
+    float gate_coeff = coeff(
+        gate_target > s->gate ? p->attack_s : release, s->sample_rate);
+    s->gate += gate_coeff * (gate_target - s->gate);
+  }
 
   // How hard they are blowing, quick in both directions so the dips between
   // tongued notes survive.
@@ -1294,6 +1351,20 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   if (p->decay_s > 0) {
     s->amp *= s->pluck;
   }
+  // The same move, in level: the tail settles under the note that made it
+  // rather than holding at it.  On the same ramp as the pitch slide, so the
+  // two are one gesture.
+  //
+  // And it settles under the note's *own* level rather than under whatever
+  // the trail-off had reached when the detector gave up -- the same weighted
+  // average that carries the pitch, asked the same way.  That is what lets
+  // the level follow a trail-off all the way down, which is what makes this
+  // sound like `reese` while a note is being played: the tail does not
+  // inherit the fade, it inherits the note.  With nothing to average it
+  // reduces to the plain drop.
+  if (s->sustain) {
+    s->amp *= 1 + settle * (SYNTH_HOLD_SUSTAIN - 1);
+  }
 
   if (hint->voiced) {
     s->note_age += 1.0f / s->sample_rate;
@@ -1304,6 +1375,13 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   s->pwm_pos += p->pwm_slow_hz / s->sample_rate;
   if (s->pwm_pos >= 1) {
     s->pwm_pos -= 1;
+  }
+  for (int g = 0; g < SYNTH_SHIMMER_LFOS; g++) {
+    s->shimmer_pos[g] +=
+      synth_shimmer_hz[g] * s->shimmer_rate / s->sample_rate;
+    if (s->shimmer_pos[g] >= 1) {
+      s->shimmer_pos[g] -= 1;
+    }
   }
   s->growl_pos += p->growl_hz / s->sample_rate;
   if (s->growl_pos >= 1) {
@@ -1344,7 +1422,7 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     return 0;
   }
 
-  float f0 = exp2f(synth_pitch_log(s)) * p->octave;
+  float f0 = exp2f(synth_pitch_log(s)) * synth_octave(s);
   float out = 0;
   // The same sum again, but weighted by where each copy sits.  Accumulated
   // here rather than reconstructed later because this is the only place the
@@ -1503,7 +1581,8 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // exactly twice the mono output -- a stereo image that folds down without
   // anything cancelling, which for detuned copies is otherwise exactly what
   // goes wrong.
-  s->side = spread * drive_gain * p->stereo_width * s->amp * p->out_gain;
+  s->side = spread * drive_gain * p->stereo_width * s->amp * p->out_gain *
+            s->audibility_comp;
 
-  return out * s->amp * p->out_gain;
+  return out * s->amp * p->out_gain * s->audibility_comp;
 }

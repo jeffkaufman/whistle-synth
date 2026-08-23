@@ -30,6 +30,8 @@ void engine_init(struct Engine* e, float sample_rate) {
   engine_set_voice(e, 2);
   engine_set_volume(e, 5);
   engine_set_gate(e, 5);
+  engine_set_fifth(e, 0);
+  engine_set_sustain(e, 0);
 }
 
 // Voice 0 is the raw input; 1..synth_preset_count() are synth presets.  Out
@@ -48,6 +50,16 @@ void engine_set_voice(struct Engine* e, int voice) {
   if (!e->passthrough) {
     synth_set_preset(&e->synth, voice - 1);
   }
+}
+
+void engine_set_fifth(struct Engine* e, int step) {
+  // Anything non-zero counts as on: the control file holds 0 or 1, and a
+  // stray 2 should transpose rather than silently do nothing.
+  synth_set_fifth(&e->synth, step != 0);
+}
+
+void engine_set_sustain(struct Engine* e, int step) {
+  synth_set_sustain(&e->synth, step != 0);
 }
 
 void engine_set_params(struct Engine* e, const struct SynthParams* params) {

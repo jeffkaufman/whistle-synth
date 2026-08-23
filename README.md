@@ -44,7 +44,7 @@ To run on boot, `/etc/systemd/system/whistle-synth.service` should have:
 Description=Pitch Detection and	Synthesis
 
 [Service]
-ExecStart=/home/jeffkaufman/whistle-synth/zeros-linux /home/jeffkaufman/whistle-synth/device-index /home/jeffkaufman/whistle-synth/current-voice /home/jeffkaufman/whistle-synth/current-volume /home/jeffkaufman/whistle-synth/current-gate
+ExecStart=/home/jeffkaufman/whistle-synth/zeros-linux /home/jeffkaufman/whistle-synth/device-index /home/jeffkaufman/whistle-synth/current-voice /home/jeffkaufman/whistle-synth/current-volume /home/jeffkaufman/whistle-synth/current-gate /home/jeffkaufman/whistle-synth/current-fifth /home/jeffkaufman/whistle-synth/current-sustain
 Restart=always
 KillSignal=SIGQUIT
 Type=simple
@@ -120,6 +120,22 @@ the Pi, keys 0-3 on the keypad):
 These are the entries of the `presets` table in `synth.c`, in order, offset by
 one.  `zeros2-mac` with no arguments prints the list, which is worth doing
 rather than trusting this table: presets have come and gone.
+
+Writing `1` to `current-fifth` drops every voice a just fifth, so what you
+whistle is the fifth of what you hear rather than the root -- whistle a D and
+it plays a G.  `0` puts it back.  It is a separate control from the voice
+because the interval has nothing to do with the timbre: any voice can be
+played at either.
+
+Writing `1` to `current-sustain` makes a note you *hold* outlive the breath
+that made it: it slides onto the nearest real note, settles under itself, sits
+there for two seconds and then fades, so one note every couple of bars holds a
+drone under a tune.  Notes too short to have been meant that way are left
+alone, so a fast phrase sounds the same either way and the tail only appears
+where you put it.  `0` puts it back.  Separate from the voice for the same
+reason the fifth is: whether the line breathes with you or carries through is
+not a question about timbre.  (`pluck` opts out -- see `no_sustain` in
+`synth.h`.)
 
 In the original, keys 0-8 select voices: 0 through 6 expect whistling, 7 and
 8 singing.
@@ -328,7 +344,7 @@ sound much quieter than the leads.  That is the monitoring, not the mix.
 instead of a sound card:
 
 ```
-  ./zeros2-offline <voice> <volume> <gate> < in.f32 > out.f32
+  ./zeros2-offline <voice> <volume> <gate> [fifth] < in.f32 > out.f32
   ./zeros2-offline <voice> <volume> <gate> --trace < in.f32   # hints as TSV
 ```
 

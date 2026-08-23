@@ -30,6 +30,20 @@ void engine_set_voice(struct Engine* e, int voice);
 void engine_set_volume(struct Engine* e, int step);
 void engine_set_gate(struct Engine* e, int step);
 
+// The fourth control, and the only one that isn't a 0-9 knob: 0 or 1 (or any
+// non-zero) for whether every voice is dropped a just fifth, so that what you
+// whistle is the fifth of what you hear rather than the root.  See
+// synth_set_fifth.  Unlike the voice this is a property of the player rather
+// than of the patch, so it stays put across a voice change -- including
+// across passthrough, which has no synth to transpose.
+void engine_set_fifth(struct Engine* e, int step);
+
+// And a second such control (0 or 1, or anything non-zero) for whether a note
+// the player holds outlives the breath that made it.  See synth_set_sustain.
+// Like the fifth this belongs to the player rather than to the voice, so it
+// survives a voice change and applies to all of them.
+void engine_set_sustain(struct Engine* e, int step);
+
 // Plays `params` rather than the current voice's built-in preset, for voices
 // the player has edited.  Borrowed, not copied -- see synth_set_params.  Has
 // no effect while voice 0 (passthrough) is selected, and is undone by the

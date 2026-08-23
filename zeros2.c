@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <signal.h>
 #include <unistd.h>
 
 #include "portaudio.h"
@@ -46,9 +47,9 @@
 
 /* ------------------------------------------------------------ controls --- */
 
-// Voice, volume and gate are read from files so they can be changed while
-// running (see kbd.py).  The reader thread only ever publishes an int; the
-// audio thread picks it up and applies it.  Nothing but the audio thread
+// Voice, volume, gate and fifth are read from files so they can be changed
+// while running (see kbd.py).  The reader thread only ever publishes an int;
+// the audio thread picks it up and applies it.  Nothing but the audio thread
 // touches the engine, which is what keeps this safe without a lock.
 
 struct Control {
@@ -63,6 +64,16 @@ struct Control {
 static struct Control voice_control = { .purpose = "voice", .published = 2 };
 static struct Control volume_control = { .purpose = "volume", .published = 5 };
 static struct Control gate_control = { .purpose = "gate", .published = 5 };
+// 0 or 1: whether every voice is dropped a just fifth.  See synth_set_fifth.
+static struct Control fifth_control = { .purpose = "fifth", .published = 0 };
+// 0 or 1: whether a note the player holds outlives the breath that made it.
+// See synth_set_sustain.
+static struct Control sustain_control = { .purpose = "sustain", .published = 0 };
+
+static struct Control* controls[] = {
+  &voice_control, &volume_control, &gate_control, &fifth_control,
+  &sustain_control };
+#define N_CONTROLS ((int)(sizeof(controls)/sizeof(controls[0])))
 
 static struct Engine engine;
 
@@ -84,9 +95,9 @@ static int read_number(FILE* file) {
 }
 
 // The device index may be given as a literal number or as a path to a file
-// containing one.  Voice, volume and gate have to be files because they are
-// re-read while running, but the device index is read once at startup, and
-// making someone write it to a file first is just friction.
+// containing one.  The controls have to be files because they are re-read
+// while running, but the device index is read once at startup, and making
+// someone write it to a file first is just friction.
 static int read_number_arg(const char* arg) {
   const char* p = arg;
   if (*p == '-' || *p == '+') {
@@ -116,10 +127,8 @@ static int read_number_arg(const char* arg) {
 
 static void* read_controls(void* ignored) {
   (void)ignored;
-  struct Control* controls[] = {
-    &voice_control, &volume_control, &gate_control };
 
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < N_CONTROLS; i++) {
     controls[i]->file = fopen(controls[i]->fname, "r");
     if (!controls[i]->file) {
       perror("can't open control file");
@@ -129,7 +138,7 @@ static void* read_controls(void* ignored) {
   }
 
   while (1) {
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < N_CONTROLS; i++) {
       int value = read_number(controls[i]->file);
       if (value != controls[i]->reported) {
         printf("%s: %d -> %d", controls[i]->purpose,
@@ -162,6 +171,14 @@ static void apply_controls(void) {
     gate_control.applied = gate_control.published;
     engine_set_gate(&engine, gate_control.applied);
   }
+  if (fifth_control.published != fifth_control.applied) {
+    fifth_control.applied = fifth_control.published;
+    engine_set_fifth(&engine, fifth_control.applied);
+  }
+  if (sustain_control.published != sustain_control.applied) {
+    sustain_control.applied = sustain_control.published;
+    engine_set_sustain(&engine, sustain_control.applied);
+  }
 }
 
 /* --------------------------------------------------------------- audio --- */
@@ -171,6 +188,20 @@ static int output_channels = 1;
 
 // The callback can't printf, so it counts and main reports.
 static volatile int xruns = 0;
+
+// Set by ctrl-C during a recording.  A take is only worth making if stopping
+// it keeps it: the interesting thing usually happens partway through, and
+// waiting out the rest of the script to get the file is a good way to lose
+// the take you wanted.  Only installed for the recording modes -- the live
+// instrument should still die immediately when it is interrupted.
+static volatile sig_atomic_t interrupted = 0;
+
+static void on_interrupt(int sig) {
+  (void)sig;
+  interrupted = 1;
+  // A second ctrl-C kills it outright, so a wedged stream is still escapable.
+  signal(SIGINT, SIG_DFL);
+}
 
 static int audio_callback(const void* input_buffer,
                           void* output_buffer,
@@ -347,13 +378,17 @@ static int start_audio(int device_index) {
   int ticks = 0;
   const char* last_label = NULL;
   while (Pa_IsStreamActive(stream) == 1) {
-    Pa_Sleep(self_test && self_test->mode == SELFTEST_RECORD ? 100 : 500);
+    Pa_Sleep(self_test && selftest_is_record(self_test->mode) ? 100 : 500);
 
     if (self_test && selftest_done(self_test)) {
       printf("\nfinished\n");
       break;
     }
-    if (self_test && (self_test->mode == SELFTEST_RECORD ||
+    if (interrupted) {
+      printf("\nstopped -- keeping what was recorded\n");
+      break;
+    }
+    if (self_test && (selftest_is_record(self_test->mode) ||
                       self_test->mode == SELFTEST_MONITOR)) {
       const char* label = selftest_label(self_test);
       if (label && label != last_label) {
@@ -410,7 +445,7 @@ static int start_audio(int device_index) {
 // records what the engine made of it.  Point the microphone at the headphone
 // first.  This makes sound.
 static int run_self_test(int argc, char** argv, enum SelfTestMode mode) {
-  if (argc != 5 && !((mode == SELFTEST_RESPONSE || mode == SELFTEST_RECORD)
+  if (argc != 5 && !((mode == SELFTEST_RESPONSE || selftest_is_record(mode))
                      && argc == 4)) {
     printf("usage: %s --self-test /device/index /recording.f32 <voice>\n",
            argv[0]);
@@ -438,7 +473,7 @@ static int run_self_test(int argc, char** argv, enum SelfTestMode mode) {
            seconds, engine_voice_name(voice));
     printf("Wear the headphones; keep the mic on you, not on them.\n");
     printf("Provoke the noise -- both sides are recorded.\n\n");
-  } else if (mode == SELFTEST_RECORD) {
+  } else if (selftest_is_record(mode)) {
     printf("recording %.0fs.  Nothing is played -- point the microphone at\n",
            seconds);
     printf("yourself, not at the headphone, and whistle what it asks for.\n\n");
@@ -450,6 +485,8 @@ static int run_self_test(int argc, char** argv, enum SelfTestMode mode) {
     printf("playing a test whistle -- the synth is recorded, not played\n");
   }
   fflush(stdout);
+
+  signal(SIGINT, on_interrupt);
 
   int result = start_audio(device_index);
   if (selftest_write(&test, argv[3]) != 0) {
@@ -469,16 +506,21 @@ int main(int argc, char** argv) {
   if (argc >= 2 && strcmp(argv[1], "--record") == 0) {
     return run_self_test(argc, argv, SELFTEST_RECORD);
   }
+  if (argc >= 2 && strcmp(argv[1], "--record-hold") == 0) {
+    return run_self_test(argc, argv, SELFTEST_RECORD_HOLD);
+  }
   if (argc >= 2 && strcmp(argv[1], "--record-playing") == 0) {
     return run_self_test(argc, argv, SELFTEST_MONITOR);
   }
 
-  if (argc != 5) {
-    printf("usage: %s /device/index /voice/file /volume/file /gate/file\n",
+  if (argc != 7) {
+    printf("usage: %s /device/index /voice/file /volume/file /gate/file"
+           " /fifth/file /sustain/file\n",
            argv[0]);
     printf("       %s --self-test /device/index /recording.f32 <voice>\n",
            argv[0]);
     printf("       %s --record /device/index /whistling.f32\n", argv[0]);
+    printf("       %s --record-hold /device/index /holding.f32\n", argv[0]);
     printf("       %s --record-playing /device/index /out.f32 <voice>\n",
            argv[0]);
     printf("       %s --rig-check /device/index /recording.f32\n", argv[0]);
@@ -495,6 +537,8 @@ int main(int argc, char** argv) {
   voice_control.fname = argv[2];
   volume_control.fname = argv[3];
   gate_control.fname = argv[4];
+  fifth_control.fname = argv[5];
+  sustain_control.fname = argv[6];
 
   engine_init(&engine, SAMPLE_RATE);
 

@@ -37,13 +37,16 @@ static void add_prompt(struct SelfTest* t, const char* label, float seconds) {
   t->events[t->event_count - 1].label = label;
 }
 
+// Free playing with the synth audible, for a fault the player can hear and
+// provoke but that has not shown up in analysis.  There is nothing to follow
+// here -- the prompts only give a take some shape, and ctrl-C keeps whatever
+// has been recorded, so the way to use it is to play until the thing happens
+// and then stop.  Long enough that it is the player who decides when a take
+// is over rather than the script.
 static void build_monitor(struct SelfTest* t) {
   add_prompt(t, "play normally -- get used to the sound", 12.0f);
-  add_prompt(t, "NOW: whatever brings the noise out.  Keep doing it.", 25.0f);
-  add_prompt(t, "again, and let notes trail off slowly at the end", 25.0f);
-  add_prompt(t, "again, loud notes, then very quiet ones", 20.0f);
-  add_prompt(t, "last stretch -- anything that provokes it", 20.0f);
-  add_prompt(t, "done", 2.0f);
+  add_prompt(t, "now provoke it: whatever brings the problem out", 48.0f);
+  add_prompt(t, "keep going -- ctrl-C once you have it recorded", 300.0f);
 }
 
 // The material worth having, in the order it is easiest to play.
@@ -60,6 +63,62 @@ static void build_record(struct SelfTest* t) {
   add_prompt(t, "TRAIL OFF: long notes, let each one fade to nothing", 10.0f);
   add_prompt(t, "LEAPS: jump around, including big intervals", 8.0f);
   add_prompt(t, "REAL TUNE: play like you would on the gig", 15.0f);
+  add_prompt(t, "done -- stop playing", 2.0f);
+}
+
+// The same idea for a voice that holds.  Everything above was written to find
+// out whether the detector tracks what is being played, so it is nearly all
+// playing; a holding voice is judged on the gaps, and that script has hardly
+// any.  Every section here is a rest away from being one of those.
+//
+// Three things are asked for, kept apart so a fault can be attributed rather
+// than guessed at:
+//
+//   - notes that start while the last one's tail is still sounding, which is
+//     the only place this voice has a discontinuity to click on.  The tail is
+//     two seconds, so a 2s rest puts the next note where it starts to release
+//     and a 1s rest puts it dead in the middle of the sustain.
+//   - long deliberate notes, ended in the several ways a whistle really ends,
+//     so what gets held can be compared against what was meant.
+//   - playing with no rests in it at all, which should hold nothing.
+//
+// The pitches are the player's own choice: what a held note should be is the
+// note it sat on, and that is in the recording whether or not anyone names it.
+static void build_record_hold(struct SelfTest* t) {
+  add_prompt(t, "get comfortable -- don't play yet", 3.0f);
+  add_prompt(t, "SILENCE: let the room be quiet", 4.0f);
+  add_prompt(t, "LEVEL CHECK: hold one steady note, as loud as you'd play",
+             6.0f);
+
+  // A note landing on a tail, at the two rest lengths that put it in
+  // different parts of one.
+  add_prompt(t, "HOLD: a 2s note, then a 2s rest.  Over and over.", 16.0f);
+  add_prompt(t, "SHORT REST: the same, but rest only 1s between notes", 12.0f);
+  add_prompt(t, "SAME NOTE: 2s on, 2s off, always the same pitch", 12.0f);
+
+  // Whether a click tracks the size of the step says which of the two things
+  // that jump at an onset -- the level and the pitch -- is the one being
+  // heard.
+  add_prompt(t, "LOUD, QUIET: alternate a loud note and a quiet one, 2s rests",
+             14.0f);
+  add_prompt(t, "LEAPS: 2s notes, 2s rests, big jumps between them", 12.0f);
+
+  // How a note ends, which is the part of it a hold must not listen to.
+  add_prompt(t, "TRAIL OFF: 2s notes, let each one fade away, 2s rests", 12.0f);
+  add_prompt(t, "SAG: 2s notes, let the pitch sag flat at the very end", 12.0f);
+  add_prompt(t, "SCOOP: 2s notes, slide up into each one, 2s rests", 12.0f);
+
+  // Nothing in this one has earned a hold.
+  add_prompt(t, "BLIPS: very short notes, 2s rests -- these should NOT hold",
+             12.0f);
+
+  // And nothing in these two should hold either, until the phrase stops.
+  add_prompt(t, "FAST, NO RESTS: eighth notes, tongued, don't stop", 12.0f);
+  add_prompt(t, "FAST, SLURRED: the same run, all in one breath", 10.0f);
+  add_prompt(t, "PHRASE: play fast, then stop dead and let the last note hold",
+             16.0f);
+
+  add_prompt(t, "REAL TUNE: play like you would on the gig", 20.0f);
   add_prompt(t, "done -- stop playing", 2.0f);
 }
 
@@ -80,6 +139,10 @@ static float build_response(struct SelfTest* t) {
   return 0;
 }
 
+bool selftest_is_record(enum SelfTestMode mode) {
+  return mode == SELFTEST_RECORD || mode == SELFTEST_RECORD_HOLD;
+}
+
 float selftest_init(struct SelfTest* t, float sample_rate,
                     enum SelfTestMode mode) {
   memset(t, 0, sizeof(*t));
@@ -87,10 +150,12 @@ float selftest_init(struct SelfTest* t, float sample_rate,
   t->rng = 22222;
   t->mode = mode;
 
-  if (mode == SELFTEST_RECORD || mode == SELFTEST_RESPONSE ||
+  if (selftest_is_record(mode) || mode == SELFTEST_RESPONSE ||
       mode == SELFTEST_MONITOR) {
     if (mode == SELFTEST_RECORD) {
       build_record(t);
+    } else if (mode == SELFTEST_RECORD_HOLD) {
+      build_record_hold(t);
     } else if (mode == SELFTEST_MONITOR) {
       build_monitor(t);
     } else {
@@ -170,7 +235,7 @@ float selftest_stimulus(struct SelfTest* t) {
   }
 
   const struct TestEvent* e = &t->events[t->event_index];
-  if (t->mode == SELFTEST_RECORD || t->mode == SELFTEST_MONITOR) {
+  if (selftest_is_record(t->mode) || t->mode == SELFTEST_MONITOR) {
     // Play no stimulus.  In RECORD that means silence; in MONITOR the caller
     // sends the synth to the output instead, so the player can hear what
     // they are provoking.
@@ -275,11 +340,12 @@ int selftest_write(struct SelfTest* t, const char* path) {
   }
   size_t frames = (size_t)t->recorded;
 
-  if (t->mode == SELFTEST_RECORD) {
-    // Just the microphone.  The other two channels are silent by
-    // construction here, and mono means the file can be fed straight to
-    // zeros2-offline without being split first.  MONITOR keeps all three,
-    // because there the synth channel is the point.
+  if (selftest_is_record(t->mode) || t->mode == SELFTEST_MONITOR) {
+    // Just the microphone.  Mono, so it can be fed straight to zeros2-offline
+    // without being split first -- which is the whole point of keeping a
+    // recording: every later render comes from it.  In RECORD the other two
+    // channels are silent by construction; in MONITOR the synth is written
+    // beside this one, below.
     for (size_t i = 0; i < frames; i++) {
       if (fwrite(&t->recording[i * 3 + 1], sizeof(float), 1, f) != 1) {
         perror("write");
@@ -294,6 +360,27 @@ int selftest_write(struct SelfTest* t, const char* path) {
   }
   fclose(f);
 
+  // And what the player actually heard, which is the other half of a demo:
+  // it says whether a fault is in the synth or in the room, and it is the
+  // thing to compare a re-render against.
+  char synth_path[1024];
+  if (t->mode == SELFTEST_MONITOR) {
+    snprintf(synth_path, sizeof(synth_path), "%s.synth.f32", path);
+    FILE* sf = fopen(synth_path, "wb");
+    if (!sf) {
+      perror("can't open synth file");
+      return -1;
+    }
+    for (size_t i = 0; i < frames; i++) {
+      if (fwrite(&t->recording[i * 3 + 2], sizeof(float), 1, sf) != 1) {
+        perror("write");
+        fclose(sf);
+        return -1;
+      }
+    }
+    fclose(sf);
+  }
+
   char sections[1024];
   snprintf(sections, sizeof(sections), "%s.sections", path);
   FILE* s = fopen(sections, "w");
@@ -301,21 +388,32 @@ int selftest_write(struct SelfTest* t, const char* path) {
     perror("can't open sections file");
     return -1;
   }
-  fprintf(s, "start\tend\tfreq\tamp\tnoise\n");
+  fprintf(s, "start\tend\tfreq\tamp\tnoise\tlabel\n");
   double at = 0;
+  double recorded = t->recorded / (double)t->sample_rate;
   for (int i = 0; i < t->event_count; i++) {
     double dur = t->events[i].samples / (double)t->sample_rate;
-    fprintf(s, "%.4f\t%.4f\t%.2f\t%.4f\t%.4f\n", at, at + dur,
-            t->events[i].freq, t->events[i].amp, t->events[i].noise);
+    // A take stopped with ctrl-C should not claim sections it never reached,
+    // or the labels stop lining up with the audio.
+    if (at >= recorded) {
+      break;
+    }
+    double end = at + dur < recorded ? at + dur : recorded;
+    fprintf(s, "%.4f\t%.4f\t%.2f\t%.4f\t%.4f\t%s\n", at, end,
+            t->events[i].freq, t->events[i].amp, t->events[i].noise,
+            t->events[i].label ? t->events[i].label : "");
     at += dur;
   }
   fclose(s);
 
   printf("\nwrote %.2fs to %s (%s)\n",
          t->recorded / (double)t->sample_rate, path,
-         t->mode == SELFTEST_RECORD
+         selftest_is_record(t->mode) || t->mode == SELFTEST_MONITOR
            ? "mono microphone, ready for zeros2-offline"
            : "3ch: stimulus, microphone, synth");
+  if (t->mode == SELFTEST_MONITOR) {
+    printf("wrote %s (mono, what you heard)\n", synth_path);
+  }
   printf("wrote %s\n", sections);
   return 0;
 }

@@ -43,6 +43,23 @@ def scale_gate(t):
     # Short fades so the input itself has no clicks for the detector to chase.
     return min(1.0, u / 0.010, (NOTE_S - u) / 0.020)
 
+# A ladder of steady notes across the whistle range, all at exactly the same
+# amplitude and each long enough to earn a tail.  Nothing else here is usable
+# for judging loudness: `scale` changes note too fast to measure, and a real
+# recording cannot hold the input level constant while the pitch moves, which
+# is precisely the confound.  Half-octave steps over the two octaves the
+# detector covers.
+LADDER_ON, LADDER_OFF = 1.6, 3.0
+LADDER_STEPS = 5
+def ladder_freq(t):
+    step = int(t / (LADDER_ON + LADDER_OFF)) % LADDER_STEPS
+    return BASE * 2 ** (step * OCTAVES / (LADDER_STEPS - 1))
+def ladder_gate(t):
+    u = t % (LADDER_ON + LADDER_OFF)
+    if u > LADDER_ON: return 0.0
+    return min(1.0, u / 0.010, (LADDER_ON - u) / 0.020)
+LADDER_S = LADDER_STEPS * (LADDER_ON + LADDER_OFF)
+
 # How the pad is actually played: a few steady notes, seconds apart, with the
 # gaps left in so the hold and the decay can be heard doing their work.  The
 # last one is deliberately too short to arm anything.
@@ -101,6 +118,8 @@ if which == 'padfast':
     buf = render(fast_freq, FAST_S, fast_gate)
 elif which == 'pad':
     buf = render(pad_freq, PAD_S, pad_gate)
+elif which == 'ladder':
+    buf = render(ladder_freq, LADDER_S, ladder_gate)
 elif which == 'glide':
     buf = render(glide_freq, SWEEP_S * REPEATS)
 else:
