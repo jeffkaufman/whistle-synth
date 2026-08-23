@@ -93,8 +93,8 @@ app, and nothing needs permission to write it.  The control files the
 command-line build reads (`current-voice` and friends) could not have been
 reached from inside the sandbox anyway.
 
-Voice, volume, gate, the two device UIDs, the sample rate and the buffer size
-are stored as plain values.  Edited voice parameters are stored as JSON under
+Voice, volume, gate, the fifth, the sustain, the two device UIDs, the sample
+rate and the buffer size are stored as plain values.  Edited voice parameters are stored as JSON under
 `voiceOverrides`, keyed by voice name and holding **only the fields that
 differ from the built-in preset**.  Two consequences, both wanted:
 
@@ -150,14 +150,19 @@ whatever its width says, which is what `bass` and `subbass` want anyway.
 outermost copies are panned hard apart, which is honest but further than it
 sounds like it should be: three copies four cents apart really do null in the
 middle, so at full spread the difference between the outer two is larger than
-their sum and the channels end up anti-correlated. The defaults were set by
-measuring L/R correlation rather than by ear:
+their sum and the channels end up anti-correlated. Widths were set by
+measuring L/R correlation rather than by ear -- `lead`, at 3 copies and 0.30,
+measured +0.68, wide and still solid; `trombone`, at 2 copies and 0.35,
+measured +0.85, just off centre.
 
-| voice | copies | width | L/R correlation |
-|---|---|---|---|
-| `lead` | 3 | 0.30 | +0.68, wide and still solid |
-| `trombone` | 2 | 0.35 | +0.85, just off centre |
-| `bass`, `subbass` | 1 | -- | centred |
+**No voice in the current table sets a width**, so as it stands every voice
+comes out centred and the two channels are identical. That is not the stereo
+path having been removed -- it is what a table of ten bass voices wants. Nine
+of them run a single oscillator and so have nothing to spread whatever their
+width says, and `reese`, the one that runs three, is a bass line: a wandering
+low end is the one thing that will not survive being played through a PA, and
+its churn is handled by `mono_partials` instead. Give any voice a width and
+the machinery below applies to it again unchanged.
 
 A mono output device gets `(L+R)/2`, which by the above is exactly the mono
 signal.
@@ -166,16 +171,19 @@ signal.
 separate question from fold-down and worth having checked rather than assumed.
 That case gets `mid+side`, not the average, so nothing about the exact
 fold-down guarantees it.  Measured against the mono output over a real
-whistling take, one channel on its own is:
+whistling take, on the voices that had a width at the time, one channel on its
+own was:
 
 | voice | level | worst third-octave deviation |
 |---|---|---|
 | `lead` | +0.8 dB | +0.98 dB |
 | `trombone` | +0.4 dB | +1.32 dB |
-| `bass`, `subbass` | +0.0 dB | 0.00 dB |
+| centred voices | +0.0 dB | 0.00 dB |
 
 Flat within about a decibel from 40Hz to 10kHz, and the deviation is a level
-offset rather than a tilt or a notch.  Nothing clips that would not have
+offset rather than a tilt or a notch.  Every voice in the current table is the
+last row exactly, by construction rather than by measurement: with the width
+at zero the side signal is multiplied by zero.  Nothing clips that would not have
 clipped in mono, at volume 9 or below.
 
 That is not luck, it is the technique: the stereo here is *panning*, which is
@@ -193,11 +201,54 @@ The **Audio** tab reports what the stream actually got rather than what was
 asked for, because devices clamp both the sample rate and the buffer size and
 say nothing about it.
 
+## The player's controls, and the patch's
+
+The **Play** tab carries two switches that are deliberately *not* on the Voice
+tab and are not stored per voice:
+
+* **Down a fifth** plays every voice a just fifth below what it otherwise
+  would, so what you whistle is the fifth of what you hear rather than the
+  root: a tune whistled in D comes out in G.
+* **Sustain held notes** makes a note you *hold* outlive the breath that made
+  it -- it slides onto the nearest real note, settles under itself, sits for
+  two seconds and fades.  Notes too short to have been meant that way are
+  untouched, so a fast phrase sounds the same either way.
+
+Both correspond to `current-fifth` and `current-sustain` in the command-line
+build.  They belong to the player rather than to the patch: which voice you
+are playing, what interval you are playing it at, and whether the line
+breathes with you are three separate decisions, so these survive a voice
+change and apply to all of them.
+
+A voice may opt out of the sustain (`no_sustain`, which `pluck` sets), and the
+Play tab says so under the switch when the voice you are on is one of them --
+a switch that silently does nothing is how a switch gets a reputation for
+being broken.
+
+The Play tab also reports **While playing**: the loudest the *detector* heard
+while a note was actually sounding.  That is not the input meter above it.
+The input meter is a sample peak over everything, including the room between
+notes; this is an RMS over the analysis window, taken only while a note was
+sounding, and it is the number `level_full` is actually compared against.  So
+it is the one to read when setting `level_full`, and it is the same number the
+command-line build prints every four seconds.
+
 ## Editing voices
 
 Everything in `SynthParams` is on the **Voice** tab, generated from the table
 in `VoiceParameters.swift` rather than laid out by hand -- adding a field to
-the struct means adding one entry there, not writing another slider.
+the struct means adding one entry there, not writing another slider.  There
+are fifty of them; the grouping is the only thing keeping that readable, so a
+new field wants a group as much as it wants a range.
+
+A `ParamSpec`'s range is a taste range rather than the engine's -- the engine
+clamps far wider, in `synth_sanitize_params`.  But it has to *contain* every
+preset's value for that field, or the slider parks at its own floor and
+reports a number the voice does not have.  Several fields read zero as "unset"
+and let the engine fill in a default (`resonance_width`, `octave_stack_width`,
+`octave_stack_ref_hz`); those ranges start at zero and their formatters say
+`auto`, rather than starting at a usable value and lying about the ones that
+are off.
 
 A `ParamSpec`'s `id` is its persistence key, so renaming one silently discards
 that edit for everyone who made it.  Rename the `label` instead.
@@ -230,7 +281,10 @@ switch before believing it.
 
 Nothing locks and nothing allocates on the audio thread.
 
-Volume and gate are single atomic ints, picked up once per block.
+Volume, gate, the fifth and the sustain are single atomic ints, picked up once
+per block.  They are separate from the program below precisely because they
+are not part of it: a voice change must not disturb them, and they must not
+wait on one.
 
 The voice and its parameters travel **together**, through a four-slot ring
 with a generation counter: applying them separately would sound one block of
@@ -242,4 +296,9 @@ numbers that would divide by zero or run off the end of a fixed array cannot
 reach the audio thread no matter where they came from.
 
 Meters go the other way: peaks are accumulated per block into atomics and the
-UI takes and resets them at 24Hz.
+UI takes and resets them at 24Hz.  The playing level is one of them even
+though the engine already accumulates it, because `engine_take_peak_level`
+reads and clears a plain float that the audio thread writes every sample --
+calling it from the UI thread, as the command-line build does from its own
+main loop, would be a race.  It is taken on the audio thread instead and
+folded into an atomic like the rest.

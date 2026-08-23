@@ -45,6 +45,15 @@ static _Atomic int published_gate = 5;
 static int applied_volume = -1;
 static int applied_gate = -1;
 
+// The fifth and the sustain travel on their own rather than with the program,
+// because they belong to the player rather than to the patch: they survive a
+// voice change and they are not stored per voice.  -1 as the applied value so
+// that the first pass always publishes, whichever way the switch is set.
+static _Atomic int published_fifth;
+static _Atomic int published_sustain;
+static int applied_fifth = -1;
+static int applied_sustain = -1;
+
 static bool read_program(struct Program* out) {
   for (int attempt = 0; attempt < 4; attempt++) {
     unsigned gen = atomic_load_explicit(&program_gen, memory_order_acquire);
@@ -84,6 +93,16 @@ static void apply_controls(void) {
     applied_gate = gate;
     engine_set_gate(&engine, gate);
   }
+  int fifth = atomic_load_explicit(&published_fifth, memory_order_relaxed);
+  if (fifth != applied_fifth) {
+    applied_fifth = fifth;
+    engine_set_fifth(&engine, fifth);
+  }
+  int sustain = atomic_load_explicit(&published_sustain, memory_order_relaxed);
+  if (sustain != applied_sustain) {
+    applied_sustain = sustain;
+    engine_set_sustain(&engine, sustain);
+  }
 }
 
 void whistle_set_program(int voice, const struct SynthParams* params) {
@@ -111,6 +130,14 @@ void whistle_set_gate(int step) {
   atomic_store_explicit(&published_gate, step, memory_order_relaxed);
 }
 
+void whistle_set_fifth(bool on) {
+  atomic_store_explicit(&published_fifth, on ? 1 : 0, memory_order_relaxed);
+}
+
+void whistle_set_sustain(bool on) {
+  atomic_store_explicit(&published_sustain, on ? 1 : 0, memory_order_relaxed);
+}
+
 /* --------------------------------------------------------------- names --- */
 
 int whistle_preset_count(void) {
@@ -134,6 +161,7 @@ static _Atomic int meter_dropouts;
 static _Atomic int meter_input_peak_bits;   // float, punned: see peak_max
 static _Atomic int meter_output_peak_bits;
 static _Atomic int meter_freq_bits;
+static _Atomic int meter_playing_level_bits;
 static _Atomic bool meter_voiced;
 
 // The meters are floats but atomic float support is patchy in C, so they are
@@ -252,6 +280,7 @@ void whistle_status(struct WhistleStatus* out) {
   out->dropouts = atomic_load_explicit(&meter_dropouts, memory_order_relaxed);
   out->input_peak = peak_take(&meter_input_peak_bits);
   out->output_peak = peak_take(&meter_output_peak_bits);
+  out->playing_level = peak_take(&meter_playing_level_bits);
   out->freq = bits_float(atomic_load_explicit(&meter_freq_bits,
                                               memory_order_relaxed));
   out->voiced = atomic_load_explicit(&meter_voiced, memory_order_relaxed);
@@ -267,6 +296,8 @@ void whistle_engine_prepare(double sample_rate) {
   applied_gen = 0;
   applied_volume = -1;
   applied_gate = -1;
+  applied_fifth = -1;
+  applied_sustain = -1;
   apply_controls();
 
   atomic_store_explicit(&meter_xruns, 0, memory_order_relaxed);
@@ -305,6 +336,11 @@ void whistle_engine_process(const float* in, float* left, float* right,
 
   peak_max(&meter_input_peak_bits, input_peak);
   peak_max(&meter_output_peak_bits, output_peak);
+  // Taken here rather than from the UI thread: the engine's own accumulator
+  // is a plain float that the audio thread writes every sample, so reading
+  // and clearing it from anywhere else would be a race.  Folded into an
+  // atomic that the UI takes and resets like the other meters.
+  peak_max(&meter_playing_level_bits, engine_take_peak_level(&engine));
   atomic_store_explicit(&meter_freq_bits, float_bits(engine.detector.hint.freq),
                         memory_order_relaxed);
   atomic_store_explicit(&meter_voiced, engine.detector.hint.voiced,

@@ -95,7 +95,13 @@ private struct ParamRow: View {
         let binding = Binding(
             get: { value },
             set: { synth.setValue($0, for: spec) })
-        if let step = spec.step {
+        if spec.isToggle {
+            // A two-position slider for a bool is a puzzle, not a control.
+            Toggle(spec.label, isOn: Binding(get: { binding.wrappedValue > 0.5 },
+                                             set: { binding.wrappedValue = $0 ? 1 : 0 }))
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let step = spec.step {
             Slider(value: binding, in: spec.range, step: step)
         } else {
             Slider(value: binding, in: spec.range)

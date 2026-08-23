@@ -18,6 +18,8 @@ final class SynthController: ObservableObject {
         static let voice = "voice"
         static let volume = "volume"
         static let gate = "gate"
+        static let fifth = "fifth"
+        static let sustain = "sustain"
         static let inputUID = "inputDeviceUID"
         static let outputUID = "outputDeviceUID"
         static let sampleRate = "sampleRate"
@@ -33,6 +35,15 @@ final class SynthController: ObservableObject {
     }
     @Published var gate: Int {
         didSet { defaults.set(gate, forKey: Key.gate); whistle_set_gate(Int32(gate)) }
+    }
+    /// Both of these are the player's, not the patch's: they survive a voice
+    /// change and are stored once rather than per voice.  See
+    /// `whistle_set_fifth`.
+    @Published var fifth: Bool {
+        didSet { defaults.set(fifth, forKey: Key.fifth); whistle_set_fifth(fifth) }
+    }
+    @Published var sustain: Bool {
+        didSet { defaults.set(sustain, forKey: Key.sustain); whistle_set_sustain(sustain) }
     }
     @Published var inputUID: String {
         didSet { defaults.set(inputUID, forKey: Key.inputUID); restart() }
@@ -64,6 +75,9 @@ final class SynthController: ObservableObject {
     @Published private(set) var inputPeak: Float = 0
     @Published private(set) var outputPeak: Float = 0
     @Published private(set) var detectedHz: Float = 0
+    /// The detector's own level while a note was sounding, which is what
+    /// `level_full` is measured against.  See `WhistleStatus.playing_level`.
+    @Published private(set) var playingLevel: Float = 0
     @Published private(set) var voiced = false
     @Published private(set) var xruns = 0
     @Published private(set) var dropouts = 0
@@ -88,6 +102,8 @@ final class SynthController: ObservableObject {
             Key.voice: SynthController.defaultVoice,
             Key.volume: 5,
             Key.gate: 5,
+            Key.fifth: false,
+            Key.sustain: false,
             Key.sampleRate: 48_000,
             // The device's own minimum is usually smaller, but 64 frames is
             // already past the point where the hardware's fixed converter and
@@ -98,6 +114,8 @@ final class SynthController: ObservableObject {
         voice = defaults.integer(forKey: Key.voice)
         volume = defaults.integer(forKey: Key.volume)
         gate = defaults.integer(forKey: Key.gate)
+        fifth = defaults.bool(forKey: Key.fifth)
+        sustain = defaults.bool(forKey: Key.sustain)
         inputUID = defaults.string(forKey: Key.inputUID) ?? ""
         outputUID = defaults.string(forKey: Key.outputUID) ?? ""
         sampleRate = defaults.integer(forKey: Key.sampleRate)
@@ -108,16 +126,24 @@ final class SynthController: ObservableObject {
         devices = AudioDevice.all()
         whistle_set_volume(Int32(volume))
         whistle_set_gate(Int32(gate))
+        whistle_set_fifth(fifth)
+        whistle_set_sustain(sustain)
         publishProgram()
         watchDevices()
     }
 
-    /// The voice named "lead" if it is still there, which is what a first run
-    /// should sound like.  The engine's own default is a plain index and has
-    /// drifted as presets came and went.
+    /// What a first run should sound like: the plainest voice in the table,
+    /// by name rather than by index, since the index of any given voice has
+    /// drifted every time presets came and went.  Falling back to the first
+    /// preset is what happens when a name here is retired -- which is the
+    /// failure this is written to survive, so keep more than one candidate.
     private static var defaultVoice: Int {
-        for voice in 1...Int(whistle_preset_count()) where name(ofVoice: voice) == "lead" {
-            return voice
+        let wanted = ["bass", "lead"]
+        for name in wanted {
+            for voice in 1...Int(whistle_preset_count())
+            where self.name(ofVoice: voice) == name {
+                return voice
+            }
         }
         return 1
     }
@@ -323,6 +349,11 @@ final class SynthController: ObservableObject {
         dropouts = Int(status.dropouts)
         voiced = status.voiced
         detectedHz = status.freq
+
+        // Held and let fall like the peaks below, and slower: this is read
+        // while whistling a long note to set `level_full`, so it has to stay
+        // legible between the analysis hops that produce it.
+        playingLevel = max(status.playing_level, playingLevel * 0.94)
 
         // The C side reports the peak since it was last asked and then
         // resets, so hold the needle and let it fall, or a meter sampled at

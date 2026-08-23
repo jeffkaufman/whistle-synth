@@ -3,6 +3,15 @@ import SwiftUI
 struct PlayView: View {
     @EnvironmentObject private var synth: SynthController
 
+    /// A voice may opt out of the sustain entirely (`no_sustain`), and
+    /// silently doing nothing is exactly how a switch gets a reputation for
+    /// being broken.  Read from the live parameters rather than from a list
+    /// of voice names, so an edited voice reports what it will actually do.
+    private var sustainExemption: String {
+        guard !synth.isPassthrough, synth.currentParams.no_sustain else { return "" }
+        return " \(synth.currentVoiceName) opts out of this: its whole shape is a note speaking and getting out of the way, and a tail is the opposite instruction."
+    }
+
     var body: some View {
         Form {
             Section {
@@ -28,6 +37,27 @@ struct PlayView: View {
                            caption: "How far above the room a note has to be before it counts. Higher gates less.")
             }
 
+            // Not in the Voice tab, because neither is a property of the
+            // patch: which voice you are playing and what interval you are
+            // playing it at are separate decisions, and so is whether the
+            // line breathes with you or carries through.  Both stay put
+            // across a voice change and apply to all of them.
+            Section {
+                Toggle("Down a fifth", isOn: $synth.fifth)
+                Text("What you whistle becomes the fifth of what you hear rather than the root, so a tune whistled in D comes out in G. A just fifth, two cents flat of a tempered one.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle("Sustain held notes", isOn: $synth.sustain)
+                Text("A note you hold for half a second slides onto the nearest real note, settles under itself, sits there for two seconds and fades — so one note every couple of bars holds a drone under the tune. Shorter notes are untouched, so a fast phrase sounds the same either way. Still monophonic: a new note takes the tail with it.\(sustainExemption)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Playing")
+            }
+
             Section("Listening") {
                 StatRow(title: "Input") {
                     MeterView(level: synth.inputPeak, warn: 0.9)
@@ -35,6 +65,16 @@ struct PlayView: View {
                 StatRow(title: "Output") {
                     MeterView(level: synth.outputPeak, warn: 0.98)
                 }
+                StatRow(title: "While playing") {
+                    Text(synth.playingLevel > 0.0005
+                         ? String(format: "%.3f", synth.playingLevel)
+                         : "—")
+                        .font(.system(.body, design: .monospaced))
+                }
+                Text("What the detector heard while a note was actually sounding, which is the number the Voice tab's full-blow level is compared against — not the input meter above, which is a sample peak and counts the room between notes. Whistle your loudest and set full-blow level to what this reads.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 StatRow(title: "Detected") {
                     Text(synth.detectedNote ?? "—")
                         .font(.system(.body, design: .monospaced))

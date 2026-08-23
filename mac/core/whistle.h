@@ -89,6 +89,15 @@ struct WhistleStatus {
   // Meters.  Peaks are since the last call to whistle_status and reset here.
   float input_peak;
   float output_peak;
+
+  // The loudest the *detector* heard while a note was actually sounding,
+  // which is a different number from input_peak: it is an RMS over the
+  // analysis window rather than a sample peak, and it ignores the room
+  // between notes.  It is also the number `level_full` is compared against,
+  // so it is the one to read when setting it.  The command-line build prints
+  // this every four seconds; here it drives a meter.
+  float playing_level;
+
   float freq;          // last detected pitch, Hz
   bool voiced;
 };
@@ -115,5 +124,21 @@ void whistle_set_program(int voice, const struct SynthParams* params);
 // Both take the 0-9 steps the knobs used to.
 void whistle_set_volume(int step);
 void whistle_set_gate(int step);
+
+// Drops every voice a just fifth, so that what the player whistles is the
+// fifth of what they hear rather than the root: whistle a D and it plays a G.
+// See synth_set_fifth.
+//
+// Not part of the program above, and deliberately so.  The interval has
+// nothing to do with the timbre, so it belongs to the player rather than to
+// the patch: it stays put across a voice change, it is not one of the fields
+// the Voice tab edits, and it is not stored per voice.
+void whistle_set_fifth(bool on);
+
+// Whether a note the player *holds* outlives the breath that made it.  See
+// synth_set_sustain.  Belongs to the player for the same reason the fifth
+// does.  A voice may opt out (`no_sustain`), in which case this leaves it
+// exactly as it was.
+void whistle_set_sustain(bool on);
 
 #endif  // WHISTLE_H
