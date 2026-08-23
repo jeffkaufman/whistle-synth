@@ -323,6 +323,75 @@ static const struct SynthParams presets[] = {
     .out_gain = 0.569f,
   },
   {
+    // The same FM again, but the whistle is no longer the note.  `octave` is
+    // 1/24 rather than 1/16 or 1/32, so what comes out is the fundamental
+    // whose *third harmonic* is what you whistled: whistle a C and it plays
+    // an F, whistle a D and it plays a G.  You are playing the fifth of the
+    // chord and hearing its root.
+    //
+    // Dividing by three rather than by a power of two is also what puts it
+    // between `fm` and `fm-sub` in register -- 1/24 is log2 -4.585, which
+    // sits between four octaves down and five -- so the interval and the
+    // position are the same decision.  A comfortable whistle lands at
+    // 23-131Hz.
+    //
+    // A just fifth, not a tempered one: dividing by exactly three is the
+    // harmonic relationship the voice is named for, and it lands 2.2 cents
+    // flat of where equal temperament would put it.  That is 0.05Hz of beating
+    // against a mandolin down here, one beat every twenty seconds, and far
+    // inside how accurately anyone whistles.
+    .name = "fm-fifth",
+    .octave = 0.0416667f,   // 1/24
+    // Between its neighbours at both ends, for the same reason its register
+    // is: the fundamental is reproducible at the top of the range and gone at
+    // the bottom, so the index has to carry more of the note than `fm` needs
+    // and less than `fm-sub` does.
+    .fm_ratio = 1.0f, .fm_index_soft = 1.0f, .fm_index_loud = 3.5f,
+    .drive_soft = 1.0f, .drive_loud = 1.7f,
+    .unison = 1, .detune_cents = 0.0f, .harmonics = 1,
+    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
+    .min_partial_hz = 22.0f,
+    .level_full = 0.22f,
+    .attack_s = 0.004f, .release_s = 0.052f, .articulation_s = 0.009f,
+    .glide_s = 0.004f,
+    .out_gain = 0.724f,
+  },
+  {
+    // The same FM, five octaves down instead of four: a comfortable whistle
+    // lands at 25-80Hz, which is `subbass`'s register.  It exists because FM
+    // is the one generator here whose brightness does not come from
+    // uncovering partials, and that matters most exactly where the
+    // fundamental cannot be reproduced -- on a K10.2 everything under 55Hz is
+    // gone, so what you actually hear down here is the sidebands, and the
+    // index is a direct control over how many of them there are and how far
+    // up they reach.
+    .name = "fm-sub",
+    .octave = 0.03125f,
+    // A wider index range than `fm`, and pushed higher at both ends.  Four
+    // octaves down the fundamental does most of the work and the index is
+    // colour; five octaves down the fundamental is inaudible on most of what
+    // this gets played through, so the index is what makes the note speak at
+    // all.  At index 4 on a 34Hz note the sidebands reach about 170Hz, which
+    // is where a small box starts being able to help.
+    .fm_ratio = 1.0f, .fm_index_soft = 1.2f, .fm_index_loud = 4.0f,
+    // Gentler than `fm`.  Down here the ear takes any harshness in the
+    // partials as the whole character, the same reason `subbass` runs its
+    // drive at 0.5-1.1 -- and FM is already supplying the harmonics that a
+    // drive would otherwise have to invent.
+    .drive_soft = 0.9f, .drive_loud = 1.6f,
+    .unison = 1, .detune_cents = 0.0f, .harmonics = 1,
+    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
+    // 22 rather than 25, matching `subbass`: the high-pass sits a little
+    // below the lowest thing worth keeping, and at 25 it would be thinning
+    // the bottom of this voice's own range rather than clearing out what the
+    // drive invented underneath it.
+    .min_partial_hz = 22.0f,
+    .level_full = 0.22f,
+    .attack_s = 0.005f, .release_s = 0.055f, .articulation_s = 0.010f,
+    .glide_s = 0.004f,
+    .out_gain = 0.881f,
+  },
+  {
     // Valve grind.  The saturator is pushed off centre before it clips, which
     // is the difference between a transistor and a valve: an odd function can
     // only make odd harmonics however hard you drive it, and the bias is what
@@ -362,6 +431,114 @@ static const struct SynthParams presets[] = {
     .attack_s = 0.003f, .release_s = 0.040f, .articulation_s = 0.008f,
     .glide_s = 0.003f,
     .out_gain = 1.122f,
+  },
+  {
+    // A drone you arm rather than hold.  75ms of steady whistling starts it,
+    // it swells over 150ms, holds 1.2 seconds, and then halves every second -- so one note every few seconds keeps a
+    // chord under the tune while both hands are on a mandolin and both feet
+    // are on drums.  Whistling the note it is already on refreshes the hold;
+    // whistling a different one starts a new chord and ducks the old out in
+    // 0.2s, so only one is ever really sounding.
+    //
+    // 75ms is close to the floor and the floor is the player, not the code: a
+    // whistled note scoops into pitch over a few tens of milliseconds, and an
+    // arm shorter than the scoop fires partway up it and again when the note
+    // settles.  Measured over 104s of real whistling, the share of chords
+    // arriving within 150ms of the previous one -- which is the signature of
+    // one note being heard as several -- runs 0% at 150ms, 3% at 100, 18% at
+    // 75, 29% at 50 and 65% at 10.  Snapping to concert pitch makes the
+    // failure louder rather than quieter, because a chord caught mid-scoop
+    // lands on a definite wrong semitone instead of an ambiguous smear.
+    //
+    // The movement below is four separate things, none of them deep enough
+    // to name on its own: partials drifting in level, partials drifting in
+    // pitch, the shimmer bell sweeping on a slow clock and opening as the
+    // chord arrives, and a rotating speaker.  A pad is the one voice where
+    // the ear will sit and listen for a while, and anything that repeats or
+    // holds still gets found.
+    //
+    // The chord is root, fifth and octaves of both, and no third, because a
+    // contra tune does not tell you in advance whether it is major or minor.
+    // Built as partials of one series rather than as separate oscillators,
+    // which is why it fuses into a single rich tone instead of reading as a
+    // stack of notes: an organ mixture, and for the same reason.
+    //
+    // The root is folded into C2-B2 (65-130Hz), so whistling a D anywhere in
+    // your range gives the same D chord in the same register.  Contra keys
+    // land where you would want them: D at 73Hz, G at 98, A at 110.
+    .name = "pad",
+    .pad_snap_hz = 440.0f, .pad_fold_hz = 65.0f,
+    .pad_arm_s = 0.075f, .pad_steady_cents = 100.0f,
+    .pad_attack_s = 0.15f, .pad_hold_s = 1.2f, .pad_halflife_s = 1.0f,
+    .pad_duck_s = 0.12f,
+    // 2 3 4 6 8 12 16 24 32: the root, its fifth, and octaves of each.  5 and
+    // 10 would be the major third and are the whole point of the exclusion.
+    .partial_mask = (1u << 1) | (1u << 2) | (1u << 3) | (1u << 5) |
+                    (1u << 7) | (1u << 11) | (1u << 15) | (1u << 23) |
+                    (1u << 31),
+    // Body under the mandolin, shimmer above it, and the 300-800Hz where the
+    // tune lives left 15-20dB down between them.
+    .bell_hz = 110.0f, .bell_width = 0.80f,
+    .shimmer_hz = 1600.0f, .shimmer_width = 0.9f, .shimmer_level = 0.42f,
+    .drift_hz = 0.08f, .drift_depth = 0.30f, .drift_cents = 4.0f,
+    .sweep_hz = 0.055f, .sweep_octaves = 0.55f,
+    .bright_env_octaves = 1.1f,
+    .leslie_hz = 0.75f, .leslie_am = 0.16f, .leslie_cents = 5.0f,
+    .leslie_split_hz = 300.0f,
+    .drive_soft = 0.0f, .drive_loud = 0.0f,
+    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
+    .growl_onset_s = 1.0f,
+    .unison = 1, .harmonics = 1,
+    .level_full = 0.22f,
+    .articulation_s = 0.010f,
+        // Set 3dB under what `bass` measures on the same material, rather than
+    // level with the rest of the table.  Two reasons it can't just join the
+    // -21.0 match: it is the only voice that can't be measured over
+    // recordings/whistling.f32, because that recording's notes are mostly too
+    // short to arm it, so its reference is prototypes/in-pad.f32 instead --
+    // and the numbers from the two recordings are 6.4dB apart for the same
+    // preset, so they are not comparable.  And it sounds nearly all the time
+    // where a bass line sounds half of it, so equal-while-sounding would put
+    // far more pad than bass into the room.
+.out_gain = 0.202f,
+  },
+  {
+    // The same with the ninth added -- partials 9 and 18, which are a major
+    // second two and three octaves above the root.  A second is as
+    // noncommittal as a fifth is: it belongs to the major and the minor scale
+    // alike, so it colours the chord without saying which one the tune is in.
+    // Whether that reads as air or as mud is the thing to listen for.
+    .name = "pad-ninth",
+    .pad_snap_hz = 440.0f, .pad_fold_hz = 65.0f,
+    .pad_arm_s = 0.075f, .pad_steady_cents = 100.0f,
+    .pad_attack_s = 0.15f, .pad_hold_s = 1.2f, .pad_halflife_s = 1.0f,
+    .pad_duck_s = 0.12f,
+    .partial_mask = (1u << 1) | (1u << 2) | (1u << 3) | (1u << 5) |
+                    (1u << 7) | (1u << 8) | (1u << 11) | (1u << 15) |
+                    (1u << 17) | (1u << 23) | (1u << 31),
+    .bell_hz = 110.0f, .bell_width = 0.80f,
+    .shimmer_hz = 1600.0f, .shimmer_width = 0.9f, .shimmer_level = 0.42f,
+    .drift_hz = 0.08f, .drift_depth = 0.30f, .drift_cents = 4.0f,
+    .sweep_hz = 0.055f, .sweep_octaves = 0.55f,
+    .bright_env_octaves = 1.1f,
+    .leslie_hz = 0.75f, .leslie_am = 0.16f, .leslie_cents = 5.0f,
+    .leslie_split_hz = 300.0f,
+    .drive_soft = 0.0f, .drive_loud = 0.0f,
+    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
+    .growl_onset_s = 1.0f,
+    .unison = 1, .harmonics = 1,
+    .level_full = 0.22f,
+    .articulation_s = 0.010f,
+        // Set 3dB under what `bass` measures on the same material, rather than
+    // level with the rest of the table.  Two reasons it can't just join the
+    // -21.0 match: it is the only voice that can't be measured over
+    // recordings/whistling.f32, because that recording's notes are mostly too
+    // short to arm it, so its reference is prototypes/in-pad.f32 instead --
+    // and the numbers from the two recordings are 6.4dB apart for the same
+    // preset, so they are not comparable.  And it sounds nearly all the time
+    // where a bass line sounds half of it, so equal-while-sounding would put
+    // far more pad than bass into the room.
+.out_gain = 0.202f,
   },
 };
 
@@ -513,6 +690,33 @@ void synth_sanitize_params(struct SynthParams* p) {
   }
   if (p->octave_stack_track > 0 && !(p->octave_stack_ref_hz > 1)) {
     p->octave_stack_ref_hz = 1000;
+  }
+  if (p->pad_arm_s > 0) {
+    // Divisors and log arguments, all of them only meaningful in pad mode.
+    if (!(p->pad_fold_hz > 1)) {
+      p->pad_fold_hz = 65;
+    }
+    if (!(p->bell_hz > 1)) {
+      p->bell_hz = 100;
+    }
+    if (!(p->bell_width > 1e-3f)) {
+      p->bell_width = 1;
+    }
+    if (!(p->shimmer_hz > 1)) {
+      p->shimmer_hz = 1000;
+    }
+    if (!(p->shimmer_width > 1e-3f)) {
+      p->shimmer_width = 1;
+    }
+    if (!(p->pad_attack_s > 0)) {
+      p->pad_attack_s = 0.01f;
+    }
+    if (!(p->pad_halflife_s > 0)) {
+      p->pad_halflife_s = 0.01f;
+    }
+    if (!(p->pad_steady_cents > 0)) {
+      p->pad_steady_cents = 50;
+    }
   }
 }
 
@@ -690,8 +894,337 @@ static void update_controls(struct Synth* s, bool voiced) {
   }
 }
 
+// --------------------------------------------------------------- pad ---
+//
+// A different instrument sharing the same file.  Everything above is a note
+// that sounds while you whistle; this is a chord that a whistle *arms* and
+// that then holds and fades on its own, so a player with both hands and both
+// feet busy can put a drone under a tune by whistling one note every few
+// seconds.
+
+// Where a whistle puts this chord's fundamental, in log2 Hz.  The pitch class
+// is whatever was whistled and the octave is thrown away: the root is folded
+// into the single octave starting at pad_fold_hz, so the same note always
+// gives the same voicing wherever in your range you happen to whistle it.
+//
+// Returns the fundamental, which is an octave below the root -- the root is
+// partial 2 of the series the chord is built from.
+//
+// The root is also snapped to the nearest equal-tempered semitone on the way
+// through, with hysteresis: to leave the note already sounding the player has
+// to get 65 cents away from it, not 50.  Without that, a whistle parked near
+// a semitone boundary alternates between two chords -- and at a 100ms arm it
+// does so several times a second, because a 100-cent jump is past the 60-cent
+// threshold that decides a new chord from a refresh.
+static float pad_snap_log(struct Synth* s, float whistle_log) {
+  const struct SynthParams* p = s->params;
+  if (!(p->pad_snap_hz > 0)) {
+    return whistle_log;
+  }
+  float ref = log2f(p->pad_snap_hz);
+  float raw = (whistle_log - ref) * 12;
+  if (fabsf(raw - s->pad_semitone) >= 0.65f) {
+    s->pad_semitone = floorf(raw + 0.5f);
+  }
+  return ref + s->pad_semitone / 12.0f;
+}
+
+static float pad_root_log(struct Synth* s, float whistle_log) {
+  const struct SynthParams* p = s->params;
+  float w = pad_snap_log(s, whistle_log);
+  float lo = log2f(p->pad_fold_hz);
+  float x = w - lo;
+  return lo + (x - floorf(x)) - 1.0f;
+}
+
+// Which partials this chord uses.  Built when the chord is armed; their levels
+// move afterwards, but which ones exist does not.
+//
+// `fresh` says the layer was silent and can be started from scratch.  When it
+// wasn't -- a chord arriving before the layer it reuses has finished fading --
+// the phases and the amplitudes are left alone deliberately.  Zeroing the
+// amplitudes would take whatever was still sounding to nothing in one sample,
+// which is a click; leaving them lets the old partials slide to the new
+// chord's frequencies with their levels continuous, which is a small pitch
+// move instead.  The partial *numbers* are the same either way, since the
+// mask belongs to the preset rather than to the chord.
+static void pad_set_partials(struct Synth* s, struct PadLayer* layer,
+                             bool fresh) {
+  const struct SynthParams* p = s->params;
+  float f0 = exp2f(layer->log_root);
+  layer->n_partials = 0;
+  for (int i = 0; i < SYNTH_MAX_HARMONICS && layer->n_partials < PAD_PARTIALS;
+       i++) {
+    if (p->partial_mask && !(p->partial_mask & (1u << i))) {
+      continue;
+    }
+    if (f0 * (i + 1) > s->sample_rate * 0.45f) {
+      break;
+    }
+    int k = layer->n_partials++;
+    layer->partial[k] = i + 1;
+    if (fresh) {
+      // Spread rather than aligned: starting every partial at zero puts the
+      // whole chord's energy into one spike once per period of the
+      // fundamental, which is both a needless peak and an audible buzz.
+      layer->phase[k] = (float)fmod(k * 0.6180339887, 1.0);
+      layer->amp[k] = 0;
+    }
+    layer->pitch_mul[k] = 1;
+  }
+}
+
+// Everything that moves, stepped at the control rate: the two bells and where
+// the sweep has put the upper one, the per-partial level drift, and the
+// rotating speaker.  Amplitudes come out as targets and are smoothed on the
+// way to the oscillator; pitches are slow enough to use as they are.
+static void pad_update_layer(struct Synth* s, struct PadLayer* layer) {
+  const struct SynthParams* p = s->params;
+  float f0 = exp2f(layer->log_root);
+
+  // Where the shimmer bell is right now: a slow sweep on a clock, plus a
+  // pull-down that lets go as the chord arrives.  A pad that opens as it
+  // swells is most of what makes a swell sound like one.
+  float bright = p->sweep_octaves * sinf(2 * (float)M_PI * s->sweep_phase) -
+                 p->bright_env_octaves * (1 - layer->env);
+  float shimmer_hz = p->shimmer_hz * exp2f(bright);
+
+  float leslie = 2 * (float)M_PI * s->leslie_phase;
+  float power = 0;
+
+  for (int k = 0; k < layer->n_partials; k++) {
+    float hz = f0 * layer->partial[k];
+
+    float x = log2f(hz / p->bell_hz) / p->bell_width;
+    float a = expf(-0.5f * x * x);
+    if (p->shimmer_level > 0) {
+      float y = log2f(hz / shimmer_hz) / p->shimmer_width;
+      a += p->shimmer_level * expf(-0.5f * y * y);
+    }
+
+    // Level drift, at a rate this partial does not share with any other.
+    if (p->drift_hz > 0) {
+      a *= 1 + p->drift_depth * sinf(2 * (float)M_PI * s->drift_phase[k]);
+    }
+
+    // The rotor.  Bass below the split, horn above: slower, and a fraction of
+    // the depth, which is what a real cabinet does and what keeps the low end
+    // of the chord from wobbling.
+    float cents = 0;
+    if (p->leslie_hz > 0) {
+      bool horn = hz >= p->leslie_split_hz;
+      float phase = horn ? leslie : leslie * 0.85f;
+      float depth = horn ? 1.0f : 0.25f;
+      // Quadrature: the doppler leads the level by a quarter turn, which is
+      // the difference between something rotating and tremolo plus vibrato
+      // happening to run at the same speed.
+      layer->leslie_am[k] = 1 + p->leslie_am * depth * cosf(phase);
+      cents += p->leslie_cents * depth * sinf(phase);
+    } else {
+      layer->leslie_am[k] = 1;
+    }
+    if (p->drift_cents > 0) {
+      cents += p->drift_cents *
+               sinf(2 * (float)M_PI * (s->drift_phase[k] + 0.25f));
+    }
+    layer->pitch_mul[k] = exp2f(cents / 1200.0f);
+
+    layer->amp_target[k] = a;
+    power += a * a;
+  }
+
+  // Normalize on the bells and the drift, then let the rotor through
+  // afterwards.  The order matters and it is not a detail: normalizing a
+  // constant total power divides out anything that scales the whole chord,
+  // so a leslie applied before this point is measurable as a change in
+  // spectrum and as *nothing at all* in level -- which is the one thing a
+  // rotating horn is supposed to do.  The drift stays inside the
+  // normalization on purpose, because there the intent really is to move
+  // energy between partials and not to move the pad's level around.
+  float norm = sqrtf(power);
+  if (norm < 1e-6f) {
+    norm = 1e-6f;
+  }
+  for (int k = 0; k < layer->n_partials; k++) {
+    layer->amp_target[k] *= 0.7f * layer->leslie_am[k] / norm;
+  }
+}
+
+// The free-running modulators, shared by every layer: a chord change should
+// not restart the rotor.
+static void pad_update_lfos(struct Synth* s) {
+  const struct SynthParams* p = s->params;
+  float dt = SYNTH_CONTROL_HOP / s->sample_rate;
+  s->leslie_phase += p->leslie_hz * dt;
+  if (s->leslie_phase >= 1) {
+    s->leslie_phase -= 1;
+  }
+  s->sweep_phase += p->sweep_hz * dt;
+  if (s->sweep_phase >= 1) {
+    s->sweep_phase -= 1;
+  }
+  for (int k = 0; k < PAD_PARTIALS; k++) {
+    // Rates spread by the golden ratio, so no two partials share a period and
+    // the ensemble never comes back into step.
+    float spread = 0.6f + 0.8f * (float)fmod(k * 0.6180339887, 1.0);
+    s->drift_phase[k] += p->drift_hz * spread * dt;
+    if (s->drift_phase[k] >= 1) {
+      s->drift_phase[k] -= 1;
+    }
+  }
+}
+
+// Has the player held a pitch still for long enough to mean it?  Returns the
+// pitch if so, and NAN otherwise.
+static float pad_armed_pitch(struct Synth* s, const struct PitchHint* hint) {
+  const struct SynthParams* p = s->params;
+  float dt = 1.0f / s->sample_rate;
+
+  if (!hint->voiced) {
+    // A short dropout is the detector losing its grip, not the player
+    // stopping.  Longer than that and the note is over.
+    s->pad_gap_s += dt;
+    if (s->pad_gap_s > 0.08f) {
+      s->pad_steady_s = 0;
+    }
+    return NAN;
+  }
+  s->pad_gap_s = 0;
+
+  float lg = log2f(fmaxf(1, hint->freq));
+  if (fabsf(lg - s->pad_steady_log) * 1200 > p->pad_steady_cents) {
+    s->pad_steady_log = lg;
+    s->pad_steady_s = 0;
+    return NAN;
+  }
+  s->pad_steady_s += dt;
+  if (s->pad_steady_s < p->pad_arm_s) {
+    return NAN;
+  }
+  // Don't fire again on the next sample, or on every sample after it.
+  s->pad_steady_s = 0;
+  return lg;
+}
+
+static float pad_process(struct Synth* s, const struct PitchHint* hint) {
+  const struct SynthParams* p = s->params;
+  float dt = 1.0f / s->sample_rate;
+
+  // The level still has to be tracked, because how hard the arming whistle
+  // was is what sets the chord's gain.
+  if (hint->voiced) {
+    s->level += coeff(p->articulation_s, s->sample_rate) * (hint->level - s->level);
+  }
+
+  float armed = pad_armed_pitch(s, hint);
+  if (!isnan(armed)) {
+    struct PadLayer* cur = &s->pad[s->pad_active];
+    float root = pad_root_log(s, armed);
+    float gain = 0.7f + 0.3f * fminf(1, s->loudness);
+
+    if (cur->level > 1e-4f && fabsf(root - cur->log_root) * 1200 < 60) {
+      // The same chord again: refresh what is already sounding rather than
+      // crossfading it with a copy of itself.  This is the gesture that
+      // keeps a drone up without holding it.
+      cur->hold_left = p->pad_hold_s;
+      cur->gain = gain;
+    } else {
+      // Take whichever layer is quietest.  With a duck this fast the player
+      // can arm a third chord while the first is still audibly fading, and
+      // reusing a layer mid-fade would cut it off with a click.
+      int pick = 0;
+      for (int l = 1; l < PAD_LAYERS; l++) {
+        if (s->pad[l].level < s->pad[pick].level) {
+          pick = l;
+        }
+      }
+      s->pad_active = pick;
+      struct PadLayer* next = &s->pad[pick];
+      bool fresh = next->level < 1e-4f;
+      next->log_root = root;
+      next->env = fresh ? 0 : next->level / fmaxf(1e-4f, gain);
+      next->hold_left = p->pad_hold_s;
+      next->duck = 1;
+      next->gain = gain;
+      pad_set_partials(s, next, fresh);
+    }
+  }
+
+  if (--s->control_countdown <= 0) {
+    update_controls(s, hint->voiced);
+    pad_update_lfos(s);
+    for (int l = 0; l < PAD_LAYERS; l++) {
+      if (s->pad[l].level > 1e-5f || l == s->pad_active) {
+        pad_update_layer(s, &s->pad[l]);
+      }
+    }
+    s->control_countdown = SYNTH_CONTROL_HOP;
+  }
+
+  float smooth = coeff(0.004f, s->sample_rate);
+  float out = 0;
+
+  for (int l = 0; l < PAD_LAYERS; l++) {
+    struct PadLayer* layer = &s->pad[l];
+
+    if (layer->hold_left > 0) {
+      layer->hold_left -= dt;
+      layer->env += dt / fmaxf(1e-3f, p->pad_attack_s);
+      if (layer->env > 1) {
+        layer->env = 1;
+      }
+    } else {
+      layer->env *= exp2f(-dt / fmaxf(1e-3f, p->pad_halflife_s));
+    }
+    if (l != s->pad_active) {
+      layer->duck -= coeff(p->pad_duck_s, s->sample_rate) * layer->duck;
+    }
+
+    float target = layer->env * layer->duck * layer->gain;
+    layer->level += smooth * (target - layer->level);
+    if (layer->level < 1e-5f) {
+      continue;
+    }
+
+    float f0 = exp2f(layer->log_root);
+    float voice = 0;
+    for (int k = 0; k < layer->n_partials; k++) {
+      layer->amp[k] += smooth * (layer->amp_target[k] - layer->amp[k]);
+      layer->phase[k] +=
+        f0 * layer->partial[k] * layer->pitch_mul[k] / s->sample_rate;
+      if (layer->phase[k] >= 1) {
+        layer->phase[k] -= (int)layer->phase[k];
+      }
+      voice += layer->amp[k] * sinf(2 * (float)M_PI * layer->phase[k]);
+    }
+    out += voice * layer->level;
+  }
+
+  // No saturator at all when the preset asks for none, and the pad presets
+  // do.  A drive of any size intermodulates the partials it is given, and
+  // partials 2 and 3 sum to partial 5 -- which is the major third, the one
+  // interval this chord exists in order not to state.  Measured at drive
+  // 0.9/1.4 it came back at -17.8dB, which is plainly audible.  A chord built
+  // this carefully has to be left alone on the way out.
+  if (p->drive_loud > 0) {
+    s->drive_smoothed += smooth * (s->drive - s->drive_smoothed);
+    out = atan_norm(out * s->drive_smoothed);
+  }
+
+  s->side = 0;
+  s->amp = 0;
+  for (int l = 0; l < PAD_LAYERS; l++) {
+    s->amp = fmaxf(s->amp, s->pad[l].level);
+  }
+  return out * p->out_gain;
+}
+
 float synth_process(struct Synth* s, const struct PitchHint* hint) {
   const struct SynthParams* p = s->params;
+
+  if (p->pad_arm_s > 0) {
+    return pad_process(s, hint);
+  }
 
   if (hint->onset) {
     // Land on the note rather than gliding onto it, and restart the growl

@@ -43,8 +43,65 @@ def scale_gate(t):
     # Short fades so the input itself has no clicks for the detector to chase.
     return min(1.0, u / 0.010, (NOTE_S - u) / 0.020)
 
+# How the pad is actually played: a few steady notes, seconds apart, with the
+# gaps left in so the hold and the decay can be heard doing their work.  The
+# last one is deliberately too short to arm anything.
+PAD_EVENTS = [
+    ( 0.0, 1174.66, 1.4),   # D  -- arms
+    ( 6.0, 1567.98, 1.4),   # G  -- new chord, ducks the D
+    (10.0, 1567.98, 1.4),   # G  -- same note again, should refresh not restack
+    (16.0, 1760.00, 1.4),   # A
+    (19.0, 1174.66, 1.4),   # D  -- quick change, exercises the duck
+    (26.0,  880.00, 0.2),   # too short to arm; the pad should ignore it
+]
+PAD_S = 40.0
+
+def pad_freq(t):
+    for start, f, dur in PAD_EVENTS:
+        if start <= t < start + dur:
+            return f
+    return PAD_EVENTS[0][1]
+
+def pad_gate(t):
+    for start, f, dur in PAD_EVENTS:
+        if start <= t < start + dur:
+            u = t - start
+            return min(1.0, u / 0.020, (dur - u) / 0.030)
+    return 0.0
+
+# The stress case a 100ms arm makes possible: chords changing as fast as a
+# player can articulate them, then a couple of very short notes.  Kept
+# separate from in-pad.f32 so the loudness reference doesn't move.
+FAST_EVENTS = [
+    ( 0.0, 1174.66, 0.15), ( 0.3, 1567.98, 0.15), ( 0.6, 1760.00, 0.15),
+    ( 0.9, 1174.66, 0.15), ( 1.2, 1567.98, 0.15), ( 1.5, 1760.00, 0.15),
+    ( 2.0, 1174.66, 0.12), ( 2.2, 1567.98, 0.12), ( 2.4, 1760.00, 0.12),
+    ( 2.6, 1318.51, 0.12), ( 2.8, 1174.66, 0.12),
+    ( 4.0, 1567.98, 0.06),   # 60ms: under the threshold, should be ignored
+    ( 4.3, 1760.00, 0.06),
+    ( 5.0, 1174.66, 1.20),
+]
+FAST_S = 10.0
+
+def fast_freq(t):
+    for start, f, dur in FAST_EVENTS:
+        if start <= t < start + dur:
+            return f
+    return FAST_EVENTS[0][1]
+
+def fast_gate(t):
+    for start, f, dur in FAST_EVENTS:
+        if start <= t < start + dur:
+            u = t - start
+            return min(1.0, u / 0.008, (dur - u) / 0.012)
+    return 0.0
+
 which = sys.argv[1]
-if which == 'glide':
+if which == 'padfast':
+    buf = render(fast_freq, FAST_S, fast_gate)
+elif which == 'pad':
+    buf = render(pad_freq, PAD_S, pad_gate)
+elif which == 'glide':
     buf = render(glide_freq, SWEEP_S * REPEATS)
 else:
     buf = render(scale_freq, (NOTE_S + GAP_S) * STEPS * REPEATS, scale_gate)
