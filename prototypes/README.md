@@ -166,8 +166,8 @@ question you can ask of any timbre.  `reese` with the control on renders as
 the old preset did, scaled by the `out_gain` the two presets differed by.
 
 With it on, when the whistle stops the note does not: over 250ms it
-slides onto the nearest real note and settles 6dB under itself, sits there for
-the rest of two seconds, and then fades over about four more.  Nothing about
+slides onto the nearest real note, settles 6dB under itself, and stays there
+until a note takes it.  Nothing about
 the tone is different -- same detune, same resonance, same
 `mono_partials = 2`.
 
@@ -482,10 +482,13 @@ seconds since the player stopped:
   from rest      0.00  0.11  0.39  0.42  0.46  1.60  2.99  3.03
 ```
 
-Half a second to come up to speed, not the second or two it first was.  What
-this trades is bought back further along: the tail is two seconds at full
-level and then a 0.6s release, so what is audible is about three, and every
-extra moment spent accelerating comes out of the part that is meant to move.
+Half a second to come up to speed, not the second or two it first was.  The
+argument at the time was a budget: the tail was two seconds at full level and
+then a 0.6s release, about three audible, and every extra moment spent
+accelerating came out of the part meant to move.  The tail no longer ends, so
+that budget is gone -- but the number stays, because what the measurement
+below actually shows is that the movement has to be under way early or the
+drone reads as a note stuck on.
 
 ```
                    0.0s   0.5s   1.0s   1.5s   2.0s   (acceleration time)

@@ -54,7 +54,7 @@ struct HelpTopic: Identifiable {
         ]),
         HelpTopic(title: "Down a fifth, and sustain", paragraphs: [
             "Down a fifth makes what you whistle the fifth of what you hear rather than the root, so a tune whistled in D comes out in G. Useful for playing a bass line under a tune you are thinking of in its own key.",
-            "Sustain lets a note you hold for half a second carry on after your breath does: it settles onto the nearest real note, sits for two seconds and fades, so one held note every couple of bars puts a drone under the tune. Short notes are untouched. Some voices opt out, and the Play tab says so when the one you are on does.",
+            "Sustain lets a note you hold for half a second carry on after your breath does: it settles onto the nearest real note and stays there, so one held note every couple of bars puts a drone under the tune. The drone does not time out — play one short note to end it, or another long one to move it. Short notes are untouched. Some voices opt out, and the Play tab says so when the one you are on does.",
         ]),
         HelpTopic(title: "Editing a voice", paragraphs: [
             "The Voice tab edits whichever voice you are playing, and you hear the change as you make it. Anything you change is marked \"edited\" and kept between launches; anything you leave alone follows the built-in preset, including when a later version improves it.",

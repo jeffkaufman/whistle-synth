@@ -51,7 +51,7 @@ struct PlayView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 Toggle("Sustain held notes", isOn: $synth.sustain)
-                Text("A note you hold for half a second slides onto the nearest real note, settles under itself, sits there for two seconds and fades — so one note every couple of bars holds a drone under the tune. Shorter notes are untouched, so a fast phrase sounds the same either way. Still monophonic: a new note takes the tail with it.\(sustainExemption)")
+                Text("A note you hold for half a second slides onto the nearest real note, settles under itself and stays there — so one note every couple of bars holds a drone under the tune. It does not time out: one short note ends it, a long one moves it. Shorter notes are untouched, so a fast phrase sounds the same either way. Still monophonic: a new note takes the tail with it.\(sustainExemption)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

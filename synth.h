@@ -329,10 +329,11 @@ struct Synth {
   float gate;
   float loudness_env;
   float amp;           // gate * loudness_env
-  // Seconds of full-level hold the note has left now that the player has
-  // stopped, when the sustain control is on.  The gate does not move at all
-  // until this runs out.
-  float release_hold;
+  // Whether a tail is holding the gate open now that the player has stopped,
+  // when the sustain control is on.  The gate does not move at all while this
+  // is set, and nothing times it out: the tail is ended by the next note
+  // rather than by a clock.  See the gate block in synth_process.
+  bool holding_tail;
   float level;         // smoothed hint level
   // A holding preset's running level-weighted pitch, as a leaky numerator and
   // denominator whose quotient is the average.  This is the pitch such a
@@ -458,11 +459,16 @@ void synth_set_fifth(struct Synth* s, bool on);
 // Off, every voice sounds for exactly as long as you whistle, which is an
 // organ: the bass line stops when you take a breath.  On, a note held for
 // SYNTH_HOLD_MIN_NOTE_S slides onto the nearest real note, settles under
-// itself, sits there for SYNTH_HOLD_S and then fades -- so one note every
-// couple of bars holds a drone under a tune, and the line carries through the
-// breath and under the next phrase.  It is still monophonic, so a new note
-// takes the tail with it: what you get is a line that never stops, not two
-// notes at once.
+// itself, and stays there -- so one note every couple of bars holds a drone
+// under a tune, and the line carries through the breath and under the next
+// phrase.  It is still monophonic, so a new note takes the tail with it: what
+// you get is a line that never stops, not two notes at once.
+//
+// The tail does not time out, and that is what makes it playable rather than
+// something to keep topping up.  It ends when the next note supersedes it,
+// and since a note under SYNTH_HOLD_MIN_NOTE_S earns no tail of its own, a
+// single short note is how you stop the drone: it takes the tail, and then it
+// stops the way any note stops.
 //
 // Notes too short to have been meant that way are untouched, which is what
 // lets this be a switch rather than a voice: with it on, a fast phrase sounds

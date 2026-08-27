@@ -89,19 +89,23 @@
 // Measured over recordings/holding.f32 against the rendered level across the
 // body of the note that made each tail, this lands them a median 6.0dB under.
 // The number to keep true is that measurement, not this constant.
-// How long a held note keeps sounding at full after the player stops, and how
-// it fades once that runs out.  These were the `reese-hold` preset's
-// release_hold_s and release_s before the sustain became a control; they are
-// properties of the tail rather than of any voice, so every voice gets the
-// same ones.
+// The tail used to hold for 2s and then fade over a 0.6s time constant --
+// SYNTH_HOLD_S and SYNTH_HOLD_RELEASE_S, inherited from the `reese-hold`
+// preset's release_hold_s and release_s.  Both are gone: the tail now holds
+// until a note takes it, and nothing times it out.
 //
-// Held and *then* released, which is two numbers rather than one long
-// release.  A slow release alone starts fading the instant the note ends, so
-// staying up means re-whistling; the flat stretch in the middle is what makes
-// the tail feel deliberate.  0.6s is a time constant, so the tail is 8.7dB
-// down a second after the hold expires and 60dB down 4.1s after it.
-#define SYNTH_HOLD_S 2.0f
-#define SYNTH_HOLD_RELEASE_S 0.6f
+// The two numbers were always a compromise with no good setting.  Long enough
+// to carry a phrase is long enough that the fade lands somewhere musical only
+// by luck, and short enough to be predictable is short enough that holding a
+// drone means re-whistling it every couple of bars.  Removing the clock
+// removes the choice: the drone stays until it is replaced, which is what a
+// drone is.
+//
+// What makes that playable rather than a note stuck on is that stopping it is
+// already in the instrument.  A note under SYNTH_HOLD_MIN_NOTE_S earns no
+// tail, so one short note takes the drone -- monophonic, so it always does --
+// and then stops the way any short note stops.  Play a long note to move the
+// drone, a short one to end it.
 
 #define SYNTH_HOLD_SUSTAIN 0.52f
 #define SYNTH_HOLD_SETTLE_S 0.25f
@@ -206,9 +210,13 @@
 // small at the moment the player stops -- it is zero, identically -- and it
 // emerges only as the LFOs drift apart.  Nothing has to be faded at all.
 //
-// A second, not two.  The tail is two seconds at full level and then a 0.6s
-// release, so what is actually audible is about three; spending half of that
-// getting up to speed leaves the movement no room to be movement.  Measured
+// A second, not two.  This was argued from a tail that was two seconds at full
+// level and then a 0.6s release -- about three seconds audible, so spending
+// half of it getting up to speed left the movement no room to be movement.
+// The tail no longer ends, so that budget is gone and a slower acceleration
+// would now be affordable; 0.5s stays because the measurement below is what
+// chose it, and a drone that takes longer than that to start moving reads as
+// a note stuck on rather than as a note ringing.  Measured
 // over the tails in recordings/holding.f32, band wander across the whole tail
 // against `reese`'s natural 4.44dB:
 //
@@ -1499,25 +1507,27 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // stops sound -- there is no hard gate anywhere, so an uncertain detector
   // costs a fade rather than a click.
   //
-  // A note that earned a tail freezes the gate for SYNTH_HOLD_S once the
-  // player stops, and only then releases.  The clock is reset by anything that counts
-  // as still playing, so a guess that the note was ending costs nothing when
-  // it turns out to be wrong: the level comes back up, this resets, and the
-  // whole hold has to expire again before the note starts leaving.  Measured,
-  // the longest wrong guess inside a real note is 148ms against a 2s hold.
+  // A note that earned a tail freezes the gate once the player stops, and
+  // keeps it frozen.  The latch is re-decided on every sample the player is
+  // playing, so a guess that the note was ending costs nothing when it turns
+  // out to be wrong -- the level comes back up and the note simply carries on.
+  //
+  // It is cleared while playing by a note that has not earned a tail, which is
+  // what lets one short note end a drone: the short note takes the gate over,
+  // and when it stops there is no longer anything holding it open.
   if (playing) {
-    s->release_hold = earned ? SYNTH_HOLD_S : 0;
-  } else if (s->release_hold > 0) {
-    s->release_hold -= 1.0f / s->sample_rate;
+    s->holding_tail = earned;
+  } else if (!s->sustain || p->no_sustain) {
+    // The control switched off, or the voice changed to one that opts out,
+    // under a sounding tail.  Nothing else would ever clear the latch -- the
+    // test above only runs while the player is playing -- so without this the
+    // drone would be stuck on with no way to reach it.
+    s->holding_tail = false;
   }
-  if (playing || s->release_hold <= 0) {
+  if (playing || !s->holding_tail) {
     float gate_target = playing ? 1.0f : 0.0f;
-    // Only a note that earned a tail gets the tail's slow fade; anything
-    // shorter releases at the voice's own release_s, exactly as it does with
-    // the sustain switched off.
-    float release = earned ? SYNTH_HOLD_RELEASE_S : p->release_s;
     float gate_coeff = coeff(
-        gate_target > s->gate ? p->attack_s : release, s->sample_rate);
+        gate_target > s->gate ? p->attack_s : p->release_s, s->sample_rate);
     s->gate += gate_coeff * (gate_target - s->gate);
   }
 

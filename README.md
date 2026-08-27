@@ -139,10 +139,15 @@ played at either.
 
 Writing `1` to `current-sustain` makes a note you *hold* outlive the breath
 that made it: it slides onto the nearest real note, settles under itself, sits
-there for two seconds and then fades, so one note every couple of bars holds a
-drone under a tune.  Notes too short to have been meant that way are left
-alone, so a fast phrase sounds the same either way and the tail only appears
-where you put it.  `0` puts it back.  Separate from the voice for the same
+there, so one note every couple of bars holds a drone under a tune.  Notes too
+short to have been meant that way are left alone, so a fast phrase sounds the
+same either way and the tail only appears where you put it.  `0` puts it back.
+
+The tail does not time out.  It ends when the next note takes it -- and since a
+short note earns no tail of its own, **one short note is how you stop the
+drone**: it takes the tail, then stops the way any short note stops.  A long
+note moves the drone instead of ending it.  There is no clock to wait out and
+nothing to top up.  Separate from the voice for the same
 reason the fifth is: whether the line breathes with you or carries through is
 not a question about timbre.  (`pluck` opts out -- see `no_sustain` in
 `synth.h`.)
