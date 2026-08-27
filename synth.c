@@ -553,6 +553,143 @@ static const struct SynthParams presets[] = {
     .glide_s = 0.003f,
     .out_gain = 0.493f,
   },
+  {
+    // A concert flute, and the only voice here that is not a bass.  Every
+    // number is measured against real flute recordings rather than set by
+    // ear: a held C5 (recordings/flute2.f32) and a descending octave of held
+    // notes.  The octave take has since been overwritten, so the numbers
+    // taken off it survive only in prototypes/flute-harmonics.tsv.
+    //
+    // One octave down rather than four.  A whistle covers 588-3150Hz, which
+    // lands at 294-1575Hz: D4 to G6, almost exactly a concert flute's range.
+    .name = "flute",
+    .octave = 0.5f,
+    // The partials come from the recordings rather than from the pulse
+    // formula, which is what `register_hi_hz` above zero selects; pwm_center,
+    // tilt, cutoff_* and rolloff_exp are all unused here.  The formula could
+    // not make this shape: partial 7 sits *above* partial 6 in the low
+    // register, and `sin(n*pi*w)/n^tilt/(1+(n/c)^k)` is monotone by
+    // construction.  Fitted over nine notes it left the audible partials
+    // 5.1dB rms out; the tables are exact where they were measured and the
+    // 4.0dB that remains is note-to-note variation -- a real flute's
+    // harmonics genuinely differ by several dB depending on the fingering,
+    // and nothing indexed by pitch can follow that.
+    //
+    // Partials past the ninth were never measurable above the air and are
+    // continued at the slope of the ones that were.  They sit 60dB down.
+    .partial_lo = { 0.0f, -11.3f, -19.6f, -35.0f, -37.3f, -50.6f, -47.4f, -56.9f, -59.3f, -63.0f, -66.1f, -69.2f },
+    .partial_hi = { 0.0f, -24.1f, -31.9f, -37.9f, -41.8f, -46.6f, -57.1f, -57.9f, -62.3f, -64.9f, -67.5f, -70.1f },
+    // The register break, and the reason there are two tables.  Below it the
+    // second partial sits 11dB under the fundamental and above it 24dB under:
+    // the flute gets dramatically purer as it climbs, and treating it as one
+    // fixed spectrum makes the top of the range far too rich.  580-700Hz is
+    // where the fit put the change, which is D5-F5 -- where a flute actually
+    // changes register.
+    .register_lo_hz = 580.0f, .register_hi_hz = 700.0f,
+    // Backwards, and measured.  Over the one real crescendo in the
+    // recordings -- 15dB on a held C5 -- every partial above the fundamental
+    // falls about 6dB relative to it, so the flute gets louder and *rounder*
+    // rather than louder and brighter.  That is what a controlled crescendo
+    // on a flute is: the player opens the embouchure and moves more air
+    // rather than blowing faster, which is also what keeps the pitch from
+    // rising.  `trombone` ran its filter 1.1 to 14 in the other direction,
+    // because going from nothing to blazing is what brass does.
+    .purity_loud = 6.0f,
+    // Almost none, and lower than it looks like it should be.  A flute does
+    // not saturate, and the saturator here is not a garnish but a
+    // contaminant: at 0.45 it regenerated a third harmonic in phase with the
+    // one the table places and lifted it 4.4dB, which is most of the
+    // difference between a flute and a clarinet.  What this costs is
+    // headroom -- see out_gain.
+    .drive_soft = 0.15f, .drive_loud = 0.22f,
+    // One air column.  A flute has nothing to beat against, and detuning it
+    // would make it two flutes.
+    .unison = 1, .detune_cents = 0.0f, .harmonics = 12,
+    // The air, and the single biggest thing wrong with the first version of
+    // this voice.  Set to the reference note's measured tone-to-air ratio,
+    // 30.0dB, which the render matches to 0.3dB.  The band it runs through
+    // matters more than the level: see the breath block in synth_process.
+    .breath = 0.0175f,
+    // No vibrato and no wobble.  The recordings are straight tone -- the
+    // pitch holds to 2-3 cents rms and the *level* of a held note to 0.20dB
+    // rms, which is steadier than anything else here manages.  The first
+    // version of this voice put a 2.4Hz cutoff wobble on it to keep a held
+    // note alive and measured 0.96dB of level movement for it, five times the
+    // real thing.  A flute held still really is that still.
+    .level_full = 0.22f,
+    // Slow to speak and quick to stop, which is the flute's envelope and the
+    // opposite of everything else in this table -- the basses all start in
+    // 3-8ms.  Measured over the onsets, the note takes 60-100ms to arrive and
+    // 30-70ms to fall 20dB when the player stops.
+    //
+    // The attack is taken from the quick end of what was measured rather than
+    // the middle.  The recordings are all long tones started gently, which is
+    // the slowest attack a flute has; at 110bpm an eighth note is 270ms, and
+    // an attack fitted to the gentlest long tone would spend a third of every
+    // note arriving.  This is the one number here set by what the voice has
+    // to play rather than by what was measured.
+    .attack_s = 0.030f, .release_s = 0.028f,
+    // Slower than the basses' 8ms, because a column of air cannot change
+    // level as fast as a plucked string can.
+    .articulation_s = 0.020f,
+    .glide_s = 0.006f,
+    // Over 1, which no other preset needs, and it is the near-linear drive
+    // above that costs it: an `atan` barely into its curve passes a fraction
+    // of what a driven one does and the gain has to come back somewhere.
+    .out_gain = 1.403f,
+  },
+  {
+    // The same flute an octave down, which is an alto or bass flute: a
+    // whistle lands at 147-787Hz against `flute`'s 294-1575.  The bottom of
+    // that is below a concert flute entirely -- 147Hz is D3, where a bass
+    // flute lives -- so this is a different instrument in the family rather
+    // than the same one transposed, and two things have to move with it.
+    //
+    // Everything not listed here is `flute`'s, deliberately.  There is no
+    // recording of a bass flute to fit against, so the numbers that were
+    // measured stay exactly as measured and only the two that are structurally
+    // wrong at this size are changed.
+    .name = "flute-low",
+    .octave = 0.25f,
+    .partial_lo = { 0.0f, -11.3f, -19.6f, -35.0f, -37.3f, -50.6f, -47.4f, -56.9f, -59.3f, -63.0f, -66.1f, -69.2f },
+    .partial_hi = { 0.0f, -24.1f, -31.9f, -37.9f, -41.8f, -46.6f, -57.1f, -57.9f, -62.3f, -64.9f, -67.5f, -70.1f },
+    // Halved, and this is the first of the two.  The register break is a
+    // property of where a note sits in the *instrument's* range, not of its
+    // absolute frequency, and a flute an octave down breaks an octave lower.
+    // Left at `flute`'s 580-700Hz the whole of this voice's range bar the top
+    // fifth would read as low register, so whistling a phrase here would come
+    // out with a different timbral shape from the same phrase on `flute` --
+    // which is not what "the same instrument, lower" means.  Halved, the
+    // contour of a phrase is identical and only the pitch moves.
+    .register_lo_hz = 290.0f, .register_hi_hz = 350.0f,
+    .purity_loud = 6.0f,
+    .drive_soft = 0.15f, .drive_loud = 0.22f,
+    .unison = 1, .detune_cents = 0.0f, .harmonics = 12,
+    .breath = 0.0175f,
+    // And this is the second.  The air is fixed in Hz because it is made at
+    // the embouchure and in the player's mouth -- but a bass flute's
+    // embouchure hole is roughly twice the size, so its air sits lower.  Left
+    // at 1600Hz the band would sit 8-15 partials above this voice's
+    // fundamental instead of the 3-7 it measures on a concert flute, and
+    // air that far above the note stops reading as breath and starts reading
+    // as hiss beside it.
+    //
+    // 1000Hz rather than 800 is a compromise and the one number here that is
+    // neither measured nor derived: the instrument scales by two but the
+    // player's mouth does not scale at all, so the truth is somewhere between
+    // unchanged and halved.  If this voice sounds wrong, start here.
+    .breath_hz = 1000.0f,
+    .level_full = 0.22f,
+    // Unchanged from `flute`, and worth saying why, because the physics says
+    // a bigger air column takes longer to speak.  It surely does -- but by
+    // how much is a guess without a recording, and a wrong guess costs fast
+    // playing, so the measured numbers stay until there is something to
+    // measure against.
+    .attack_s = 0.030f, .release_s = 0.028f,
+    .articulation_s = 0.020f,
+    .glide_s = 0.006f,
+    .out_gain = 1.403f,
+  },
 };
 
 #define N_PRESETS ((int)(sizeof(presets)/sizeof(presets[0])))
@@ -789,6 +926,36 @@ void synth_sanitize_params(struct SynthParams* p) {
   if (!(p->breath >= 0)) {
     p->breath = 0;
   }
+  // The register blend divides by the gap between these two and takes their
+  // logs, so both have to be positive and distinct.
+  if (p->register_hi_hz > 0) {
+    // And the tables only go as far as they were filled in.  The rest of the
+    // array is zero, which in a table of dB *under* the fundamental means
+    // full strength rather than silence -- so a preset asking for more
+    // partials than it has measurements for would sound every one of them at
+    // the top of its lungs.  `harmonics` is a control the Mac app puts on a
+    // slider, so this is reachable by dragging, not just by editing the
+    // table.  An entry counts as filled unless it is exactly zero in both.
+    int filled = 1;
+    while (filled < SYNTH_MAX_HARMONICS &&
+           !(p->partial_lo[filled] == 0.0f && p->partial_hi[filled] == 0.0f)) {
+      filled++;
+    }
+    if (p->harmonics > filled) {
+      p->harmonics = filled;
+    }
+  }
+  if (p->register_hi_hz > 0) {
+    if (!(p->register_lo_hz > 1.0f)) {
+      p->register_lo_hz = 1.0f;
+    }
+    if (!(p->register_hi_hz > p->register_lo_hz * 1.001f)) {
+      p->register_hi_hz = p->register_lo_hz * 1.001f;
+    }
+  }
+  if (!(p->purity_loud > -60 && p->purity_loud < 60)) {
+    p->purity_loud = 0;
+  }
   if (p->mono_partials < 0) {
     p->mono_partials = 0;
   }
@@ -994,6 +1161,21 @@ static void update_controls(struct Synth* s, bool playing) {
       }
       float x = log2f(hz / bell) / p->octave_stack_width;
       amp = expf(-0.5f * x * x);
+    } else if (p->register_hi_hz > 0) {
+      // Straight out of a recording.  Two tables, blended by where the note
+      // sits between the two registers, because a flute's harmonics are not a
+      // fixed set of ratios -- see partial_lo in synth.h.
+      float t = (log2f(base) - log2f(p->register_lo_hz)) /
+                (log2f(p->register_hi_hz) - log2f(p->register_lo_hz));
+      t = fmaxf(0.0f, fminf(1.0f, t));
+      float d = p->partial_lo[i] + (p->partial_hi[i] - p->partial_lo[i]) * t;
+      // The tables are the spectrum at mid dynamics, so this is signed: the
+      // partials above the fundamental thin out as the player pushes and fill
+      // back in as they back off.
+      if (n >= 2) {
+        d -= p->purity_loud * (dynamics - 0.5f);
+      }
+      amp = powf(10.0f, d * 0.05f);
     } else {
       float rolloff = 1 / (1 + powf(n / cutoff, p->rolloff_exp));
       if (p->resonance > 0) {
@@ -1526,26 +1708,72 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // which is misleading here: a K-weighted measurement of a 100Hz near-sine
   // against a noise band two octaves above it called the air "0.9LU over the
   // tone" when the actual ratio was 6.6dB, which is not any flute.  A real
-  // flute's low register runs 15-25dB and the breathy big ones about 10-15.
+  // flute's low register runs 15-25dB and the breathy big ones about 10-15;
+  // the concert flute in recordings/flute.f32 measures 25-30dB across its
+  // middle register, which is what `flute` is set to.
   if (p->breath > 0) {
     float n = synth_noise(s);
-    // A resonant bandpass, not a pair of gentle slopes.  Air in a tube is a
-    // *band* -- the noise excites the bore and comes back with the bore's
-    // shape on it -- and white noise with a tilt on it is not that.  A
-    // Chamberlin state variable filter is two adds and two multiplies and
-    // gives a real resonant band, which the cascaded one-poles could not:
-    // any arrangement of one-poles is a slope, and a slope up to a couple of
-    // kHz is what a snare sounds like.
+    // Fixed in Hz, and measured that way.  The air was tracking the note at
+    // three times the fundamental; across four notes an octave apart in
+    // a descending octave of held notes and flute2.f32, the between-harmonic
+    // noise does
+    // not move with the pitch at all.  It is a plateau from about 1.5 to
+    // 4kHz falling 18-20dB an octave above that, at every pitch played.  That
+    // makes sense of where it comes from: the noise is made at the embouchure
+    // and in the player's mouth, neither of which changes size with the note.
     //
-    // Centred low, at two and a half times the fundamental, because that is
-    // where a large flute's air sits.  Capped in absolute Hz so the top of
-    // the range doesn't drag the band up into the hiss again.
-    float fc = fminf(900.0f, f0 * 2.5f);
+    // The shape is a highpass for the low side and two two-pole lowpasses for
+    // the top.  The top edge is the whole point.  A single state variable
+    // bandpass falls at 6dB an octave, which left the synthesized air 30dB
+    // hot at 12kHz against the real thing -- a flat hiss shelf across the
+    // entire top of the spectrum, and much the most audible thing wrong with
+    // the first version of this voice.  Fitted against the measured curve
+    // this lands within 1.4dB rms from 2 to 12.7kHz.
+    //
+    // Nothing here resonates, because the measured air has no peak in it: it
+    // is a plateau, and the earlier note here about one-poles only being able
+    // to make slopes is answered by cascading a highpass with two lowpasses,
+    // which makes a flat-topped band with steep edges.
+    const float fc = p->breath_hz > 0 ? p->breath_hz : 1600.0f;
+    const float q = 1.0f / 0.9f;
     float f = 2 * sinf((float)M_PI * fc / s->sample_rate);
-    const float q = 1.0f / 1.2f;
     s->breath_lp += f * s->breath_bp;
     float high = n - s->breath_lp - q * s->breath_bp;
     s->breath_bp += f * high;
+
+    // The highpass output, not the bandpass: the low side has to be steep
+    // too.  Between the fundamental and the octave -- 794Hz on the C5 this
+    // was fitted against -- the real air sits 9dB under the plateau, and a
+    // bandpass's 6dB an octave left that band 11dB hot, which is audible as
+    // roughness under the note rather than as air around it.
+    float air = high;
+
+    // Two state variable filters at their lowpass outputs for the top edge,
+    // and it takes both.  Three cascaded one-poles were tried first and gave
+    // 12.5dB an octave, because a one-pole's response flattens approaching
+    // Nyquist: at this corner one stage is only 10dB down at 24kHz however
+    // far past it you go, so stacking them buys far less than the 6dB an
+    // octave each promises.  Fitted against the measured air this lands
+    // within 2.1dB rms from 794Hz to 12.7kHz.
+    // 1.75x the bottom corner, which is where the fit put it (1600 and 2800).
+    // Tied together rather than set separately so that moving the band for a
+    // larger instrument slides the shape instead of reshaping it.
+    const float lp_hz = fc * 1.75f;
+    const float q2 = 1.0f / 0.7f;
+    float f2 = 2 * sinf((float)M_PI * lp_hz / s->sample_rate);
+    // Chamberlin filters go unstable once f + 1/Q reaches 2, so pin it rather
+    // than trusting the sample rate.
+    if (f2 > 2.0f - q2 - 0.05f) {
+      f2 = 2.0f - q2 - 0.05f;
+    }
+    for (int stage = 0; stage < 2; stage++) {
+      float* slp = &s->breath_post[stage][0];
+      float* sbp = &s->breath_post[stage][1];
+      *slp += f2 * *sbp;
+      float high2 = air - *slp - q2 * *sbp;
+      *sbp += f2 * high2;
+      air = *slp;
+    }
 
     // Modulated by the tone, but only slightly.  The jet at the embouchure
     // makes both the note and the noise, so some correlation is right and it
@@ -1553,8 +1781,12 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     // but at any depth worth noticing it stops being a flute and becomes a
     // snare, which is a band of noise switched on and off at a low pitch.
     // 15% is enough to bind the air to the note and not enough to rattle.
-    out += s->breath_bp * p->breath * (1.0f - 0.4f * s->dynamics) *
-           (0.9f + 0.15f * out);
+    //
+    // A flat fraction of the tone, with no dynamics term.  Measured over a
+    // real crescendo -- 15dB of it on one held note -- the tone-to-noise
+    // ratio does not move: 25.3dB at the quietest, 24.8dB at the loudest.
+    // The air is made by the same jet as the note and scales with it.
+    out += air * p->breath * (0.9f + 0.15f * out);
   }
 
   // High-pass after the drive, since the drive is what puts energy back below

@@ -209,6 +209,8 @@ final class SynthController: ObservableObject {
         "fm-sub": "FM Sub",
         "grind": "Grind",
         "square": "Square",
+        "flute": "Flute",
+        "flute-low": "Flute (Low)",
     ]
 
     var voiceCount: Int { Int(whistle_preset_count()) + 1 }

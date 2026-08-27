@@ -88,6 +88,33 @@
 // swoop: the note starts an octave out and crawls back over ~120ms.
 #define OCTAVE_GUARD_AFTER_HOPS 8
 
+// ...and it stops trusting the escape hatch once the note is clearly dying.
+//
+// 0.90 above takes nearly all of the 2:1 errors and the curve is flat past
+// it, so what is left cannot be fixed by raising the bar further -- the
+// remaining ones arrive *at* high confidence.  Six of them in 15 seconds of
+// recordings/flute4.f32, every one an exact octave down, every one during a
+// decay.  A periodic signal is genuinely periodic at half its frequency too,
+// so as the harmonics die out of a whistle the longer lag can be the first
+// one under YIN_THRESHOLD, and it is confidently wrong.
+//
+// What separates them from real leaps is not confidence but level.  Measured,
+// all six sat 19.6 to 42.6dB below their own note's peak, while the
+// deliberate-leap passage of recordings/whistling.f32 produces no >300 cent
+// jump at all -- a player leaps into a new note, not out of the bottom of a
+// dying one.  So below this much of a drop the escape hatch closes and the
+// guard applies whatever the confidence says.  12dB sits well clear of both:
+// a note wobbles a couple of dB, and the closest failure was 19.6.
+//
+// This blocks a genuine octave leap played at the very end of a decay.  That
+// is a real cost and a small one, and it buys back the blip that would
+// otherwise be the last thing heard, because a note that drops an octave
+// while dying stays there until it stops.
+#define OCTAVE_GUARD_DECAY_DB 12.0f
+// How fast the running peak forgets, per hop.  About a 2.7s time constant, so
+// it is the note's own peak rather than the loudest thing in the phrase.
+#define NOTE_PEAK_DECAY 0.9995f
+
 // How fast the noise floor follows the input, per analysis hop.  Down in a
 // few tens of milliseconds, so a loud passage doesn't keep the bar raised
 // after it ends; up over a few seconds, so it takes a sustained change to
@@ -132,8 +159,11 @@ static float median3(float a, float b, float c) {
 }
 
 // Runs YIN over the analysis window.  Returns the estimated frequency and
-// writes 0..1 confidence to out_confidence.
-static float estimate(struct PitchDetector* d, float* out_confidence) {
+// writes 0..1 confidence to out_confidence.  Also writes whether any lag
+// actually cleared YIN_THRESHOLD -- see the fallback below, and locked in
+// analyze().
+static float estimate(struct PitchDetector* d, float* out_confidence,
+                      bool* out_locked) {
   const float* x = d->window;
   const int tau_max = d->max_period;
   // Lags are compared over whatever is left of the window once the longest
@@ -171,9 +201,27 @@ static float estimate(struct PitchDetector* d, float* out_confidence) {
       break;
     }
   }
+  *out_locked = best >= 0;
   if (best < 0) {
-    // Nothing cleared the bar; report the best we saw and let the low
-    // confidence that comes with it speak for itself.
+    // Nothing cleared the bar, so there is no periodicity here to report.
+    // We still return the best lag we saw, because the gate wants a
+    // confidence out of this either way -- but `locked` is false and
+    // analyze() will not move the reported pitch on it.
+    //
+    // Letting it move the pitch was a real fault, and an audible one.  On
+    // near-noise the global minimum of the whole search tends to land at the
+    // longest lag, and its normalized value is not necessarily bad, so this
+    // path would report the very bottom of the range at a confidence around
+    // 0.55 -- comfortably over CONF_TRUST.  A dying note therefore ended by
+    // sliding to the lowest note the detector can express and holding it
+    // there for the whole release: measured on recordings/flute4.f32, a
+    // 1021Hz whistle handed over 551.7Hz -- min_hz exactly -- for the last
+    // 190ms of every note.  Through `flute` that is a burble an octave down
+    // at the end of each note; through the basses it is a thump.
+    //
+    // The octave guard does not catch it because it is not an octave: 1021
+    // to 551.7 is a ratio of 1.78.  The median of three does not catch it
+    // because it persists for tens of hops rather than being one bad window.
     best = d->min_period;
     for (int tau = d->min_period + 1; tau <= tau_max; tau++) {
       if (normalized[tau] < normalized[best]) {
@@ -201,7 +249,8 @@ static float estimate(struct PitchDetector* d, float* out_confidence) {
 }
 
 // Rejects an estimate about an octave from where we already are, unless it
-// is confident enough to be a real leap.
+// is confident enough to be a real leap -- and not even then once the note is
+// dying, which is what `decaying` says.  See OCTAVE_GUARD_DECAY_DB.
 //
 // Measured against a real take, this earns its keep and the obvious
 // alternatives do not.  Removing it entirely doubles octave glitches (36 to
@@ -212,8 +261,9 @@ static float estimate(struct PitchDetector* d, float* out_confidence) {
 // it, the pitch covers the same 559-2011Hz and passes the same 1934-cent
 // jump.  Low confidence is rare enough during a real leap that the escape
 // hatch above is sufficient.
-static float snap_octave(float candidate, float held, float confidence) {
-  if (held <= 0 || confidence >= OCTAVE_GUARD_CONF) {
+static float snap_octave(float candidate, float held, float confidence,
+                         bool decaying) {
+  if (held <= 0 || (confidence >= OCTAVE_GUARD_CONF && !decaying)) {
     return candidate;
   }
   const float tolerance = 0.04f;  // ~70 cents
@@ -235,7 +285,8 @@ static void analyze(struct PitchDetector* d) {
   h->level = sqrtf(sumsq / PITCH_WINDOW);
 
   float confidence;
-  float freq = estimate(d, &confidence);
+  bool locked;
+  float freq = estimate(d, &confidence, &locked);
   h->confidence = confidence;
 
   // A median of the last three readings costs two hops of lag and throws out
@@ -250,9 +301,20 @@ static void analyze(struct PitchDetector* d) {
     ? median3(d->recent[0], d->recent[1], d->recent[2])
     : freq;
 
-  if (confidence >= CONF_TRUST) {
+  // How far this note has fallen from its own peak.  Tracked before the
+  // pitch is updated so a note that is on its way out is already known to be.
+  if (h->voiced) {
+    d->note_peak = fmaxf(d->note_peak * NOTE_PEAK_DECAY, h->level);
+  } else {
+    d->note_peak = 0;
+  }
+  bool decaying = d->note_peak > 0 &&
+      h->level < d->note_peak * powf(10.0f, -OCTAVE_GUARD_DECAY_DB / 20.0f);
+
+  if (locked && confidence >= CONF_TRUST) {
     bool settled = h->voiced && d->voiced_hops >= OCTAVE_GUARD_AFTER_HOPS;
-    h->freq = settled ? snap_octave(smoothed, h->freq, confidence) : smoothed;
+    h->freq = settled
+        ? snap_octave(smoothed, h->freq, confidence, decaying) : smoothed;
   }
   // Otherwise h->freq keeps its last trustworthy value.
 

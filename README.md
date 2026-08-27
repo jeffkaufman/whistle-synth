@@ -112,14 +112,24 @@ the Pi, keys 0-3 on the keypad):
 | voice | what |
 |---|---|
 | 0 | raw input, passed through -- for checking mic level and gate |
-| 1 | `lead` |
-| 2 | `trombone` |
-| 3 | `bass` |
-| 4 | `subbass` |
+| 1 | `bass` |
+| 2 | `subbass` |
+| 3 | `octaveless` |
+| 4 | `reese` |
+| 5 | `eight-oh-eight` |
+| 6 | `pluck` |
+| 7 | `fm` |
+| 8 | `fm-sub` |
+| 9 | `grind` |
+| 10 | `square` |
+| 11 | `flute` |
+| 12 | `flute-low` |
 
 These are the entries of the `presets` table in `synth.c`, in order, offset by
 one.  `zeros2-mac` with no arguments prints the list, which is worth doing
-rather than trusting this table: presets have come and gone.
+rather than trusting this table: presets have come and gone.  1-10 are the
+bass voices; `flute` and `flute-low` are the leads, and see "The flute"
+below.
 
 Writing `1` to `current-fifth` drops every voice a just fifth, so what you
 whistle is the fifth of what you hear rather than the root -- whistle a D and
@@ -175,7 +185,48 @@ by-product.  On top of that:
   consecutive analysis hops it takes to start a note (4) versus end one (8) --
   a false start is audible, a slightly late release is not
 * an octave guard that prefers continuity over a 2x jump, unless the reading
-  is confident enough to be a real leap
+  is confident enough to be a real leap -- and not even then once the note is
+  more than 12dB below its own peak, because a player leaps into a new note
+  rather than out of the bottom of a dying one
+* no pitch update at all from a window where nothing cleared the YIN
+  threshold.  There is no periodicity in such a window to report, so the
+  reported pitch holds instead
+
+The last two are both about what happens as a note dies, and both were found
+by listening rather than by measurement -- through `flute`, which is the voice
+that exposes them.  A whistle does not stop, it decays, and on the way down
+two different things went wrong:
+
+* **The estimator ran out of range and was believed.**  With no lag under the
+  threshold, the fallback reported the best lag anywhere in the search, which
+  on near-noise tends to be the longest one -- and at a confidence around 0.55,
+  comfortably over the bar for moving the pitch.  So a dying note slid to the
+  lowest note the detector can express and held it: measured, a 1021Hz whistle
+  handing over 551.7Hz, `min_hz` exactly, for the last 190ms of every note.
+  Neither the octave guard nor the median caught it, because 1021 to 551.7 is
+  not an octave and it persisted for tens of hops rather than one.
+* **Confident octave errors.**  A periodic signal is genuinely periodic at half
+  its frequency, so as the harmonics die out of a whistle the longer lag can be
+  the first one under the threshold, and it is confidently wrong -- which is
+  exactly the case the octave guard's escape hatch lets through.  What
+  separates these from real leaps is level, not confidence: measured, every one
+  sat 19.6 to 42.6dB below its own note's peak, while the deliberate-leap
+  passage of `recordings/whistling.f32` produces no such jump at all.
+
+Through a bass these are a thump at the end of a note; through `flute` they are
+a tonal burble an octave down, and they are the last thing you hear.  Measured
+over three real takes, with note counts unchanged and no gate decision altered:
+
+```
+                    readings pinned at min_hz    >300 cent jumps    of which octaves
+  flute4                   121 -> 0                  14 -> 0            8 -> 0
+  whistling                 21 -> 0                  15 -> 2            5 -> 0
+  holding                   13 -> 0                  12 -> 5            3 -> 3
+```
+
+What is left in `holding` is a different fault and deliberately untouched: those
+sit *at* the note's peak rather than in its decay, and one of them is a 4ms
+round trip that corrects itself. 
 
 The gate is **relative to the room, not absolute**.  A note has to stand a
 given factor clear of the measured noise floor, and the floor is only updated
@@ -313,6 +364,150 @@ Both needed one structural change: `unison` is per-preset, because three
 detuned copies at equal phase spacing sum to *nothing* at the fundamental, so
 a bass that wants no detune has to ask for one oscillator rather than three
 with the detune set to zero.
+
+## The flute
+
+The one voice here that is not a bass, and the only one whose numbers all come
+from recordings of the instrument rather than from a design.  `flute2.f32` is
+a single held C5 and `flute3.f32` the same note whistled, which is the A/B
+pair everything is checked against; `flute.f32` is forty seconds of long tones
+with a crescendo in it.  The partial tables were fitted over those plus a
+descending octave of held notes, a take that has since been overwritten -- the
+harmonics measured off it are kept in `prototypes/flute-harmonics.tsv`, which
+is now the only record of them.
+
+It plays **one octave down**, not four.  A whistle covers 588-3150Hz, which
+lands at 294-1575Hz -- D4 to G6, very nearly a concert flute's range, and a
+comfortable whistle sits at 400-800Hz, the register the recordings are played
+in.  So the measurements are taken where the voice actually plays.
+
+Three things make it unlike everything else in the table.
+
+**Its partials come from a table, not from the pulse formula.**  Setting
+`register_hi_hz` switches `pwm_center`, `tilt`, `cutoff_*` and `rolloff_exp`
+off entirely and reads the partial amplitudes out of `partial_lo`/`partial_hi`
+instead.  The formula could not make this shape at all: the flute's seventh
+partial sits *above* its sixth, and `sin(n*pi*w)/n^tilt/(1+(n/c)^k)` is
+monotone by construction.  Fitted as well as it can be, the formula left the
+audible partials 5.1dB rms out.
+
+**There are two tables, because a flute is not a fixed set of ratios.**  Its
+second partial measures 11.3dB under the fundamental low in the range and
+24.1dB under it high up: the instrument gets dramatically purer as it climbs,
+and one spectrum for the whole range makes the top far too rich.  The played
+pitch blends between the two tables from 580 to 700Hz, which is D5 to F5 --
+where a flute actually changes register.
+
+A body resonance fixed in Hz was the other candidate for this and the
+recordings rule it out.  Fitted against nine notes as a source-times-body
+model, the body comes out flat to within 0.4dB and improves the fit by 0.04dB;
+indexed by absolute frequency alone it is twice as bad as indexing by partial
+number.  What is left after the register blend -- about 4.5dB rms -- is
+note-to-note variation, and it is real: a flute's harmonics genuinely differ by
+several dB depending on the fingering, and nothing indexed by pitch follows
+that.
+
+**It gets rounder as it gets louder, not brighter.**  Every other voice here
+opens up when pushed.  Over the one real crescendo in the recordings -- 15dB
+on a held C5 -- every partial above the fundamental falls about 6dB relative
+to the fundamental, which is what `purity_loud` applies.  That is what a
+controlled crescendo on a flute is: the player opens the embouchure and moves
+more air rather than blowing faster, which is also what keeps the pitch from
+rising.  `trombone` ran its filter 1.1 to 14 in the other direction, because
+going from nothing to blazing is what brass does.
+
+It is also slow to speak and quick to stop -- 60ms to arrive, 48ms to fall
+20dB -- against 3-8ms attacks everywhere else, and it has neither vibrato nor
+any wobble, because the recordings are straight tone: the pitch holds to 2-3
+cents rms over a held note and the level to 0.20dB.
+
+### The air
+
+`flute` is what brought `breath` back to life; until it, no preset set it and
+the noise generator and filter behind it were dead code.  Getting it wrong was
+much the most audible fault in the first version of this voice, and the fault
+was not the level but the **band**.
+
+A single state variable bandpass falls at 6dB an octave on paper, and measured
+its own skirt is only 10dB down at 20kHz.  That put a flat hiss shelf across
+the whole top of the spectrum: against the real note the synthesized air was
+10dB hot at 5kHz, 23dB at 8kHz and 29dB at 12.7kHz.  Broadband HF noise is
+about the most salient thing an ear picks out, and it is why the voice read as
+a synth with tape hiss over it.
+
+What the recordings actually show is a band **fixed in Hz**: a plateau from
+about 1.5 to 4kHz falling 18-20dB an octave above that, and it does not move
+with the note.  Across four notes an octave apart the between-harmonic noise
+sits in the same place every time, which makes sense of where it comes from --
+the noise is made at the embouchure and in the player's mouth, neither of
+which changes size with the note.  It also does not move with how hard the
+flute is played: over that same 15dB crescendo the tone-to-air ratio reads
+25.3dB at the quietest and 24.8dB at the loudest.
+
+So the band is now a highpass at 1600Hz into two two-pole lowpasses at 2800Hz,
+both edges steep, fitted to the measured curve within 2.1dB rms.  Getting the
+top edge took all of that: three cascaded one-poles were tried first and gave
+only 12.5dB an octave, because a one-pole's response flattens as it approaches
+Nyquist -- one stage is barely 10dB down at 24kHz however far past the corner
+you go, so stacking them buys much less than the 6dB an octave each promises.
+
+### Where it lands
+
+Against the held C5, rendered from the whistle of the same note and compared
+in third-octave bands scaled to each one's own fundamental:
+
+```
+  first version   14.4 dB rms
+  now              3.2 dB rms
+```
+
+Harmonic by harmonic against that note, the second is within 1.4dB, the third
+2.7, the fifth 1.8, the sixth 1.9 and the seventh 0.8 -- including the seventh
+sitting above the sixth.  The fourth is 8dB out, and that one is the
+instrument rather than the model: this note has the strongest fourth partial
+of the nine measured, at -28.7dB against a -35.0dB average.
+
+Across the range, rendered at each pitch there is a real note for, the error
+over partials 2-5 is 5.0dB rms -- which is the note-to-note variation floor,
+not a modelling error.
+
+### An octave down
+
+`flute-low` is the same instrument an octave lower -- an alto or bass flute,
+landing a whistle at 147-787Hz.  There is no recording of one to fit against,
+so everything that was measured stays exactly as measured and only the two
+things that are structurally wrong at that size are changed.
+
+**The register break halves, to 290-350Hz.**  Where a flute breaks register is
+a property of where a note sits in the instrument's own range, not of its
+absolute frequency, and a flute an octave down breaks an octave lower.  Left
+at `flute`'s 580-700Hz, all but the top fifth of this voice's range would read
+as low register and a phrase would come out with a different timbral shape
+from the same phrase on `flute`, which is not what "the same instrument,
+lower" means.  Halved, it is exact -- measured over the same whistle through
+both voices, the harmonics land within 0.2dB of each other at every pitch:
+
+```
+  whistled     660    933   1320   1867   2640
+  flute h2   -13.7  -13.7  -22.5  -26.5  -26.8
+  low   h2   -13.7  -13.7  -22.5  -26.4  -26.6
+```
+
+**The air band moves down**, to a 1000Hz bottom corner against `flute`'s 1600.
+The band is fixed in Hz because it is made at the embouchure and in the
+player's mouth, but a bass flute's embouchure hole is roughly twice the size.
+Left where it was, the band would sit 8-15 partials above this voice's
+fundamental instead of the 3-7 it measures on a concert flute, and air that
+far above the note reads as hiss beside it rather than as breath in it.
+
+1000Hz rather than 800 is the one number in either flute preset that is
+neither measured nor derived: the instrument scales by two and the player's
+mouth not at all, so the truth is between unchanged and halved.  It is the
+first thing to adjust by ear.
+
+The envelope is deliberately untouched, though the physics says a larger air
+column speaks more slowly.  It surely does; by how much is a guess without a
+recording, and a wrong guess costs fast playing.
 
 ## Loudness
 

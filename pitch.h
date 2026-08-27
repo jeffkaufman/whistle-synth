@@ -62,6 +62,12 @@ struct PitchDetector {
   int on_hops, off_hops;
   int voiced_hops;   // analysis hops since this note started
 
+  // The loudest this note has been, decaying slowly.  Used to tell a note
+  // that is dying from one that is being played quietly, which is what
+  // decides whether a confident octave jump is believable.  Reset when the
+  // note ends.
+  float note_peak;
+
 
   struct PitchHint hint;
 };

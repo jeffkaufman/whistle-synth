@@ -1,6 +1,6 @@
-# Bass voices
+# Voices
 
-Ten bass voices, all designed for **mono** through a QSC K10.2.
+Ten bass voices, all designed for **mono** through a QSC K10.2, and two leads.
 Renders to listen to are in this directory (gitignored).
 
 ```
@@ -14,7 +14,18 @@ Renders to listen to are in this directory (gitignored).
    8: fm-sub            the same, 5 octaves down
    9: grind             asymmetric saturation, valve-style
   10: square            a plain hollow square
+  11: flute             1 octave down, measured off a real flute
+  12: flute-low         the same an octave lower -- alto/bass flute
 ```
+
+`flute` is the odd one out and deliberately so: it is not a bass, it plays one
+octave down instead of four or five, and every number in it is measured
+against the flute recordings rather than designed.  It is also the only voice
+whose partials do not come from the pulse formula at all -- it reads them out
+of two measured tables and blends between them by register.  See "The flute"
+in the top-level README for what it is doing, why its brightness runs
+backwards, and what the air had to become.  It is what brought `breath` back
+from the dead machinery list below.
 
 Plus two controls that are not voices: `current-fifth` and `current-sustain`,
 below.  `reese-hold` used to be a voice here; it is now `reese` with the
@@ -22,7 +33,7 @@ sustain switched on.  `octaveless-half` is gone -- one register-following
 variant of the Shepard stack was one more than the table needed.
 
 `make run2-mac`.  The keypad reaches 1-9; past that,
-`echo 10 > current-voice`.
+`echo 10 > current-voice` and so on up to 12.
 
 `acid` is gone -- the portamento and the per-note filter sweep were too much
 to control from a whistle.  Its two mechanisms are still in use: `pluck` has
@@ -756,14 +767,54 @@ Two things worth knowing:
   whether or not the switch is on, and being quieter the rest of the time is
   the point rather than something to correct.
 
+## Two detector faults `flute` exposed
+
+Both are in `pitch.c`, both are about what happens as a note dies, and both
+affect every voice -- they were just inaudible until a voice was pure enough
+to show them.  Full write-up in the top-level README under "How it works"; the
+short version:
+
+- **The pitch fell to the bottom of the range and stayed there.**  When no lag
+  cleared `YIN_THRESHOLD` the fallback reported the best lag in the whole
+  search, at a confidence high enough to be trusted.  On a dying note that is
+  the longest lag, so every note ended by sliding to `min_hz` and holding it
+  for ~190ms.  The fix is one flag: an estimate that never locked does not
+  move the reported pitch.
+- **Confident octave errors during decay.**  The octave guard's escape hatch
+  is confidence, and these arrive *at* high confidence, so raising the bar
+  cannot reach them.  Level separates them instead -- all of them 19.6 to
+  42.6dB below their own note's peak -- so the hatch now closes below 12dB
+  down.
+
+Note counts and gate decisions are byte-identical across every take; what
+changes is the pitch inside note tails, 7% of voiced hops on `whistling` and
+`holding`.  The renders of the ten bass voices in this directory are all
+slightly different as a result, and better: a bass was thumping down to its
+bottom note at the end of every phrase.
+
 ## Dead machinery
 
-`wobble_hz`/`wobble_octaves`, `vibrato_*`, `breath` (with the state variable
-filter and noise generator behind it), `stereo_width`, and now
+`vibrato_*`, `wobble_hz`/`wobble_octaves`, `stereo_width`, and
 `octave_stack_track`/`octave_stack_ref_hz` -- which went dead with
 `octaveless-half`, the only preset that ever set them -- are no longer used
 by any preset.  All are gated on zeros so they cost nothing at runtime, but
 they are dead code and should come out with the rest of the cleanup.
+
+`breath` (with the state variable filter and noise generator behind it) came
+off this list with `flute`, the first preset to set it, and it needed rebuilding
+rather than just correcting.  Everything about it was wrong: the band was
+capped at 900Hz, which suited the contrabass flute it was written for and
+would have sat under `flute`'s own second harmonic; its level was scaled by
+`(1 - 0.4*dynamics)` on the theory that air stands out when the player backs
+off, which the recordings flatly contradict; and its single bandpass rolled
+off so slowly that the result was 29dB hot at 12.7kHz, a hiss shelf across the
+whole top of the spectrum.  Dead code does not stay right, and none of that
+had ever been exercised.
+
+`wobble_hz`/`wobble_octaves` are back on the list.  `flute` set them briefly,
+to keep a held note from being an organ, and the recordings say not to: a real
+held flute note's level is steady to 0.20dB rms and the wobble was making
+0.96dB of movement.  Some voices should not move.
 
 The pad parameters that used to be on this list are gone: they came out with
 the pads.
@@ -794,7 +845,12 @@ for `zeros2-offline`, with a `.sections` file naming what was being asked for
 when.  `--record` is the same thing for the voices that follow the whistle.
 
 `in-ladder.f32` is five steady notes across the range at identical amplitude,
-which is what the loudness match is measured over.  `in-scale.f32` is a
+which is what the loudness match is measured over.  `flute` was matched over
+it the same way as the rest, and lands at -17.8 LUFS with a 0.2dB spread from
+the bottom of the whistle range to the top -- flatter than anything else here,
+not because the preset is better but because one octave down sits entirely
+inside the flat part of both the cabinet and the ear, so the audibility
+compensation has nothing to correct.  `in-scale.f32` is a
 two-octave chromatic climb repeated three times;
 `in-glide.f32` is the same range as a continuous rise; `in-pad.f32` is six
 steady notes spaced seconds apart.  The last two were made for the pads and

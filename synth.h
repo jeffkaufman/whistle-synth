@@ -256,11 +256,45 @@ struct SynthParams {
   // value at the offset is subtracted back out, so this adds no DC.
   float drive_bias;
 
-  // Breath noise, as a fraction of the tone.  Banded around the note rather
-  // than white, and louder when the player backs off, which is how a large
-  // flute actually behaves -- on a contrabass flute the breath is nearly as
-  // loud as the note.
+  // Breath noise, as a fraction of the tone.  Shaped by a band fixed in Hz --
+  // see the breath block in synth_process for the measurements behind it.
   float breath;
+
+  // Where that band sits: the bottom corner, in Hz, with the top derived from
+  // it so the shape stays the one that was fitted to the recordings.  It is a
+  // property of the instrument rather than of the note -- the noise is made at
+  // the embouchure and in the player's mouth, and neither changes size with
+  // the pitch, which is why the band does not track f0.  But a *bigger* flute
+  // has a bigger embouchure hole, so a preset an octave down wants this lower.
+  // 0 means the concert flute's measured 1600Hz.
+  float breath_hz;
+
+  // Partial amplitudes read straight out of a recording, in dB under the
+  // fundamental, instead of computed from pwm/tilt/cutoff.  In use when
+  // register_hi_hz is above zero, and then it replaces that whole formula for
+  // this preset -- the pulse series can only make smooth monotone curves, and
+  // a real instrument's is neither.  `flute`'s seventh partial sits *above*
+  // its sixth, which no setting of width, tilt and cutoff produces.
+  //
+  // Two tables rather than one because the harmonics are not a fixed set of
+  // ratios: a flute gets dramatically purer as it goes up, its second partial
+  // measuring -11.3dB under the fundamental low in the range and -24.1dB high
+  // in it.  The played pitch blends between them, linearly in log frequency,
+  // from register_lo_hz to register_hi_hz -- which is the register break, and
+  // is why this is indexed by the note rather than by absolute frequency.  A
+  // body resonance fixed in Hz was the other candidate and the recordings
+  // rule it out: fitted against nine notes it comes out flat to within
+  // 0.4dB and explains nothing (4.53dB of residual against 4.57 without it),
+  // while indexing by register takes the audible partials from 5.1 to 4.0.
+  float partial_lo[SYNTH_MAX_HARMONICS];
+  float partial_hi[SYNTH_MAX_HARMONICS];
+  float register_lo_hz, register_hi_hz;
+
+  // How many dB the partials above the fundamental drop as the player goes
+  // from soft to hard, on top of the tables above, which are the spectrum at
+  // mid dynamics.  Positive means the tone gets *purer* when pushed, which is
+  // backwards from a filter opening up and is what a flute measurably does.
+  float purity_loud;
 };
 
 struct Synth {
@@ -361,10 +395,12 @@ struct Synth {
   float drop;
   float cutoff_env;
 
-  // Breath noise: the generator, and the two integrators of the state
-  // variable filter that bands it.
+  // Breath noise: the generator, the two integrators of the state variable
+  // filter that bands it, and two more used as lowpasses to steepen its top
+  // edge.
   uint32_t noise_state;
   float breath_lp, breath_bp;
+  float breath_post[2][2];
 
   // Two one-pole high-pass stages, for the low voices only.
   float hp_x[2], hp_y[2];
