@@ -124,12 +124,14 @@ the Pi, keys 0-3 on the keypad):
 | 10 | `square` |
 | 11 | `flute` |
 | 12 | `flute-low` |
+| 13 | `flute-jet` |
 
 These are the entries of the `presets` table in `synth.c`, in order, offset by
 one.  `zeros2-mac` with no arguments prints the list, which is worth doing
 rather than trusting this table: presets have come and gone.  1-10 are the
-bass voices; `flute` and `flute-low` are the leads, and see "The flute"
-below.
+bass voices; `flute`, `flute-low` and `flute-jet` are the leads, and see "The
+flute" below.  `flute-jet` is `flute-low` again as a physical model rather than
+a measured spectrum -- see "The flute by physics".
 
 Writing `1` to `current-fifth` drops every voice a just fifth, so what you
 whistle is the fifth of what you hear rather than the root -- whistle a D and
@@ -514,11 +516,162 @@ The envelope is deliberately untouched, though the physics says a larger air
 column speaks more slowly.  It surely does; by how much is a guess without a
 recording, and a wrong guess costs fast playing.
 
+## The flute by physics
+
+`flute-jet` is `flute-low` again -- the same alto flute, a whistle landing at
+147-787Hz -- built the other way round.  `flute-low` is a measured spectrum
+played back: two tables of partial amplitudes, a register blend between them,
+an attack in milliseconds.  `flute-jet` has no spectrum in it at all.  It is a
+tube one wavelength long with a jet blowing across the end of it, and what
+comes out is whatever that does.
+
+The whole voice is one number -- how hard the tube is blown.  Nothing in the
+preset says how loud the second partial should be, how fast the note should
+arrive, or which way the timbre should move when the player leans in.
+
+There is a third recording behind it, `flute5.f32`: four seconds of silence
+for the room, a level check, and then a run of tongued notes on the real
+flute, which is what the transients are measured against.  Its steady note
+also confirms what the earlier takes said about the air -- the same plateau
+from 1.5 to 4kHz -- so that band is carried over unchanged.
+
+### The loop
+
+One delay line and four filter stages, once round per period:
+
+```
+  the tube      a delay line, one period long
+  the losses    two one-poles at 0.8 times the note
+  the cutoff    two high-pass stages at 0.5 times the note
+  the open end  the sign flip
+  the jet       tanh of the acoustic field at the embouchure, offset
+```
+
+The sign flip is what makes it a flute rather than a clarinet: two inversions
+a round trip, so the loop is non-inverting and every harmonic is supported
+rather than only the odd ones.  The jet is the only thing in it that is not
+linear, so it is the only thing that makes harmonics at all, and its offset --
+0.7 -- is what puts the even ones in.  An exactly centred jet is an odd
+function of the acoustic field and can only make odd harmonics.
+
+**Every stage is divided by its own gain at the played pitch.**  That leaves
+the round trip lossless at the fundamental however dark the filter is above
+it, which is what makes the breath mean the same thing at every pitch: the
+voice speaks at the same point on the dial everywhere, and every audible
+partial lands within 0.8dB of itself from 233Hz to 660Hz.
+
+**Every stage's delay comes out of the delay line**, worked out from its own
+phase response rather than fitted.  With them the loop's linear resonance
+lands on the requested pitch to better than a hundredth of a cent at every
+frequency checked; the high-pass term alone is worth 45 cents, because
+`1 - z^-1` leads by a quarter turn and a quarter turn is a fixed fraction of a
+period wherever the note is.  Rendered, the voice plays +4.3 to +6.5 cents
+sharp across the whole range and the whole of its dynamics.
+
+**Both corners track the note rather than sitting fixed in Hz.**  That is a
+property of the tube and not a convenience -- a low note is played on a longer
+tube, so the same loss per metre compounds over more of it -- and it is also
+what makes the voice play in tune.  Fixed in Hz, a low note's partials run
+round a loop that barely damps them, come back with the wrong phase because a
+one-pole's delay is not the same at every frequency, and the jet mixes them
+back down onto the fundamental and drags it flat.  Measured that way the
+bottom of the range played 30-65 cents under the top's 10.
+
+### What had to be given up
+
+**The jet is the whole return path**, rather than an addition to a reflection
+the way it is in Cook's flute, which this started as.  A tube that reflects on
+its own has a Q and goes on ringing after the breath stops; this one does not,
+so its release is the breath leaving rather than the tube emptying.
+
+That buys the thing that matters more, which is that there is exactly one loop
+and so exactly one mode.  With a reflection path beside the jet the two loops
+are different lengths, and which of them wins depends on how hard you blow:
+measured, one note came out at 200Hz, 312Hz and 613Hz at three breath
+pressures with nothing else changed.  Putting the jet's transit delay back in
+to pick the mode, which is its job on the real instrument, brings the same
+chaos with it -- a note asked for at 392Hz came out 250 cents off.
+
+**The breath is compressed on the way in**, and that curve is the one number
+in the voice with no physics behind it.  A waveguide near its threshold has
+almost no output, so the whole musical range has to fit between speaking and
+the top of the dynamics, and there is not much room in there.  Measured
+against `flute-low` on the same material:
+
+```
+  exponent   crescendo   tail under the note   of the take sounding
+    0.50        4.5dB          -2.0dB                  68%
+    0.65        5.9dB          -4.3dB                  54%
+    0.80        7.4dB         -32.2dB                  32%
+    1.00        9.8dB          -8.1dB                  21%
+  flute-low    11.2dB          -3.8dB                  69%
+```
+
+0.65 tracks `flute-low`'s sustain tail most closely and keeps more of the
+dynamics than 0.5 does.  What it costs is the quietest playing on an
+under-level input -- the take those last two columns are measured on averages
+0.033 against this voice's `level_full` of 0.22 -- where this voice stops and
+`flute-low` only gets quieter.  It is more sensitive to the mic level than
+anything else in the table, and that is a real difference rather than a tuning
+fault.  The direction of the curve is at least what the physics expects: what
+the loop gain follows is the speed of the jet, and jet speed goes as the
+square root of the pressure behind it.
+
+### Where it lands
+
+It gets the behaviour and misses the spectrum.
+
+The note arrives when the loop has built rather than when an envelope says so,
+and it stops when the tube stops:
+
+```
+                    attack     release        release
+                  (to half)   (to -6dB)     (to -20dB)
+  real flute       20-25ms     34-39ms        64-72ms
+  flute-jet        25-30ms        39ms        73-87ms
+  flute-low           36ms        26ms           62ms
+```
+
+Both are slower for a low note than a high one -- 29.5ms at the bottom of the
+range against 25.2 at the top, and 87ms of release against 73 -- because the
+loop is a period long and a low note's period is longer.  No number in the
+preset asks for that; it is the only voice here where the envelope is a
+consequence rather than a setting.
+
+Pushed harder it gets **louder and rounder**, which is the measured
+crescendo's direction and backwards from every other voice: over the same
+15dB crescendo the second partial goes from -14.8dB to -18.9.  The third goes
+the other way, from -27.0 to -19.9, which the real instrument does not do.
+
+What it misses is the steady spectrum, by 9.6dB rms against the measured
+table where the additive voice is exact by construction:
+
+```
+                 h2     h3     h4     h5     h6     h7
+  measured    -11.3  -19.6  -35.0  -37.3  -50.6  -47.4
+  flute-jet   -18.9  -19.9  -26.7  -34.4  -33.7  -54.1
+```
+
+Most of that is one thing.  A real flute's fourth partial sits 15dB under its
+third, and no smooth nonlinearity in a smooth loop makes a notch: driven to
+where the third partial is right, the fourth comes out within a few dB of it
+every time.  That is the same wall the pulse formula hit before the measured
+tables replaced it, and it is why `flute-low` exists in the form it does.
+
+So the two are worth having side by side rather than one replacing the other.
+`flute-low` is right about what a flute sounds like; `flute-jet` is right
+about what one does.
+
 ## Loudness
 
 Every preset is matched to the same loudness on a full-range system: -13.8
-LUFS, integrated, measured over the same test signal.  All six land within
-0.0dB of each other, so changing voice mid-tune doesn't jump.
+LUFS, integrated, measured over the same test signal.  They land within 0.0dB
+of each other, so changing voice mid-tune doesn't jump.  `flute-jet` was
+matched the same way and against `flute-low` directly, since the two are the
+same instrument and the swap between them has to be inaudible in level:
+measured over `prototypes/in-ladder.f32` at full volume they agree to 0.0dB,
+with `flute-jet` peaking at 0.361 against `flute-low`'s 0.215 -- a near-sine
+carries more of its level in the peak.
 
 LUFS (ITU-R BS.1770) is used because it is the standard model for *perceived*
 loudness rather than for signal level, which is the whole difficulty here: a

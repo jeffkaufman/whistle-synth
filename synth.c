@@ -237,6 +237,23 @@
 // under 5 and J_n(x) is negligible past about x + 5.
 #define SYNTH_FM_TERMS 12
 
+// What the waveguide's breath falls back to between notes, as a fraction of
+// the threshold of oscillation.
+//
+// Not zero, because a player does not stop the air dead -- and emphatically
+// not 1, which is the threshold itself: at a loop gain of exactly 1 the tube
+// neither grows nor decays, so a released note hung on at whatever amplitude
+// it had until the silence check cut it off, a 133dB step on every note.
+//
+// Half decays the tube by half its amplitude a round trip, which is a few
+// milliseconds, and it puts the speaking point at 0.26 of the note envelope
+// rather than 0.42.  That last part is what the sustain control needs: a tail
+// settles to SYNTH_HOLD_SUSTAIN of the note that made it, which is 0.52, and
+// against a speaking point of 0.42 the drone came out barely above the
+// threshold -- measured over recordings/holding.f32 it sounded through 15% of
+// the take against `flute-low`'s 69%, with an 11.6 second hole in it.
+#define SYNTH_BORE_REST 0.5f
+
 #define SYNTH_TAIL_SHIMMER 0.35f
 #define SYNTH_TAIL_SHIMMER_FM 0.30f
 static const float synth_shimmer_hz[SYNTH_SHIMMER_LFOS] = { 0.31f, 0.53f, 0.79f };
@@ -698,6 +715,97 @@ static const struct SynthParams presets[] = {
     .glide_s = 0.006f,
     .out_gain = 1.403f,
   },
+  {
+    // The same instrument as `flute-low`, built the other way round.
+    //
+    // `flute-low` is a measured spectrum played back: two tables of partial
+    // amplitudes, a register blend between them, an attack in milliseconds.
+    // This has no spectrum in it at all.  It is a tube one wavelength long
+    // with a jet blowing across the end of it, and what comes out is whatever
+    // that does -- see synth_bore.  Nothing here says how loud the second
+    // partial should be, how quickly the note should arrive, or how the
+    // timbre should move when the player leans in; all of it falls out of one
+    // number, which is how hard the tube is being blown.
+    //
+    // What that buys and what it costs is in "The flute by physics" in the
+    // README.  Briefly: it gets the behaviour and misses the spectrum.
+    //
+    // The note arrives when the loop has built rather than when an envelope
+    // says so, which lands it at 25-30ms against the 20-25 measured on the
+    // real flute and `flute-low`'s 36; and it stops when the tube stops,
+    // 39ms to -6dB against the real 34-39 and `flute-low`'s 26.  Both are
+    // slower for a low note than a high one, because the loop is a period
+    // long and a low note's period is longer -- which is a thing the real
+    // instrument does and no number here asks for.  It is also one
+    // instrument at every pitch: every audible partial lands within 0.8dB
+    // of itself from 233Hz to 660Hz, where `flute` needed two measured
+    // tables and a register blend between them to be that.
+    //
+    // What it misses is the spectrum, by 9.6dB rms against the measured
+    // table where the additive voice is exact by construction.  Most of that
+    // is one thing: a real flute's fourth partial sits 15dB under its third,
+    // and no smooth nonlinearity in a smooth loop makes a notch.  It is the
+    // same wall the pulse formula hit before the tables replaced it.
+    .name = "flute-jet",
+    .octave = 0.25f,
+    // Above 1 this is a waveguide, and it is the loop's small-signal gain at
+    // full breath: 1.0 is exactly the threshold of oscillation.  2.4 is a
+    // compromise between the two things one number here has to set at once.
+    // Held at a steady 1.35 the spectrum is closest to the measured flute --
+    // 6.7dB rms against 9.6 here -- but the loop then takes 84-120ms to build
+    // and nothing can be played on it; held at 3.6 it speaks in 30ms but is
+    // 11.5dB out and starting to buzz.
+    .jet_drive = 2.4f,
+    // How far the jet sits off the labium, which is what puts the even
+    // harmonics in.  0.7 is what the second partial wants: it lands at
+    // -18.9dB, against the -17.3 the measured table blends to at the loud end
+    // of a crescendo and -11.3 at mid dynamics.
+    .jet_bias = 0.7f,
+    // The bore's losses and its low cutoff, as multiples of the note.  0.8 is
+    // the value that plays in tune -- the whole range and the whole of the
+    // dynamics land between +4.3 and +6.5 cents -- and 0.5 is as high as the
+    // cutoff can go before it starts eating the fundamental it is protecting.
+    .jet_damp = 0.8f, .jet_hp = 0.5f,
+    // Turbulence at the embouchure.  It is what the note grows out of, so
+    // more of it speaks sooner -- but only just, since the loop builds
+    // geometrically and this only moves where it starts from: a hundredfold,
+    // 0.002 to 0.2, took 70ms down to 42.  The breath does that job, and this
+    // only has to be enough to get the loop going.
+    .jet_noise = 0.03f,
+    // Near-linear, and for the same reason `flute` is: the saturator makes
+    // harmonics, and every harmonic in this voice is supposed to have come
+    // out of the jet.  It does not move with the dynamics here, because the
+    // breath already does everything moving with the dynamics should do.
+    .drive_soft = 0.15f, .drive_loud = 0.15f,
+    // One air column, and no partial table -- the tube has no use for either.
+    .unison = 1, .detune_cents = 0.0f, .harmonics = 1,
+    // The air, unchanged from `flute-low`: the between-harmonic noise in
+    // recordings/flute5.f32 is the same plateau from 1.5 to 4kHz the earlier
+    // recordings gave, so the band that was fitted to them still holds.  It
+    // is added outside the loop because it is made at the embouchure and
+    // radiates from there rather than going round the tube.
+    .breath = 0.0175f,
+    .breath_hz = 1000.0f,
+    .level_full = 0.22f,
+    // Neither of these is what it is everywhere else in this table.  There
+    // they are how long the note takes to arrive and to go; here they are
+    // only how fast the breath does, and the note arrives when the loop has
+    // built on top of it and goes when the breath falls back under the
+    // threshold.  Measured through the engine, that lands the attack at
+    // 29.5ms at the bottom of the range and 25.2 at the top, and the release
+    // at 39ms to -6dB and 73-87 to -20 -- against 20-25 and 34-39 and 64-72
+    // on the five tongued notes in recordings/flute5.f32.
+    //
+    // So they are set short and the tube is left to do the shaping.  8ms is
+    // as fast as the breath can arrive without the loop having to build from
+    // a step, and 25ms is what puts the release where the recording has it:
+    // the audible note-off is the breath crossing the speaking threshold,
+    // which happens well before the envelope has finished falling.
+    .attack_s = 0.008f, .release_s = 0.025f,
+    .articulation_s = 0.020f,
+    .glide_s = 0.006f,
+    .out_gain = 2.057f,
+  },
 };
 
 #define N_PRESETS ((int)(sizeof(presets)/sizeof(presets[0])))
@@ -832,6 +940,47 @@ static void synth_bessel_sq(float x, float* out, int n_max) {
     }
     out[n] = sum * sum;
   }
+}
+
+// The waveguide's loop has to be exactly one period long at the note being
+// played, and every filter in it carries a delay of its own.  These four give
+// each stage's phase delay and its gain at the played pitch: the delays come
+// out of the delay line, and the gains are divided back out so the round trip
+// is lossless at the fundamental however dark the filter is above it.
+//
+// Derived rather than fitted, and it is worth saying what that buys.  With
+// them the loop's linear resonance lands on the requested pitch to better
+// than a hundredth of a cent at every frequency checked; without the
+// high-pass term alone the voice plays 45 cents sharp, because (1 - z^-1)
+// leads by a quarter turn and a quarter turn is a fixed fraction of a period
+// wherever the note is.
+static float synth_pole_delay(float a, float w) {
+  return atan2f(a * sinf(w), 1 - a * cosf(w)) / w;
+}
+
+static float synth_pole_gain(float a, float w) {
+  float re = 1 - a * cosf(w), im = a * sinf(w);
+  return (1 - a) / sqrtf(re * re + im * im);
+}
+
+static float synth_hp_delay(float r, float w) {
+  return (atan2f(r * sinf(w), 1 - r * cosf(w)) + 0.5f * w -
+          0.5f * (float)M_PI) / w;
+}
+
+static float synth_hp_gain(float r, float w) {
+  float re = 1 - r * cosf(w), im = r * sinf(w);
+  return 2 * sinf(0.5f * w) / sqrtf(re * re + im * im);
+}
+
+// Reads the tube `d` samples back, interpolating, because the delay that puts
+// a note in tune is almost never a whole number of samples.
+static float synth_bore_read(const struct Synth* s, float d) {
+  int i = (int)d;
+  float f = d - (float)i;
+  int a = (s->bore_write - i + SYNTH_BORE_MAX) % SYNTH_BORE_MAX;
+  int b = (a - 1 + SYNTH_BORE_MAX) % SYNTH_BORE_MAX;
+  return s->bore[a] * (1 - f) + s->bore[b] * f;
 }
 
 static float atan_norm(float v) {
@@ -986,6 +1135,29 @@ void synth_sanitize_params(struct SynthParams* p) {
   if (p->octave_stack_track > 0 && !(p->octave_stack_ref_hz > 1)) {
     p->octave_stack_ref_hz = 1000;
   }
+  // The waveguide's two corners are multiples of the note and end up inside
+  // an expf, and its bias ends up in a tanh whose slope is a divisor.  A
+  // drive at or under 1 is the threshold of oscillation or below it, which is
+  // a voice that cannot make a sound, so it reads as "not a waveguide".
+  if (!(p->jet_drive > 1.0f)) {
+    p->jet_drive = 0;
+  }
+  if (p->jet_drive > 0) {
+    if (!(p->jet_damp > 0.01f)) {
+      p->jet_damp = 0.8f;
+    }
+    if (!(p->jet_hp > 0.01f)) {
+      p->jet_hp = 0.5f;
+    }
+    // Past about 1.8 the slope of tanh has fallen so far that the breath
+    // needed to reach the threshold saturates the jet outright.
+    if (!(p->jet_bias >= 0 && p->jet_bias < 1.8f)) {
+      p->jet_bias = 0.7f;
+    }
+    if (!(p->jet_noise >= 0)) {
+      p->jet_noise = 0;
+    }
+  }
 }
 
 void synth_set_params(struct Synth* s, const struct SynthParams* params) {
@@ -1014,6 +1186,18 @@ void synth_set_params(struct Synth* s, const struct SynthParams* params) {
     // get from `unison` copies summing in power.
     s->low_gain[u] = u == 0 ? sqrtf((float)unison) : 0.0f;
   }
+
+  // The jet's operating point.  Both depend only on the preset, so they are
+  // worked out here rather than every sample: `bore_t0` is subtracted from
+  // the jet's output so it adds no offset of its own, and its slope there is
+  // what the breath has to overcome for the tube to speak.
+  s->bore_t0 = tanhf(params->jet_bias);
+  float slope = 1 - s->bore_t0 * s->bore_t0;
+  s->bore_slope_inv = slope > 1e-3f ? 1.0f / slope : 1e3f;
+  // The tube is a different length for a different voice, so a length carried
+  // over from the last one would be read once before the control rate caught
+  // up.  Zero means "take the next one outright" -- see synth_process.
+  s->bore_len = 0;
 }
 
 void synth_set_preset(struct Synth* s, int preset) {
@@ -1136,6 +1320,40 @@ static void update_controls(struct Synth* s, bool playing) {
   s->harmonics_active = active;
 
   float base = exp2f(synth_pitch_log(s)) * synth_octave(s);
+
+  if (p->jet_drive > 0) {
+    // Size the tube so the wave comes back round in exactly one period, and
+    // work out the coefficients of the four filters in the loop.  There is no
+    // spectrum to compute here and no partials to fill in: this voice has
+    // none, and everything below would be work thrown away.
+    float w = 2 * (float)M_PI * base / s->sample_rate;
+    // Nothing sensible plays this high or this low, and both ends of the
+    // range would divide by something near zero.
+    w = fmaxf(1e-4f, fminf(1.0f, w));
+    float a = expf(-2 * (float)M_PI * p->jet_damp * base / s->sample_rate);
+    float r = expf(-2 * (float)M_PI * p->jet_hp * base / s->sample_rate);
+    s->bore_lp_a = a;
+    s->bore_hp_r = r;
+    s->bore_lp_norm = 1.0f / synth_pole_gain(a, w);
+    s->bore_hp_norm = 1.0f / synth_hp_gain(r, w);
+    float len = s->sample_rate / base -
+                2 * synth_pole_delay(a, w) - 2 * synth_hp_delay(r, w);
+    s->bore_len_target =
+        fmaxf(4.0f, fminf((float)(SYNTH_BORE_MAX - 2), len));
+
+    // What the listener hears of it.  The fundamental's own weighting rather
+    // than a sum over partials, which every other voice needs: this one is
+    // near enough a pure tone -- the second partial measures 15-19dB down and
+    // the rest further -- and carrying the harmonics moves the answer by
+    // under a tenth of a dB anywhere in this voice's range.
+    float heard = synth_audibility(base);
+    s->audibility_comp = heard > 1e-12f
+        ? fminf(SYNTH_AUDIBILITY_MAX, 1.0f / sqrtf(heard)) : 1;
+    // The saturator is a contaminant here rather than a garnish, so it is
+    // near-linear and does not move with the dynamics: see the preset.
+    s->drive = p->drive_soft + (p->drive_loud - p->drive_soft) * dynamics;
+    return;
+  }
 
   // Drop partials too low for anything to reproduce.
   int lowest = 1;
@@ -1260,6 +1478,94 @@ static void update_controls(struct Synth* s, bool playing) {
   } else {
     s->audibility_comp = 1;
   }
+}
+
+// One sample of the jet-drive waveguide: a tube with a jet blowing across the
+// end of it.  `breath` is how hard it is being blown, as the loop's
+// small-signal gain -- 1.0 is exactly the threshold of oscillation.
+//
+// The loop is one delay line and four filter stages, and the wave goes round
+// it once per period:
+//
+//   the tube        a delay line, one period long
+//   the losses      two one-poles at jet_damp times the note
+//   the cutoff      two high-pass stages at jet_hp times the note
+//   the open end    the sign flip, which is what makes it a flute and not a
+//                   clarinet: two inversions a round trip, so every harmonic
+//                   is supported rather than only the odd ones
+//   the jet         a saturating function of the acoustic field at the
+//                   embouchure, which is the only thing here that is not
+//                   linear and so the only thing that makes harmonics at all
+//
+// Every filter stage is divided by its own gain at the played pitch, so the
+// round trip is lossless at the fundamental however dark the filter is above
+// it.  That is what leaves the loop's gain equal to `breath` exactly, which
+// is what makes `breath` mean the same thing at every pitch: measured, the
+// voice speaks at the same point on the dial and settles at the same spectrum
+// to within 0.2dB a partial from 98Hz to 784Hz.
+//
+// The jet is the whole return path rather than an addition to a reflection,
+// and that is a choice with a cost.  A tube that reflects on its own has a Q,
+// and its note goes on ringing after the breath stops; this one does not, so
+// the release is the breath leaving rather than the tube emptying.  It buys
+// the thing that matters more, which is that there is exactly one loop and so
+// exactly one mode: with a reflection path beside the jet -- the arrangement
+// in Cook's flute, which this started as -- the two loops are different
+// lengths and which of them wins depends on how hard you blow.  Measured that
+// way, one note came out at 200Hz, 312Hz and 613Hz at three breath pressures
+// with nothing else changed, which is not an instrument you can play.
+static float synth_bore(struct Synth* s, const struct SynthParams* p,
+                        float breath) {
+  float wave = synth_bore_read(s, s->bore_len);
+
+  // Half the trip's losses on the way down the tube, and half on the way
+  // back, so the tap in the middle is the wave that reached the open end
+  // rather than the one just injected at the embouchure.
+  s->bore_lp[0] += (1 - s->bore_lp_a) * (wave - s->bore_lp[0]);
+  wave = s->bore_lp[0] * s->bore_lp_norm;
+  float at_end = wave;
+  s->bore_lp[1] += (1 - s->bore_lp_a) * (wave - s->bore_lp[1]);
+  wave = s->bore_lp[1] * s->bore_lp_norm;
+
+  // The open end inverts, and the tube has nothing to say below its own
+  // fundamental.  The high-pass is not a nicety.  tanh is concave on the side
+  // the jet sits, so an oscillation across it does not average to its value
+  // at rest however carefully `bore_t0` is subtracted -- it leaves an offset
+  // that grows with the amplitude, the loop passes it, and left alone it
+  // walks the jet off into saturation and the note stops.  One stage is not
+  // enough either: with one, a mode a tenth of the way below the note sits
+  // over the threshold and takes the voice over, which measured as the top of
+  // the range playing a steady 50Hz instead of what was asked for.
+  wave = -wave;
+  for (int k = 0; k < 2; k++) {
+    float y = wave - s->bore_hp_x[k] + s->bore_hp_r * s->bore_hp_y[k];
+    s->bore_hp_x[k] = wave;
+    s->bore_hp_y[k] = y;
+    wave = y * s->bore_hp_norm;
+  }
+
+  // Turbulence where the air crosses the embouchure.  A waveguide is silent
+  // until something disturbs it, so this is what the note grows out of.
+  float eta = wave + p->jet_noise * synth_noise(s);
+
+  // The jet, and the amplitude limit.  tanh's slope falls away as the loop
+  // amplitude climbs, and the note settles where that slope has fallen far
+  // enough to bring the loop gain back to exactly 1 -- so how big the
+  // oscillation gets, and therefore how rich it is, is set by how far over
+  // the threshold the breath is.  `bore_t0` is subtracted so the jet adds no
+  // offset of its own for the high-pass to have to remove.
+  float v = breath * s->bore_slope_inv;
+  s->bore[s->bore_write] = -v * (tanhf(eta + p->jet_bias) - s->bore_t0);
+  s->bore_write = (s->bore_write + 1) % SYNTH_BORE_MAX;
+
+  // Scaled on the way out.  Not a level -- out_gain sets the level -- but a
+  // ceiling on how hard the saturator downstream is driven: at full breath
+  // the loop settles around 8, and a fifth of that puts the argument of the
+  // atan at 0.25, where it makes a third harmonic 51dB under the fundamental.
+  // Against a third partial the tube itself puts at -20dB that is nothing,
+  // which is the point.  Every harmonic in this voice is supposed to have
+  // come out of the jet.
+  return at_end * 0.2f;
 }
 
 float synth_process(struct Synth* s, const struct PitchHint* hint) {
@@ -1608,11 +1914,33 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   }
   s->drive_smoothed += smooth * (s->drive - s->drive_smoothed);
   s->fm_index_smoothed += smooth * (s->fm_index - s->fm_index_smoothed);
+  // The tube's length is a pitch, so it moves the way a pitch does rather
+  // than stepping once a control hop.  Set outright the first time, since
+  // sliding up from zero would sweep the note in from the top of the range.
+  if (s->bore_len <= 0) {
+    s->bore_len = s->bore_len_target;
+  } else {
+    s->bore_len += smooth * (s->bore_len_target - s->bore_len);
+  }
 
   if (s->amp < 1e-5f && !hint->voiced) {
     s->side = 0;
     return 0;
   }
+
+  // Where the note envelope gets applied.  Every voice but the waveguide is
+  // an oscillator that sounds whether or not anyone asked, so its envelope
+  // goes on at the bottom of this function; the waveguide's went in at the
+  // top, as breath, so the multiply at the bottom is 1 for it.
+  //
+  // That leaves the air below with nothing to fade it.  Measured before this
+  // split, `flute-jet` hissed through every rest at -48dB and then had the
+  // hiss cut off dead by the silence check above -- a 133dB step, eight times
+  // in ninety seconds of whistling.  So the air takes the envelope here
+  // instead, which is where it belonged anyway: on a flute the same breath
+  // makes the noise and the note.
+  float env = p->jet_drive > 0 ? 1.0f : s->amp;
+  float air_env = p->jet_drive > 0 ? s->amp : 1.0f;
 
   float f0 = exp2f(synth_pitch_log(s)) * synth_octave(s);
   float out = 0;
@@ -1620,6 +1948,51 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // here rather than reconstructed later because this is the only place the
   // copies exist separately -- one line down they are one signal.
   float spread = 0;
+  if (p->jet_drive > 0) {
+    // The envelope is the breath, and it goes in rather than being applied to
+    // what comes out.  Everything the envelope carries goes in here: the note
+    // starting and stopping, the articulation between tongued notes, and the
+    // settle onto a sustained tail.
+    //
+    // A note at full envelope is blown at `jet_drive`, and one at nothing
+    // falls back to SYNTH_BORE_REST -- air still moving, but not enough to
+    // sound.  The threshold of oscillation is at 1, which this crosses at
+    // 0.26 of the envelope, and that crossing is the note starting and
+    // stopping.  It is a real threshold rather than a fade: under it the tube
+    // makes no sound at all however much air is going past it, which is what
+    // a flute does and is why this voice has no `attack_s` worth the name.
+    // Compressed on the way in, and this curve is the one number in the
+    // voice with no physics behind it -- it is a measured compromise.
+    //
+    // It matters more than a curve usually does, because a waveguide near its
+    // threshold has almost no output at all: the whole musical range has to
+    // fit between speaking and the top of the dynamics, and there is not much
+    // room in there.  Straighten the curve and the voice gets its dynamics
+    // back but the quiet end falls under the threshold and stops dead;
+    // bend it further and the voice is reliable but barely responds to how
+    // hard it is played.  Measured against `flute-low` on the same material
+    // -- a 15dB crescendo on a held note, and the sustain tails in
+    // recordings/holding.f32, whose whistle averages 0.033 against this
+    // voice's level_full of 0.22:
+    //
+    //     exponent   crescendo   tail under the note   of the take sounding
+    //       0.50        4.5dB          -2.0dB                  68%
+    //       0.65        5.9dB          -4.3dB                  54%
+    //       0.80        7.4dB         -32.2dB                  32%
+    //       1.00        9.8dB          -8.1dB                  21%
+    //     flute-low    11.2dB          -3.8dB                  69%
+    //
+    // 0.65 tracks `flute-low`'s tail most closely and keeps more of the
+    // dynamics than 0.5 does.  What it costs is the quietest playing on an
+    // under-level input, where this voice stops and `flute-low` only gets
+    // quieter -- so it is more sensitive to the mic level than the rest of
+    // the table, and that is a real difference rather than a tuning fault.
+    // The direction of the curve is at least what the physics expects: what
+    // the loop gain follows is the speed of the jet, and jet speed goes as
+    // the square root of the pressure behind it.
+    out = synth_bore(s, p, SYNTH_BORE_REST +
+                     (p->jet_drive - SYNTH_BORE_REST) * powf(s->amp, 0.65f));
+  } else {
   for (int u = 0; u < s->unison; u++) {
     float base = f0 * s->detune[u];
     float voice = 0;
@@ -1682,6 +2055,7 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
 
     out += voice;
     spread += voice * s->pan[u];
+  }
   }
 
   // Drive before the envelope, so how dirty it sounds is set by how hard the
@@ -1796,7 +2170,7 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     // real crescendo -- 15dB of it on one held note -- the tone-to-noise
     // ratio does not move: 25.3dB at the quietest, 24.8dB at the loudest.
     // The air is made by the same jet as the note and scales with it.
-    out += air * p->breath * (0.9f + 0.15f * out);
+    out += air * p->breath * air_env * (0.9f + 0.15f * out);
   }
 
   // High-pass after the drive, since the drive is what puts energy back below
@@ -1823,8 +2197,8 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // exactly twice the mono output -- a stereo image that folds down without
   // anything cancelling, which for detuned copies is otherwise exactly what
   // goes wrong.
-  s->side = spread * drive_gain * p->stereo_width * s->amp * p->out_gain *
+  s->side = spread * drive_gain * p->stereo_width * env * p->out_gain *
             s->audibility_comp;
 
-  return out * s->amp * p->out_gain * s->audibility_comp;
+  return out * env * p->out_gain * s->audibility_comp;
 }

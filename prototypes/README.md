@@ -1,6 +1,7 @@
 # Voices
 
-Ten bass voices, all designed for **mono** through a QSC K10.2, and two leads.
+Ten bass voices, all designed for **mono** through a QSC K10.2, and three
+leads.
 Renders to listen to are in this directory (gitignored).
 
 ```
@@ -16,9 +17,17 @@ Renders to listen to are in this directory (gitignored).
   10: square            a plain hollow square
   11: flute             1 octave down, measured off a real flute
   12: flute-low         the same an octave lower -- alto/bass flute
+  13: flute-jet         the same instrument as a waveguide, not a spectrum
 ```
 
-`flute` is the odd one out and deliberately so: it is not a bass, it plays one
+`flute-jet` is the odd one out now: it is `flute-low` again, but as a jet-drive
+waveguide rather than as a measured spectrum, so nothing in its preset says
+what it should sound like.  See "The flute by physics" in the top-level README
+for the loop, for the two things that had to be given up to make it playable,
+and for where it beats the additive voice (the transients) and where it loses
+badly (the steady spectrum, by 9.6dB rms).
+
+`flute` is the odd one out among the rest and deliberately so: it is not a bass, it plays one
 octave down instead of four or five, and every number in it is measured
 against the flute recordings rather than designed.  It is also the only voice
 whose partials do not come from the pulse formula at all -- it reads them out

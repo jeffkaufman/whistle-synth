@@ -15,6 +15,12 @@
 #define SYNTH_UNISON 3
 #define SYNTH_MAX_HARMONICS 32
 
+// How long the waveguide's delay line is.  It holds one period of the note
+// being played, so this is the lowest note the voice can reach: 2048 samples
+// is 23Hz at 48kHz, well under the 98Hz `flute-jet` sees at the bottom of its
+// range with the fifth switched on.
+#define SYNTH_BORE_MAX 2048
+
 // How often the slow-moving controls (timbre, drive) are recomputed, in
 // samples.  Everything derived here is smoothed on the way out, so this only
 // has to be fast compared to how quickly a player changes anything.
@@ -290,6 +296,48 @@ struct SynthParams {
   float partial_hi[SYNTH_MAX_HARMONICS];
   float register_lo_hz, register_hi_hz;
 
+  // ------------------------------------------------- the waveguide ---
+  //
+  // A jet-drive physical model, and the one preset here that has no spectrum
+  // in it at all.  Above zero, `jet_drive` replaces the oscillator and
+  // everything that shapes it: there are no partial amplitudes to set,
+  // because what comes out is whatever a tube one wavelength long does when
+  // it is blown this hard.  See the waveguide block in synth_process.
+  //
+  // This is the loop's small-signal gain at full breath.  1.0 is exactly the
+  // threshold of oscillation -- the flute is silent -- and everything above
+  // it is how hard the player is blowing.  It is the only dynamics control
+  // the voice has, and deliberately: on a real flute how loud a note is, how
+  // rich it is and how fast it speaks are not three settings, they are one
+  // breath, and here they come off this one number the same way.
+  float jet_drive;
+
+  // How far the jet sits off the labium.  Centred, the jet is an odd function
+  // of the acoustic field and can only make odd harmonics, which is a
+  // clarinet; this is what puts the even ones in, and it is most of what
+  // sets the second partial.
+  float jet_bias;
+
+  // Where the bore's losses and its low cutoff sit, as multiples of the note
+  // rather than fixed in Hz.  That is a property of the tube and not a
+  // convenience: a low note is played on a longer tube, so the same loss per
+  // metre compounds over more of it, and the loop comes out the same shape at
+  // every pitch.
+  //
+  // It is also what makes the voice play in tune.  Fixed in Hz, a low note's
+  // partials run round a loop that barely damps them, come back with the
+  // wrong phase -- a one-pole's delay is not the same at every frequency --
+  // and the jet mixes them back down onto the fundamental and drags it flat.
+  // Measured that way the bottom of the range played 30-65 cents under the
+  // top's 10.  Tracking, the whole range and the whole of the dynamics land
+  // between +4.3 and +6.5 cents.
+  float jet_damp, jet_hp;
+
+  // Turbulence at the embouchure, as a fraction of the acoustic field.  A
+  // waveguide is silent until something disturbs it, so this is the thing the
+  // note grows out of and it is part of how fast the voice speaks.
+  float jet_noise;
+
   // How many dB the partials above the fundamental drop as the player goes
   // from soft to hard, on top of the tables above, which are the spectrum at
   // mid dynamics.  Positive means the tone gets *purer* when pushed, which is
@@ -405,6 +453,26 @@ struct Synth {
 
   // Two one-pole high-pass stages, for the low voices only.
   float hp_x[2], hp_y[2];
+
+  // The waveguide's tube, as a delay line, and the four filter stages that
+  // close the loop round it: two one-pole low-passes for the bore's losses
+  // and two high-pass stages for its low cutoff.
+  float bore[SYNTH_BORE_MAX];
+  int bore_write;
+  float bore_lp[2];
+  float bore_hp_x[2], bore_hp_y[2];
+  // How long the tube is, in samples, smoothed on the way in: it is a pitch,
+  // so it has to move the way a pitch does rather than stepping at the
+  // control rate.
+  float bore_len, bore_len_target;
+  // The loop's coefficients, and the gains each stage is divided back out by
+  // so that the round trip is lossless at the note being played.  Recomputed
+  // at the control rate, which is what makes them cheap enough to derive
+  // exactly rather than approximate.
+  float bore_lp_a, bore_hp_r, bore_lp_norm, bore_hp_norm;
+  // tanh at the jet's offset, and the reciprocal of its slope there.  Both
+  // depend only on the preset, so they are worked out when it is set.
+  float bore_t0, bore_slope_inv;
 
   float harmonic_amp[SYNTH_MAX_HARMONICS];  // smoothed
   float harmonic_target[SYNTH_MAX_HARMONICS];
