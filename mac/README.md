@@ -322,9 +322,10 @@ tab and are not stored per voice:
   would, so what you whistle is the fifth of what you hear rather than the
   root: a tune whistled in D comes out in G.
 * **Sustain held notes** makes a note you *hold* outlive the breath that made
-  it -- it slides onto the nearest real note, settles under itself, sits for
-  two seconds and fades.  Notes too short to have been meant that way are
-  untouched, so a fast phrase sounds the same either way.
+  it -- it slides onto the nearest real note, settles under itself and stays
+  there.  It does not time out: one short note ends the drone, a long one
+  moves it.  Notes too short to have been meant that way are untouched, so a
+  fast phrase sounds the same either way.
 
 Both correspond to `current-fifth` and `current-sustain` in the command-line
 build.  They belong to the player rather than to the patch: which voice you
