@@ -15,6 +15,10 @@
 #define SYNTH_UNISON 3
 #define SYNTH_MAX_HARMONICS 32
 
+// How many drawbars a drawbar voice has.  Nine, because that is how many a
+// Hammond has, and the footages they sound at are not a free choice.
+#define SYNTH_DRAWBARS 9
+
 // How often the slow-moving controls (timbre, drive) are recomputed, in
 // samples.  Everything derived here is smoothed on the way out, so this only
 // has to be fast compared to how quickly a player changes anything.
@@ -115,10 +119,39 @@ struct SynthParams {
   // thinning the lowest partial we chose to keep.  0 disables both.
   float min_partial_hz;
 
+  // The top end of whatever the voice is supposed to be coming out of, as the
+  // corner of a 12dB-an-octave rolloff.  0 disables it, which is what every
+  // voice that is not in a box does.
+  //
+  // The mirror of `min_partial_hz`, and in the same place for the same
+  // reason: after the saturator, because what the amp invents up there is a
+  // real part of what the speaker then has to reproduce and a per-partial
+  // rolloff would not see it.
+  float top_hz;
+
   // Input RMS that counts as playing as hard as you're going to.  Absolute,
   // so it assumes a calibrated mic level, but soft-kneed so being off by 2x
   // costs expression rather than usability.
   float level_full;
+
+  // Where the key contact makes, as a fraction of `level_full`.  Above it the
+  // voice sounds at exactly full however hard the player is blowing.
+  //
+  // That is what an organ is.  A tonewheel organ has no dynamics in it at
+  // all: the key is down or it is up, the tonewheel is turning either way,
+  // and how loud it comes out is somebody's foot on a pedal.  Every other
+  // voice here spends the player's breath on level, and this one has to spend
+  // it somewhere else -- see the leslie rates below.
+  //
+  // Below the contact it falls off as the square rather than switching off,
+  // and that is not a softening: it is what keeps the articulation.  A
+  // glottal stop is a 25ms dip that never silences the whistle, so if the
+  // level above the contact is flat, the dips between tongued notes are the
+  // only thing left that separates them.  A square law puts a dip to a tenth
+  // of the contact 40dB down, which is a note ending.
+  //
+  // 0 leaves the level as expression, which is what every other voice does.
+  float contact_level;
 
   // Note shaping: how the sound starts and stops.
   float attack_s;
@@ -261,6 +294,81 @@ struct SynthParams {
   // flute actually behaves -- on a contrabass flute the breath is nearly as
   // loud as the note.
   float breath;
+
+  // Drawbars, in the Hammond order and on the Hammond scale: 16', 5 1/3', 8',
+  // 4', 2 2/3', 2', 1 3/5', 1 1/3', 1', each 0 (silent) to 8 (full).  All
+  // zero means this is not a drawbar voice and nothing here costs anything.
+  //
+  // Setting any of them replaces the pulse series entirely, the way
+  // `octave_stack_hz` and the FM pair do: the partials are sine tones at
+  // fixed footages rather than a spectrum shaped by pwm/tilt/cutoff, which is
+  // exactly what a tonewheel organ is -- nine sines, mixed by nine sliders,
+  // and no filter anywhere in it.
+  //
+  // The footages are not all harmonics of the note.  16' is the octave below
+  // it and 5 1/3' the fifth above it, so the series is built on *half* the
+  // played note: partial n sits at n/2, the note itself is partial 2, and the
+  // drawbars land on partials 1, 3, 2, 4, 6, 8, 10, 12 and 16.  That is why
+  // `octave` still means the note you hear, as it does everywhere else -- see
+  // synth_partial_ratio.
+  //
+  // A step is 3dB, which is what the real ones measure, so 8 is unity and 0
+  // is off rather than -24dB.
+  float drawbars[SYNTH_DRAWBARS];
+
+  // The leslie: two rotating speakers in a box, a horn for the top and a drum
+  // for the bottom, turning at slightly different rates so the sound never
+  // repeats.  0 on the horn rate switches the whole thing off.
+  //
+  // Each rotor gives the partials in its half of the crossover two things at
+  // once, and they are one gesture rather than two effects: the speaker is
+  // loudest when it points at the listener, and its pitch is highest a
+  // quarter turn earlier, when it is moving towards them fastest.  So the
+  // amplitude runs on the sine of the rotor angle and the pitch on the
+  // cosine, in quadrature, which is what makes a leslie sound like something
+  // physically going round rather than like a tremolo and a vibrato that
+  // happen to share a rate.
+  //
+  // The rates the two rotors turn at when the player backs off and when they
+  // lean in, in the `_soft`/`_loud` sense the cutoff and the drive use: the
+  // level drives the *speed* here, because on a voice with `contact_level`
+  // set it no longer drives the volume.  0 on the horn's soft rate switches
+  // the whole thing off.
+  //
+  // This is the one expression a drawbar organ actually has.  An organist has
+  // two feet and one of them is on the leslie's speed switch, and going from
+  // moderate to very fast is what the instrument does instead of getting
+  // louder -- it is the gesture at the end of every phrase on every record
+  // made with one.  Here it is continuous rather than a switch, and it is on
+  // the breath, which is the one control a whistle has.
+  float leslie_horn_soft_hz;
+  float leslie_horn_loud_hz;
+  float leslie_drum_soft_hz;
+  float leslie_drum_loud_hz;
+  // How long the rotors take to come up to the speed being asked for.  They
+  // are a horn and a drum with mass, turned by a motor through a belt, and
+  // they do not arrive anywhere immediately; on a real cabinet the run-up is
+  // most of what the speed switch sounds like.
+  //
+  // It is also what makes this playable rather than twitchy.  The level moves
+  // a great deal *within* a note -- the scoop in, the body, the trail off --
+  // and a rotor that followed all of that would be a speed wobble on every
+  // note.  With inertia the rotors follow how hard the phrase is being
+  // played and ignore the shape of the notes in it.
+  float leslie_spin_s;
+  // Where the box's crossover puts a partial, in Hz.  Above this it comes out
+  // of the horn, below it out of the drum.
+  float leslie_crossover_hz;
+  // How deep each rotor's amplitude swing is, 0 to 1: 0.45 is a partial
+  // running between 0.55 and 1.45, which is 8.4dB peak to peak.
+  float leslie_horn_am;
+  float leslie_drum_am;
+  // And how far each one's doppler swings the pitch, in cents either way.  A
+  // horn on a 13cm radius at 400rpm reaches 5.4m/s, which is 1.6% and so 27
+  // cents; the drum turns slower and throws its sound off a rotating baffle
+  // rather than a moving mouth, so it moves much less.
+  float leslie_horn_cents;
+  float leslie_drum_cents;
 };
 
 struct Synth {
@@ -330,6 +438,9 @@ struct Synth {
   float note_age;      // seconds since the last onset
 
   float pwm_pos, growl_pos, wobble_pos, vibrato_pos;
+  // The two leslie rotors, free-running like the growl: which way the horn
+  // happens to be pointing when a note starts is not a property of the note.
+  float leslie_horn_pos, leslie_drum_pos;
   // Three free-running phases for the movement in a tail; see
   // SYNTH_TAIL_SHIMMER.  Separate accumulators rather than multiples of one,
   // so each can wrap without stepping the others.
@@ -357,6 +468,36 @@ struct Synth {
   // first copy and zero on the rest.
   float low_gain[SYNTH_UNISON];
 
+  // The drawbars, resolved once into what the partial loop actually needs:
+  // whether this is a drawbar voice at all, and the amplitude of each partial
+  // of the half-note series -- zero at the ten partials no drawbar sounds at.
+  // Worked out in synth_set_params rather than per partial per control hop,
+  // because a drawbar setting is a property of the preset and never moves.
+  bool drawbar;
+  float drawbar_amp[SYNTH_MAX_HARMONICS];
+
+  // How much of each partial comes out of the leslie's horn rather than its
+  // drum, 0 to 1, worked out at the control rate from where the partial
+  // currently sits against the crossover.  Read again per sample by the
+  // doppler, which is why it is kept rather than recomputed.
+  float leslie_mix[SYNTH_MAX_HARMONICS];
+
+  // How fast the rotors are actually turning, 0 at the soft rate and 1 at the
+  // loud one, chasing the target below with the mass the rotors have.  One
+  // number for both, because there is one player asking and the two rotors
+  // are switched together on a real cabinet.
+  float leslie_speed;
+  // And what they are turning towards, which is the dynamics *while a note is
+  // being played* and the last such value the rest of the time.
+  //
+  // Held rather than followed down, because a rest is not an instruction to
+  // slow down.  The dynamics keep falling as a note trails off -- that is
+  // what makes a voice darken as it dies -- and a rotor that followed them
+  // would coast down through every gap between phrases and spend the first
+  // second of the next phrase winding back up.  A real cabinet does not know
+  // the player has stopped: the switch is where it was left.
+  float leslie_target;
+
   // Per-note envelopes that decay towards zero, in octaves.
   float drop;
   float cutoff_env;
@@ -368,6 +509,8 @@ struct Synth {
 
   // Two one-pole high-pass stages, for the low voices only.
   float hp_x[2], hp_y[2];
+  // And two low-pass stages, for a voice that models the box it comes out of.
+  float lp_y[2];
 
   float harmonic_amp[SYNTH_MAX_HARMONICS];  // smoothed
   float harmonic_target[SYNTH_MAX_HARMONICS];

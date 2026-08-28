@@ -60,6 +60,23 @@ def ladder_gate(t):
     return min(1.0, u / 0.010, (LADDER_ON - u) / 0.020)
 LADDER_S = LADDER_STEPS * (LADDER_ON + LADDER_OFF)
 
+# One steady note at six levels, six seconds each, for the voices where the
+# input level controls something other than how loud the output is.  Constant
+# pitch on purpose: `drawbar` answers the breath with rotor speed, and the
+# only way to see that is to hold everything else still.  The levels bracket
+# `level_full` -- the detector reads them as 0.29 to 1.45 of it, with the
+# quietest under the gate and so silent.
+STEP_LEVELS = [0.04, 0.09, 0.15, 0.22, 0.30, 0.45]
+STEP_S = 6.0
+STEPS_S = len(STEP_LEVELS) * STEP_S
+def steps_freq(t):
+    return 1320.0
+def steps_amp(t):
+    return STEP_LEVELS[min(int(t / STEP_S), len(STEP_LEVELS) - 1)] / 0.30
+def steps_gate(t):
+    u = t % STEP_S
+    return steps_amp(t) * min(1.0, u / 0.020, (STEP_S - u) / 0.050)
+
 # How the pad is actually played: a few steady notes, seconds apart, with the
 # gaps left in so the hold and the decay can be heard doing their work.  The
 # last one is deliberately too short to arm anything.
@@ -114,7 +131,9 @@ def fast_gate(t):
     return 0.0
 
 which = sys.argv[1]
-if which == 'padfast':
+if which == 'steps':
+    buf = render(steps_freq, STEPS_S, steps_gate)
+elif which == 'padfast':
     buf = render(fast_freq, FAST_S, fast_gate)
 elif which == 'pad':
     buf = render(pad_freq, PAD_S, pad_gate)

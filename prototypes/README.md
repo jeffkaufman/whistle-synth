@@ -1,7 +1,7 @@
 # Bass voices
 
-Ten bass voices, all designed for **mono** through a QSC K10.2.
-Renders to listen to are in this directory (gitignored).
+Ten bass voices and two that are not basses, all designed for **mono**
+through a QSC K10.2.  Renders to listen to are in this directory (gitignored).
 
 ```
    1: bass              4 octaves down, the original
@@ -14,6 +14,8 @@ Renders to listen to are in this directory (gitignored).
    8: fm-sub            the same, 5 octaves down
    9: grind             asymmetric saturation, valve-style
   10: square            a plain hollow square
+  11: drawbar           tonewheel organ, 2 down, breath drives the leslie
+  12: drawbar-hi        the same organ an octave up, same leslie
 ```
 
 Plus two controls that are not voices: `current-fifth` and `current-sustain`,
@@ -32,7 +34,10 @@ The two pads are gone as well.  They worked -- the measurements below the fold
 in git history are all still true -- but a latching drone turned out not to be
 what this wants to be.  Their machinery went with them: `partial_mask`, the
 two bells, the drift, the sweep, the leslie, the snap and the fold, and the
-`PadLayer` mixer, none of which any other voice used.
+`PadLayer` mixer, none of which any other voice used.  `drawbar`'s leslie is
+not that leslie: the pads' was one LFO on the output, and this one is two
+rotors either side of a crossover, moving the partials in amplitude and in
+pitch at once.  Nothing was reused.
 
 ## Mono
 
@@ -107,6 +112,370 @@ breaks that.  Against `square`, which nulls its evens by construction:
 
 Those even harmonics land in the octave between the bass and the mandolin's
 low G, which was otherwise the emptiest part of the arrangement.
+
+## The drawbar organ
+
+`drawbar` is the eleventh voice and the only one that is not a bass: two
+octaves down, so a 550-3150Hz whistle lands at 137-787Hz, which is where a
+right hand plays.  It is a tonewheel organ through a leslie, and it is the one
+voice here where how hard you blow does not change how loud it is.
+
+**Nine sines at fixed footages, and no filter anywhere.**  Every other voice
+here shapes a harmonic series with `pwm`, `tilt` and a cutoff that opens up
+when the player leans in.  A Hammond cannot do any of that: it adds nine sine
+tones at fixed footages and the only thing that changes the timbre is a
+drawbar somebody pulls.  So `drawbars[9]` replaces the pulse series outright,
+the way `octave_stack_hz` and the FM pair do.
+
+The footages are not harmonics of the note.  16' is the octave *below* it and
+5 1/3' the fifth *above* it, so the series is built on half the played note:
+partial n sits at n/2, the note is partial 2, and the nine drawbars land on
+partials 1, 3, 2, 4, 6, 8, 10, 12 and 16.  That keeps `octave` meaning the
+note you hear, as it does for every other preset, and it is why this voice
+takes the per-partial phase path -- there is no oscillator whose multiples are
+0.5, 1, 1.5.
+
+The registration is 86 8643 222.  With the drive and the cabinet turned off
+the render is the drawbar setting exactly, which is the check that the
+mechanism is right:
+
+```
+   drawbar    16'  5 1/3'  8'    4'   2 2/3'  2'  1 3/5' 1 1/3'  1'
+   setting     8     6     8     6      4     3     2     2      2
+   wanted    0.0  -6.0   0.0  -6.0  -12.0 -15.0 -18.0 -18.0  -18.0
+   rendered  0.0  -6.0   0.0  -6.0  -11.9 -14.8 -17.8 -17.8  -17.8
+```
+
+The ten half-partials no drawbar sounds at come out 66-79dB down, which is the
+noise floor of the measurement.
+
+The one drawbar not set by what a Hammond does is the 5 1/3'.  It sounds a
+fifth above the note, and an organist playing chords hears that as the hollow
+weight the drawbar is famous for; a monophonic line played at 8 instead grows
+a second melody in parallel fifths, which fights whatever the arrangement is
+doing.  At 6 it reads as colour on one line rather than as two.
+
+### What the speaker said
+
+This voice was built and measured on headphones, and the first thing the
+K10.2 did was disagree with it.  It was harsh through the box and fine on the
+headphones, which is a spectrum problem rather than a mono one -- `drawbar`
+runs a single oscillator with `stereo_width` at zero, so its two channels are
+the same samples and folding it to one speaker cannot change anything.
+
+Octave-band energy over `recordings/whistling.f32`, in dB relative to each
+voice's own total:
+
+```
+              125    250    500     1k     2k     4k     8k
+  bass       -7.0  -16.0  -31.2  -42.8  -58.1  -66.9  -72.9
+  square     -8.8  -14.6  -24.1  -35.1  -48.3  -64.0  -70.5
+  drawbar    -5.0   -4.4   -6.7  -11.9  -14.1  -21.6  -46.4   before
+  drawbar    -4.8   -4.3   -6.6  -12.2  -18.7  -32.0  -64.2   now
+```
+
+Two things there, and only one of them is a fault.  Being 30-40dB above the
+basses at 2-4kHz is what a treble voice *is*, and it lands exactly where a
+K10.2 crosses to its horn and is at its most forward and most directive.
+Having anything at 8kHz is the fault: an organ is nine sine tones and the
+tallest of them is 6.3kHz, so everything up there was the saturator, and a
+real leslie could not have radiated it anyway.
+
+So the voice now models the box it is supposed to be coming out of --
+`top_hz`, 3.5kHz, two poles, after the drive because that is where the
+speaker sits in the real chain.  That is worth 4.6dB at 2k, 10dB at 4k and
+essentially all of the 8k.  The 1' drawbar went back to 2 at the same time:
+it had been bumped to 4 on the theory that a mono PA needs the presence, and
+the PA disagreed.
+
+The band table is also a reminder that this voice peaks at 125-250Hz where
+every other voice here peaks at 63.  The basses live under a K10.2's corner
+and this one sits right where the box is most efficient and where a room
+piles up, so it will want more care about placement than they do.
+
+Renders for comparing on the actual speaker are in this directory, all
+matched to -23.0 LUFS so the comparison is about tone and not level:
+`drawbar-ab-a.wav` is what it was, `-b` is what it now is, and `-c` and `-d`
+go further -- `-c` pulls the 16' and 5 1/3' back as well, `-d` takes the
+whole upper half down and the cabinet to 2.5kHz.
+
+### One volume
+
+An organ has no dynamics.  The key is down or it is up, the tonewheel is
+turning either way, and how loud it comes out is somebody's foot.  So this
+voice has a key contact -- `contact_level`, a tenth of `level_full`, 0.022 in
+absolute terms -- and above it the level is flat however hard the player
+blows.  Measured over held tones across a five-to-one range of breath:
+
+```
+   breath (of level_full)   0.29   0.48   0.71   0.97   1.45
+   rendered level          -20.9  -20.2  -19.6  -19.3  -18.9   dB
+   the same voice with
+     the contact off       -29.5  -25.2  -22.0  -19.5  -18.9
+```
+
+2.0dB against 10.6, and the 2 that is left is not the envelope: it is the amp
+being driven harder, which is an organ getting dirtier rather than louder.
+
+Below the contact the level falls off as the square rather than switching off,
+and that is not a softening -- it is what keeps the articulation.  A glottal
+stop is a 25ms dip that never silences the whistle, so with everything above
+the contact flat, those dips are the only thing left that separates two
+tongued notes.  A square law puts a dip to a tenth of the contact 40dB down,
+which is a note ending.  It is also *stricter* than the old curve where it
+matters: the spurious onsets the sustain has to defend against come in around
+1% of full level, where `level^0.8` gives -32dB and this gives -52.
+
+**The contact has to sit under the player's quietest note**, and where that is
+depends on the room.  It started at 0.20 of `level_full`, which is under
+everything in `recordings/whistling.f32`, and that was wrong as soon as the
+voice came out of a PA instead of headphones: a player whistles more quietly
+into a room that is already loud.  Read off the meter `run2-mac` prints, quiet
+playing through the K10.2 peaked at 0.0596 -- a note body of 0.028-0.042,
+against the peak-to-body ratio of 1.4-2.2 measured over the notes in the
+recording -- and all of that is *under* a contact at 0.044.  Every quiet note
+was on the skirt, ducked and moving with the breath, which is precisely what
+this parameter exists to prevent.  Note-to-note rendered level, p10 to p90:
+
+```
+   at the level the recording was made at, contact 0.10    2.7 dB
+   at the level it is actually played at,  contact 0.20    9.0 dB
+   at the level it is actually played at,  contact 0.10    4.0 dB
+```
+
+What that costs is the knee's protection against the detector finding a note
+in room noise: a hop at 0.01 came out 26dB down and now comes out 14dB down.
+Quiet playing being an organ is worth more than a quiet blip being 12dB
+quieter.
+
+The contact is a fraction of `level_full`, so the two move together.  If that
+is ever recalibrated -- and on the rig this was measured on it reads about
+1.4x low, since full playing there is a note body around 0.30 against
+`level_full`'s 0.22 -- the absolute contact moves with it, and it is the
+absolute number that has to stay under the quietest note.
+
+### Where the breath goes instead
+
+Into the leslie.  Whistle harder and the rotors spin up, which is not a
+substitute for the missing dynamics -- it is the expression the instrument
+actually has.  An organist ends a phrase by kicking the speed switch, and
+that gesture is on every record ever made with one.  Here it is continuous
+rather than a switch, and it is on the one control a whistle has.
+
+Two rotors: a horn for the top and a drum for the bottom, running 5.5-8.6Hz
+and 4.6-7.1Hz.  330 to 510rpm and 280 to 430, against a 122's tremolo at 400
+and 340 -- so the range sits around a real cabinet on fast and reaches past
+what the motor does, which is the point of it being a control instead of a
+switch.  Measured off the render, with the rate recovered from the pitch swing
+itself so this is what the rotor did rather than what it was asked for
+(`make-input.py steps`):
+
+```
+   breath (of level_full)   0.29   0.48   0.71   0.97   1.45
+   horn (Hz)                6.39   7.00   7.69   8.49   8.59
+   drum (Hz)                5.32   5.80   6.37   7.01   7.10
+```
+
+Over `recordings/whistling.f32`, which is a performance rather than a ladder,
+the horn runs 5.5 to 8.3Hz with a median of 6.2 and a p95 of 8.1.
+
+**The floor started at 3.9Hz** -- a genuinely moderate spin, which is what
+this control was originally for -- and came up because of where the player
+actually sits when the voice is coming out of a PA instead of headphones.
+They whistle more quietly, and quieter whistling parked the rotors at the
+bottom of the range.  Attenuating the recording to stand in for that, the
+horn's median over the notes played:
+
+```
+                    as recorded    -6dB    -9dB
+   floor at 3.9        5.0Hz        4.4     4.3
+   floor at 5.5        6.2          5.9     5.7
+```
+
+What it costs is the bottom of the range: this is now fast to very fast rather
+than moderate to very fast.  A leslie at 4Hz is a real thing, but it is not
+what this voice sounds like at its best, and a control whose bottom third is
+where the player lives is not a control.
+
+The floor is therefore a calibration to a player rather than a property of a
+cabinet.  If what has moved is the input level itself, `level_full` is the
+number that says so -- `run2-mac` prints the level while playing for exactly
+this reason -- and moving that fixes the key contact and the drive along with
+the rotors.  The contact is the half of this that bit first: at the level this
+is actually played at, 52% of the playing sat below a contact at 0.20 against
+30% at the level the recording was made at.  Lowering it to 0.10 takes those
+to 26% and 15% -- see "One volume" above.
+
+**The rate comes off the level straight**, not off the soft-kneed `dynamics`
+the drive and the cutoff use.  That knee is already at 0.47 by the quietest
+breath this voice will sound at, so on it the bottom half of the rotors' range
+was unreachable and the control ran from fast to very fast.
+
+**The rotors have mass.**  `leslie_spin_s` is 0.9s, which is roughly what a
+real cabinet takes to come up to tremolo, and it is what makes this playable:
+the level swings 20dB inside a single note -- the scoop in, the body, the
+trail off -- and a rotor that chased that would be a speed wobble on every
+note.  With inertia the rotors follow the phrase and ignore the notes in it.
+
+The target is also *held* whenever the player is not sounding a note, rather
+than followed down through the trail-off.  A rest is not an instruction to
+slow down: a real cabinet does not know the player has stopped, and the switch
+is where it was left.  Without this the rotors coasted down through every gap
+and spent the first second of the next phrase winding back up.
+
+### The leslie itself
+
+Each rotor gives the partials on its side of an 800Hz crossover an amplitude
+swing and a doppler swing at once, and the two are in quadrature: a speaker is
+loudest when it points at you and highest in pitch a quarter turn earlier,
+when it is moving towards you fastest.  Amplitude on the sine of the rotor
+angle, pitch on the cosine.  That is the difference between a leslie and a
+tremolo and a vibrato that happen to share a rate.
+
+The amplitude has to go *after* the power normalisation, which is the opposite
+of what the tail shimmer does.  The shimmer is applied before it so that the
+balance between partials moves and the level does not; here the level moving
+is the entire effect, and normalising it away would leave a rotating timbre
+and no rotation.
+
+**Every partial is shared across the crossover** rather than assigned to one
+rotor.  A hard assignment would put a partial parked near 800Hz between a
+rotor 1.45 times its level and one 0.78 times it, and flip it between them
+every time the player's pitch wandered a cent -- a flutter on that partial and
+nothing a leslie does.  The split is 12dB an octave, which is steep enough
+that the note itself belongs to the drum: on a 6dB slope the horn still has a
+third of the fundamental at the bottom of the range and swings it 27 cents,
+which reads as vibrato on the melody.  Measured over held notes at every rotor
+speed:
+
+```
+                        note       partial above 1kHz
+  pitch swing        6.8-8.0 cents      20-26 cents
+```
+
+The melody is steady and the colour around it turns, which is the right way
+round.  Amplitude, at the listener, is the two rotors crossing: 6-9dB peak to
+peak depending on where in the range the note sits, deepening as the line
+climbs because more of the voice is in the horn up there.
+
+### The amp
+
+Set by how much it fills in between the drawbars.  The saturator's products
+land on the same half-partial grid the drawbars sit on, so they can be
+measured against it.  The loudest of them, at 1.75 times the note, in dB under
+the note:
+
+```
+   drive_soft/loud/bias   backed off   leaning in
+   0.7 / 2.0 / 0.25         -20.6        -14.5
+   0.6 / 1.5 / 0.20         -22.0        -16.7    <- kept
+   0.4 / 0.9 / 0.15         -26.1        -21.9
+```
+
+A step louder turns a monophonic line into a fuzz voice; a step quieter is
+clean enough that the amp stops being part of the sound.  The 5dB between the
+two ends matters more here than on any other voice, because with the volume
+flat the drive and the rotor speed are the only two things the breath still
+reaches.
+
+### What is not modelled, and what is only half there
+
+The percussion (the decaying 2nd or 3rd harmonic on a note's attack), the
+internal vibrato/chorus scanner, and the chorale speed -- which would be this
+machinery at about a tenth the rate, and belongs in a second preset rather
+than in a control the breath is already using.
+
+The key click is reached for and only partly arrives.  The gate is 2ms, the
+fastest in the table, but over the onsets in `in-scale.f32` the rendered note
+takes 8-13ms to go from a tenth of its level to nine tenths, against `bass`'s
+11-19.  The player's own attack is what holds it up, not the gate.  A real
+click would be inside 2ms.
+
+### An octave up
+
+`drawbar-hi` is the same organ on the upper manual: one octave down instead of
+two, so a whistle lands at 275-1575Hz against `drawbar`'s 137-787.  Everything
+in the preset is `drawbar`'s except the octave, and the two numbers that are
+*not* copied are the point of the voice -- the crossover and the cabinet do
+not move.  They belong to the box the sound comes out of, and a box does not
+transpose when the organist plays further up the manual.
+
+Two things fall out of that, and they are the whole difference between the two
+voices.
+
+**The melody climbs into the horn.**  The crossover splits half and half at
+800Hz, so the bottom of this range is the drum's and the top is the horn's.
+Measured over the ladder, the fundamental's own pitch swing:
+
+```
+                bottom note        top note
+   drawbar      6.8 cents (165Hz)  6.2 cents (660Hz)
+   drawbar-hi   6.9 cents (330Hz)  23.3 cents (1320Hz)
+```
+
+`drawbar` never leaves the drum and this one crosses.  A leslie really does
+warble high organ notes; this is the register where that happens.
+
+**The upper drawbars run off the top of the cabinet.**  The 1' sits at eight
+times the note, which up here is 2.2-12.6kHz against a 3.5kHz corner, so it is
+22dB down at the top of the range.  In octave bands this voice is `drawbar`
+shifted up one band below 1kHz and progressively less than that above it --
+1.4dB short at 2k, 3.8 at 4k, 6.9 at 8k.  Playing a real one high sounds
+darker for the same reason: the box stops helping.
+
+It is still brighter in absolute terms (-14.0 at 2k and -23.1 at 4k against
+`drawbar`'s -19.4 and -32.4), because an octave up is an octave up.  That is
+the band a PA horn is most forward in, so if this one turns out harsh where
+`drawbar` is not, the registration is the thing to change and not the cabinet.
+
+### The cabinet and the loudness compensation
+
+`top_hz` is applied after the saturator, so it cannot be part of the partial
+amplitudes -- which means the audibility weighting that holds a voice's
+loudness steady across its range could not see it.  The whole spectrum climbs
+against a corner that does not move, so the filter takes progressively more
+off as the line goes up, and the compensation was holding the *unfiltered*
+level steady while the filtered one tilted.  `drawbar-hi` is where that became
+obvious, because it is an octave closer to the corner.
+
+The fix is one multiply: the weighting now includes the filter's own power
+response.  Ladder spread, bottom of the whistle range to the top:
+
+```
+                    before   after
+   drawbar           1.0dB    0.5dB
+   drawbar-hi        2.2      0.7
+```
+
+Nothing else in the table sets `top_hz`, so nothing else moved -- the ten bass
+voices render bit-identically across the change.
+
+### Loudness
+
+The table's usual match -- equal LUFS through the K10.2 model over
+`recordings/whistling.f32` -- landing at -23.0 against the rest of the table's
+-22.4 to -23.1, at 0.27 peak against `subbass`'s 0.82.
+
+The match means less here than it does elsewhere, and it is worth knowing why.
+Every other voice's loudness follows the playing, so matching the integral
+matches the whole curve.  This one is flat, so the integral is all there is.
+On a ladder of notes played at one level it therefore measures about 3dB under
+the rest of the table -- the same voice on material with no dynamics in it,
+where the others are all at their loudest and this one is where it always is.
+Over a real performance they land together, which is the thing that has to be
+true when the player changes voice mid-set.
+
+Across pitch it is the flattest voice here:
+
+```
+                660    933   1320   1867   2640    spread
+  drawbar     -20.0  -19.9  -19.9  -20.3  -20.4      0.5
+  drawbar-hi  -19.8  -19.8  -20.1  -20.5  -20.4      0.7
+```
+
+That is not the audibility compensation working hard.  It is a voice whose
+lowest partial is 69Hz never asking it for anything -- plus the correction
+above, which is what took these from 1.0 and 2.2.
 
 ## The fifth
 
@@ -720,7 +1089,15 @@ Fitting it to the real filters was worth 1-2dB on half the table.
   fm-sub      -17.6  -17.6  -17.2  -16.5  -15.9      1.7    0.59
   grind       -16.8  -17.2  -17.2  -16.9  -16.8      0.4    0.57
   square      -19.1  -17.2  -16.5  -16.2  -16.0      3.1    0.70
+  drawbar     -20.0  -19.9  -19.9  -20.3  -20.4      0.5    0.27
+  drawbar-hi  -19.8  -19.8  -20.1  -20.5  -20.4      0.7    0.27
 ```
+
+`drawbar` sits about 3dB under the rest of that table and is matched to them
+all the same: it is the one voice with no dynamics, so on a ladder played at
+one level the others are at their loudest and it is where it always is.  The
+match is the integral over a real performance, where they land together.  See
+"The drawbar organ" above.
 
 Every voice lands on -17.0 LUFS averaged across the range.  What is left is at
 660Hz, the very bottom of what the detector covers: `bass`, `808`, `square`
@@ -774,6 +1151,7 @@ the pads.
   make zeros2-offline
   python3 prototypes/make-input.py glide > prototypes/in-glide.f32
   python3 prototypes/make-input.py scale > prototypes/in-scale.f32
+  python3 prototypes/make-input.py steps > prototypes/in-steps.f32
   ./zeros2-offline <voice> 9 5 < prototypes/in-scale.f32 > /tmp/o.f32
   ffmpeg -y -f f32le -ar 48000 -ac 1 -i /tmp/o.f32 out.wav
 ```

@@ -553,6 +553,321 @@ static const struct SynthParams presets[] = {
     .glide_s = 0.003f,
     .out_gain = 0.493f,
   },
+  {
+    // A drawbar organ through a leslie on fast, and the first voice here that
+    // is not a bass.  Nine sine partials at the footages a Hammond's drawbars
+    // sound at, two rotors swinging their amplitude and their pitch, and a
+    // valve amp between them.
+    //
+    // Two octaves down, which lands a 550-3150Hz whistle at 137-787Hz: C#3 to
+    // G5, the register a right hand plays in.  That is where the drawbars
+    // have room -- the 16' sits an octave under the note and the 1' three
+    // octaves over it, so the voice occupies five octaves from wherever the
+    // note is, and one octave down would put its top above the whistle that
+    // asked for it.
+    //
+    // Nothing here is a filter, and that is the point.  Every other voice in
+    // this table gets brighter when the player leans in; a tonewheel organ
+    // cannot, because there is no filter anywhere in it and the only thing on
+    // the instrument that changes the timbre is a drawbar somebody has to
+    // stop and pull.
+    //
+    // It does not get louder either -- see `contact_level`.  So the breath
+    // has to go somewhere, and where it goes is the leslie: whistle harder
+    // and the rotors spin up.  That is not a substitute for the missing
+    // dynamics, it is the expression the instrument actually has; an organist
+    // ends a phrase by kicking the speed switch, not by playing louder.
+    .name = "drawbar",
+    .octave = 0.25f,
+    // 86 8643 222, which is a full registration with the fifth pulled back:
+    // 16', 8' and 4' full for the weight, and a taper above them.
+    //
+    // The 1' was at 4 to begin with, on the theory that two octaves down puts
+    // it at 1.1-6.3kHz and that is where a mono PA needs a lead to live.  On
+    // headphones that was right and on the K10.2 it was wrong -- see `top_hz`
+    // -- so it is back on the taper where the other upper drawbars are.  The
+    // theory was about a speaker and should have been settled on one.
+    //
+    // The 5 1/3' is the one drawbar set by what this instrument is rather
+    // than by what a Hammond does.  It sounds a fifth *above* the note, and
+    // an organist playing chords hears that as the hollow, slightly out-of-
+    // tune weight the drawbar is famous for; a monophonic line played at 8
+    // instead grows a second melody in parallel fifths, which fights whatever
+    // the arrangement is doing.  At 6 it is 6dB under the note and reads as
+    // colour on one line rather than as two.
+    .drawbars = { 8, 6, 8, 6, 4, 3, 2, 2, 2 },
+    // Sixteen, because the 1' drawbar is partial 16 of the half-note series
+    // and there is nothing above it.  Ten of the sixteen are silent, which
+    // costs a multiply each and is what buys the footages coming out exactly
+    // where a drawbar puts them.
+    .harmonics = 16,
+    // One tone generator.  A Hammond's ninety-one tonewheels all turn off one
+    // shaft, so its partials cannot drift against each other at all -- what
+    // moves in this sound is the leslie, and detuning would be a different
+    // instrument.
+    .unison = 1, .detune_cents = 0.0f,
+    // 330rpm to 510rpm on the horn, 280 to 430 on the drum, on how hard the
+    // player is blowing.  A 122's tremolo is 400 and 340, so this range sits
+    // around a real cabinet on fast and reaches past what the motor does,
+    // which is the point of it being a control instead of a switch.
+    //
+    // The floor started at 3.9Hz, a genuinely moderate spin, and came up
+    // because of where the player actually sits when the voice is coming out
+    // of a PA rather than headphones: they whistle more quietly, and quieter
+    // whistling was landing the rotors at the bottom of the range and leaving
+    // them there.  Simulated by attenuating recordings/whistling.f32, the
+    // horn's median over the notes played:
+    //
+    //     as recorded    -6dB    -9dB
+    //        5.0Hz       4.4     4.3     (floor at 3.9)
+    //        6.3         5.8     5.7     (floor at 5.5)
+    //
+    // What that costs is the bottom of the range: this is now fast to very
+    // fast rather than moderate to very fast.  A leslie at 4Hz is a real
+    // thing but it is not what this voice sounds like at its best, and a
+    // control whose bottom third is where the player lives is not a control.
+    //
+    // The floor is therefore a calibration to a player rather than a property
+    // of a cabinet.  If the input level itself is what has moved, `level_full`
+    // is the number that says so -- `run2-mac` prints the level while playing
+    // for exactly this reason -- and it would fix the contact and the drive
+    // along with the rotors.
+    //
+    // At every speed the two rates are deliberately not a ratio of small
+    // integers, so the rotors drift through each other with a period of about
+    // a second.  That beat is most of why a leslie does not sound like a
+    // tremolo, and it survives the speed moving because both ends are set
+    // that way.
+    //
+    // Measured off the render, against held tones at a fifth of full level
+    // through to half again over it -- the horn rate recovered from the pitch
+    // swing itself, so this is what the rotor actually did and not what it
+    // was asked for:
+    //
+    //     breath   0.29  0.48  0.71  0.97  1.45   of level_full
+    //     horn     6.39  7.00  7.69  8.49  8.59   Hz
+    //     drum     5.32  5.80  6.37  7.01  7.10
+    //
+    // And over recordings/whistling.f32, which is a real performance rather
+    // than a ladder: 5.5 to 8.3Hz, median 6.2, p95 8.1.  Attenuated 6dB, to
+    // stand in for a player who has backed off because the PA is doing the
+    // work, 5.5 to 7.5 with a median of 5.9 -- quieter playing now moves the
+    // rotors less rather than parking them.
+    .leslie_horn_soft_hz = 5.5f, .leslie_horn_loud_hz = 8.6f,
+    .leslie_drum_soft_hz = 4.6f, .leslie_drum_loud_hz = 7.1f,
+    // The rotors' mass.  Long enough that the speed follows the phrase rather
+    // than the shape of each note -- the level swings 20dB inside one note
+    // and a rotor that chased it would be a wobble on every one -- and short
+    // enough to be a gesture: about two seconds to cross the range, which is
+    // roughly what a real cabinet takes to come up to tremolo.
+    .leslie_spin_s = 0.9f,
+    // The crossover a real cabinet uses, and every partial is *shared* across
+    // it rather than assigned to one rotor -- see the leslie block in
+    // update_controls.  What that comes to, measured over held notes at every
+    // rotor speed: the note itself swings 6.8-8.0 cents and the partials
+    // above 1kHz swing 20-26 of the horn's 27.  The melody is steady and the
+    // colour around it is turning, which is the right way round; a leslie
+    // that swung the fundamental with it would be a vibrato.
+    //
+    // It also means the effect deepens as the line climbs, because more of
+    // the voice is in the horn up there.  That happens in the room too.
+    .leslie_crossover_hz = 800.0f,
+    // 8.4dB peak to peak on the horn, 3.9 on the drum: a directional mouth
+    // going round is not the same thing as sound spilling off a rotating
+    // baffle, and the horn is the one that beams.  What reaches the listener
+    // is the two of them crossing, which measures 5.7-8.9dB peak to peak on a
+    // held note depending on where in the range it sits.
+    .leslie_horn_am = 0.45f, .leslie_drum_am = 0.22f,
+    // And the doppler that goes with it.  27 cents is what 13cm of radius at
+    // 400rpm actually comes to; the drum's mouth does not move -- the baffle
+    // in front of it does -- so it gets a fraction of that rather than the
+    // same number scaled by its rate.
+    .leslie_horn_cents = 27.0f, .leslie_drum_cents = 9.0f,
+    // The valve amp.  A drawbar organ is nine sines and would be an entirely
+    // clean sound without one; every record anybody thinks of when they think
+    // of this instrument is that sound pushed into a preamp.  The bias is
+    // what puts even harmonics in -- see drive_bias -- which here means the
+    // saturator fills the gaps between drawbars rather than only reinforcing
+    // the footages that are already there.
+    //
+    // Set by how much it fills them.  The products land on the same
+    // half-partial grid the drawbars sit on, so they can be measured against
+    // it.  The loudest of them sits at 1.75 times the note; over held tones
+    // at a fifth of full level and at full, in dB under the note:
+    //
+    //     0.7 / 2.0 / 0.25   -20.6   -14.5
+    //     0.6 / 1.5 / 0.20   -22.0   -16.7   <- this
+    //     0.4 / 0.9 / 0.15   -26.1   -21.9
+    //
+    // A step louder turns a monophonic line into a fuzz voice; a step quieter
+    // is clean enough that the amp stops being part of the sound.  The 5dB
+    // between the two ends matters more here than on any other voice in the
+    // table, because it is one of only two things the player's breath still
+    // reaches -- the volume is not one of them.
+    .drive_soft = 0.6f, .drive_loud = 1.5f, .drive_bias = 0.20f,
+    // Unused by a drawbar voice, and set to what `fm` and `octaveless` set
+    // them to for the same reason: they are divisors in a branch this voice
+    // does not take.
+    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
+    // The cabinet.  A leslie is a horn driver and a wooden box; nine sine
+    // partials running to 6.3kHz with a saturator on top of them is a
+    // full-range signal, and no organ has ever sounded like one.
+    //
+    // It went in because of the speaker, which is the only place it could
+    // have come from.  On headphones this voice was right; through the
+    // K10.2 -- where the horn takes over around 2kHz and is at its most
+    // forward -- it was harsh.  Measured over recordings/whistling.f32, in
+    // octave bands relative to each voice's own total:
+    //
+    //              125    250    500     1k     2k     4k     8k
+    //   bass       -7.0  -16.0  -31.2  -42.8  -58.1  -66.9  -72.9
+    //   square     -8.8  -14.6  -24.1  -35.1  -48.3  -64.0  -70.5
+    //   drawbar    -5.0   -4.4   -6.7  -11.9  -14.1  -21.6  -46.4  (before)
+    //   drawbar    -4.8   -4.3   -6.6  -12.2  -18.7  -32.0  -64.2  (now)
+    //
+    // A treble voice belongs 30dB above the basses up there and that is not
+    // the problem; 8kHz energy from an organ is.  3.5kHz takes 4.6dB off the
+    // 2k octave, 10 off the 4k, and effectively all of the 8k, which is the
+    // band the saturator was filling and nothing in the instrument ever did.
+    .top_hz = 3500.0f,
+    .level_full = 0.22f,
+    // The key contact, at a tenth of full level -- 0.022 in absolute terms.
+    // Above it the organ is at exactly one volume and the breath is spending
+    // itself on the rotors instead.  What is below it is the scoop into a
+    // note, the trail out of it, and the dips between tongued ones, which is
+    // exactly the material that should still be moving.
+    //
+    // Measured over held tones across a five-to-one range of breath, the
+    // rendered level moves 2.0dB with the contact and 10.6dB with it off.
+    // The 2dB that is left is not the envelope -- it is the amp being driven
+    // harder, which is a real organ getting dirtier rather than louder.
+    //
+    // It started at 0.20 and came down when the voice met a PA, which is the
+    // second thing the speaker corrected about this preset and the one that
+    // mattered more.  A player whistles more quietly into a room that is
+    // already loud: measured off the meter `run2-mac` prints, quiet playing
+    // there peaked at 0.0596, which is a note body of 0.028-0.042 -- the
+    // whole of it *under* a contact sitting at 0.044.  So every quiet note
+    // was on the square-law skirt, ducked and moving with each wobble of the
+    // breath, which is the exact opposite of what this parameter is for.
+    // Note-to-note rendered level over the recording attenuated to that
+    // level, p10 to p90:
+    //
+    //     contact 0.20 (0.044)    9.0 dB
+    //     contact 0.10 (0.022)    4.0 dB
+    //     ...and 2.7dB over the recording at the level it was made at
+    //
+    // What it costs is the protection the knee gives against the detector
+    // finding a note in room noise: a hop at 0.01 came out 26dB down and now
+    // comes out 14dB down.  That is the trade, and quiet playing being an
+    // organ is worth more than a quiet blip being 12dB quieter.
+    //
+    // This is a fraction of `level_full`, so the two move together: if that
+    // is ever recalibrated the absolute contact moves with it, and it is the
+    // absolute number -- comfortably under the player's quietest note body --
+    // that has to stay true.
+    .contact_level = 0.10f,
+    // The fastest gate in the table, and it is reaching for the key click: a
+    // Hammond's click is the contacts making at whatever phase the tonewheels
+    // happen to be at, and a 2ms gate on nine free-running sines is that
+    // mechanism exactly -- a broadband transient, because the partials arrive
+    // in whatever phase relationship they were already in, and different on
+    // every note for the same reason.
+    //
+    // How much of it survives being played by a whistle is another question,
+    // and the measurement is worth having before believing the paragraph
+    // above.  Over the onsets in prototypes/in-scale.f32 the rendered note
+    // takes 8-13ms to go from a tenth of its level to nine tenths, against
+    // `bass`'s 11-19: the gate is no longer what is holding it up, the
+    // player's own attack is.  A real click would be inside 2ms.  What this
+    // buys is the quickest onset the input allows, which is the most of one
+    // this instrument can have.
+    .attack_s = 0.002f, .release_s = 0.015f,
+    .articulation_s = 0.012f, .glide_s = 0.005f,
+    // Much less tail movement than the rest of the table, because the leslie
+    // is already moving everything: the shimmer exists so that a sustained
+    // note is not an organ note held still, and this voice's problem is the
+    // opposite one.
+    .shimmer_depth = 0.12f,
+    // The table's usual match: equal LUFS through the K10.2 model, measured
+    // over recordings/whistling.f32, which lands this at -23.1 against the
+    // rest of the table's -22.4 to -23.1.  It reaches 0.27 peak doing it,
+    // against the 0.82 `subbass` needs -- a voice whose lowest partial is
+    // 69Hz does not spend headroom on excursion nobody hears.
+    //
+    // The match is worth 0.6dB less here than it is anywhere else, and it is
+    // worth knowing why.  Every other voice's loudness follows the playing,
+    // so matching the integral matches the whole curve; this one is flat, so
+    // the integral is the only thing there is to match.  On a ladder of notes
+    // all played at one level it therefore measures about 3dB under the rest
+    // of the table -- the same voice on material with no dynamics in it,
+    // where the others are all at their loudest and this one is where it
+    // always is.  Over a real performance they land together, which is the
+    // thing that has to be true when the player changes voice mid-set.
+    //
+    // Across pitch it is among the flattest things in the table: 1.0dB from
+    // the bottom of the whistle to the top, against `square`'s 3.1.  That is
+    // not the audibility compensation working hard, it is a voice with
+    // nothing under the cabinet's corner never asking it for anything.  The
+    // 1.0 is `top_hz`, which takes more off a high note than a low one.
+    .out_gain = 0.242f,
+  },
+  {
+    // The same organ an octave up: a 550-3150Hz whistle lands at 275-1575Hz
+    // against `drawbar`'s 137-787.  One octave down rather than two, which is
+    // an upper manual against a lower one -- where a solo is played rather
+    // than where a left hand comps.
+    //
+    // Everything not listed here is `drawbar`'s, deliberately, and the two
+    // numbers that are not listed are the whole point of the voice: the
+    // crossover and the cabinet do not move.  They are properties of the box
+    // the sound comes out of, and a box does not transpose when the organist
+    // plays higher up the manual.  So this is not `drawbar` shifted -- it is
+    // the same instrument played an octave up *through the same leslie*, and
+    // what falls out of that is the difference between the two voices:
+    //
+    //   - The melody climbs into the horn.  The split is half and half at
+    //     800Hz, so a note at the bottom of this range is the drum's and a
+    //     note at the top is the horn's.  Measured over the ladder, the
+    //     fundamental swings 6.9 cents at 330Hz and 23.3 at 1320, against
+    //     `drawbar`'s 6.8 and 6.2 over its own range -- that voice never
+    //     leaves the drum and this one crosses.  High organ notes through a
+    //     leslie really do warble, and this is the register where it happens.
+    //   - The upper drawbars run off the top of the cabinet.  The 1' sits at
+    //     eight times the note, which up here is 2.2-12.6kHz against a 3.5kHz
+    //     corner, so it is 22dB down at the top of the range and audible only
+    //     at the bottom of it.  The registration is unchanged and the voice
+    //     is darker for its register anyway, which is what happens when you
+    //     play a real one high: the box stops helping.  In octave bands it is
+    //     `drawbar` shifted up one band below 1kHz and progressively less
+    //     than that above -- 1.4dB short at 2k, 3.8 at 4k, 6.9 at 8k.
+    //
+    // In absolute terms it still puts more into 2-4kHz than `drawbar` does
+    // (-14.0 and -23.1 against -19.4 and -32.4), because an octave up is an
+    // octave up.  That is the band a PA horn is most forward in, so if this
+    // one is harsh where `drawbar` is not, the registration is where to look
+    // and not the cabinet -- the cabinet is the thing that must not move.
+    .name = "drawbar-hi",
+    .octave = 0.5f,
+    .drawbars = { 8, 6, 8, 6, 4, 3, 2, 2, 2 },
+    .harmonics = 16,
+    .unison = 1, .detune_cents = 0.0f,
+    .leslie_horn_soft_hz = 5.5f, .leslie_horn_loud_hz = 8.6f,
+    .leslie_drum_soft_hz = 4.6f, .leslie_drum_loud_hz = 7.1f,
+    .leslie_spin_s = 0.9f,
+    .leslie_crossover_hz = 800.0f,
+    .leslie_horn_am = 0.45f, .leslie_drum_am = 0.22f,
+    .leslie_horn_cents = 27.0f, .leslie_drum_cents = 9.0f,
+    .drive_soft = 0.6f, .drive_loud = 1.5f, .drive_bias = 0.20f,
+    .cutoff_soft = 1.0f, .cutoff_loud = 1.0f, .rolloff_exp = 2.0f,
+    .top_hz = 3500.0f,
+    .level_full = 0.22f,
+    .contact_level = 0.10f,
+    .attack_s = 0.002f, .release_s = 0.015f,
+    .articulation_s = 0.012f, .glide_s = 0.005f,
+    .shimmer_depth = 0.12f,
+    .out_gain = 0.245f,
+  },
 };
 
 #define N_PRESETS ((int)(sizeof(presets)/sizeof(presets[0])))
@@ -568,9 +883,17 @@ const char* synth_preset_name(int preset) {
   return presets[preset].name;
 }
 
-// Where partial n actually sits, as a multiple of the fundamental.  The
-// octave stack isn't a harmonic series: its partial n is the nth octave.
-static float synth_partial_ratio(const struct SynthParams* p, int n) {
+// Where partial n actually sits, as a multiple of the note being played.  Two
+// voices are not a harmonic series: the octave stack's partial n is the nth
+// octave, and a drawbar voice counts in half-partials, because its 16'
+// drawbar sounds an octave *below* the note and its 5 1/3' a fifth above it.
+// The note itself is then partial 2, and the nine drawbars sit at 1, 3, 2, 4,
+// 6, 8, 10, 12 and 16.
+static float synth_partial_ratio(const struct Synth* s, int n) {
+  const struct SynthParams* p = s->params;
+  if (s->drawbar) {
+    return 0.5f * n;
+  }
   if (p->octave_stack_hz > 0) {
     return exp2f((float)(n - 1));
   }
@@ -579,9 +902,23 @@ static float synth_partial_ratio(const struct SynthParams* p, int n) {
 
 // Whether the partials are far enough off the harmonic series that the
 // Chebyshev recurrence can't reach them and each one needs its own phase.
-static bool synth_needs_partial_phase(const struct SynthParams* p) {
-  return p->stretch > 0 || p->octave_stack_hz > 0;
+// Half-partials are exactly that: the recurrence walks 1, 2, 3... of whatever
+// the oscillator is at, and there is no oscillator here whose multiples are
+// 0.5, 1, 1.5.  A drawbar voice pays for its own phases anyway, since the
+// leslie moves the horn's partials and the drum's by different amounts.
+static bool synth_needs_partial_phase(const struct Synth* s) {
+  return s->drawbar || s->params->stretch > 0 ||
+         s->params->octave_stack_hz > 0;
 }
+
+// Which partial of the half-note series each drawbar sounds at, in the order
+// they sit on the instrument: 16', 5 1/3', 8', 4', 2 2/3', 2', 1 3/5', 1 1/3',
+// 1'.  The second one out of order is not a mistake -- the 5 1/3' drawbar is
+// to the left of the 8' on a Hammond, and generations of players have the
+// registrations memorised in that order.
+static const int synth_drawbar_partial[SYNTH_DRAWBARS] = {
+  1, 3, 2, 4, 6, 8, 10, 12, 16
+};
 
 // White noise in -1..1.  Xorshift rather than an LCG, and not for the usual
 // reasons: the low bits of a power-of-two LCG cycle with period 2, 4, 8...,
@@ -621,8 +958,18 @@ static float synth_pitch_log(const struct Synth* s) {
 
 // Level mapped to the 0..1 the envelope runs on.  A slight compression, no
 // more, or the voice stops responding to how hard it is being pushed.
+//
+// Unless the voice has a key contact, in which case it is not a curve at all
+// but a switch with a knee under it: full above the contact however hard the
+// player blows, and falling as the square below so that what separates two
+// tongued notes still separates them.  See `contact_level`.
 static float synth_loudness_of(const struct Synth* s, float level) {
-  return fminf(1.0f, powf(fmaxf(0, level / s->params->level_full), 0.8f));
+  const struct SynthParams* p = s->params;
+  if (p->contact_level > 0) {
+    float u = fmaxf(0, level) / (p->contact_level * p->level_full);
+    return fminf(1.0f, u * u);
+  }
+  return fminf(1.0f, powf(fmaxf(0, level / p->level_full), 0.8f));
 }
 
 // How much a partial at this frequency contributes to what a listener hears,
@@ -811,6 +1158,67 @@ void synth_sanitize_params(struct SynthParams* p) {
   if (p->octave_stack_track > 0 && !(p->octave_stack_ref_hz > 1)) {
     p->octave_stack_ref_hz = 1000;
   }
+  // A drawbar is a nine-position slider and nothing else; anything outside
+  // 0-8 is an edit that got away rather than a louder organ.
+  for (int d = 0; d < SYNTH_DRAWBARS; d++) {
+    if (!(p->drawbars[d] >= 0)) {
+      p->drawbars[d] = 0;
+    }
+    if (p->drawbars[d] > 8) {
+      p->drawbars[d] = 8;
+    }
+  }
+  // A rotor swinging deeper than 1 would take a partial through zero and out
+  // the other side, which is a partial inverting rather than a speaker
+  // pointing away.  The crossover is a comparison and the drum is the side a
+  // zero would put everything on, so it has to be a real frequency.
+  if (p->leslie_horn_soft_hz > 0) {
+    if (!(p->leslie_crossover_hz > 0)) {
+      p->leslie_crossover_hz = 800;
+    }
+    if (!(p->leslie_horn_am >= 0)) {
+      p->leslie_horn_am = 0;
+    }
+    if (p->leslie_horn_am > 1) {
+      p->leslie_horn_am = 1;
+    }
+    if (!(p->leslie_drum_am >= 0)) {
+      p->leslie_drum_am = 0;
+    }
+    if (p->leslie_drum_am > 1) {
+      p->leslie_drum_am = 1;
+    }
+    if (!(p->leslie_horn_cents >= 0)) {
+      p->leslie_horn_cents = 0;
+    }
+    if (!(p->leslie_drum_cents >= 0)) {
+      p->leslie_drum_cents = 0;
+    }
+    // Rates are frequencies and the interpolation between them runs on a
+    // 0-to-1 speed, so a negative one would wind a rotor backwards.
+    if (!(p->leslie_horn_loud_hz >= 0)) {
+      p->leslie_horn_loud_hz = p->leslie_horn_soft_hz;
+    }
+    if (!(p->leslie_drum_soft_hz >= 0)) {
+      p->leslie_drum_soft_hz = 0;
+    }
+    if (!(p->leslie_drum_loud_hz >= 0)) {
+      p->leslie_drum_loud_hz = p->leslie_drum_soft_hz;
+    }
+    // A rotor with no mass at all is a rate that steps with the level, so
+    // this is clamped to something rather than allowed to be nothing.
+    if (!(p->leslie_spin_s > 0.01f)) {
+      p->leslie_spin_s = 0.01f;
+    }
+  }
+  // Above the contact the voice is at full, so a contact at zero level would
+  // put it at full on silence.
+  if (p->contact_level < 0) {
+    p->contact_level = 0;
+  }
+  if (p->top_hz < 0) {
+    p->top_hz = 0;
+  }
 }
 
 void synth_set_params(struct Synth* s, const struct SynthParams* params) {
@@ -838,6 +1246,25 @@ void synth_set_params(struct Synth* s, const struct SynthParams* params) {
     // The first copy carries the low partials alone, at the level the rest
     // get from `unison` copies summing in power.
     s->low_gain[u] = u == 0 ? sqrtf((float)unison) : 0.0f;
+  }
+
+  // The drawbars, resolved into the one thing the partial loop wants: an
+  // amplitude for every partial of the half-note series, zero at the ten it
+  // has no drawbar for.  A step is 3dB -- 2^(1/2) in amplitude -- with 8 at
+  // unity and 0 silent rather than 24dB down, because a drawbar pushed all
+  // the way in is a disconnected contact and not a quiet one.
+  s->drawbar = false;
+  for (int i = 0; i < SYNTH_MAX_HARMONICS; i++) {
+    s->drawbar_amp[i] = 0;
+  }
+  for (int d = 0; d < SYNTH_DRAWBARS; d++) {
+    float v = params->drawbars[d];
+    if (!(v > 0)) {
+      continue;
+    }
+    s->drawbar = true;
+    s->drawbar_amp[synth_drawbar_partial[d] - 1] =
+      exp2f(0.5f * (fminf(8.0f, v) - 8.0f));
   }
 }
 
@@ -908,6 +1335,22 @@ static void update_controls(struct Synth* s, bool playing) {
   float dynamics = 1 - expf(-2.2f * reach);
   s->dynamics = dynamics;
 
+  // What the leslie's rotors are being asked for, frozen the moment the
+  // player stops so that a gap between phrases does not read as a request to
+  // slow down.  See `leslie_target`.
+  //
+  // The level straight, not the soft-kneed `dynamics` the drive and the
+  // cutoff run on.  That knee exists so that a mis-set input level costs
+  // expression rather than usability, and it is the wrong shape here: it is
+  // already at 0.47 by the quietest breath this voice will sound at, so the
+  // whole bottom half of the rotors' range would be unreachable and the
+  // control would run from fast to very fast.  Measured over
+  // recordings/whistling.f32, straight level puts the median note at 5.5Hz
+  // and the loud end at 8.6, which is the moderate-to-very-fast this is for.
+  if (playing) {
+    s->leslie_target = fminf(1.0f, reach);
+  }
+
   // The depth is simply the settle, which is zero whenever a note is being
   // played or no tail was earned -- that is what keeps this out of the voice.
   // How the movement *arrives* is not this: it is the LFOs accelerating from
@@ -955,7 +1398,7 @@ static void update_controls(struct Synth* s, bool playing) {
     active = SYNTH_MAX_HARMONICS;
   }
   while (active > 1 &&
-         f0 * synth_partial_ratio(p, active) > s->sample_rate * 0.45f) {
+         f0 * synth_partial_ratio(s, active) > s->sample_rate * 0.45f) {
     active--;
   }
   s->harmonics_active = active;
@@ -966,7 +1409,7 @@ static void update_controls(struct Synth* s, bool playing) {
   int lowest = 1;
   if (p->min_partial_hz > 0) {
     while (lowest <= active &&
-           base * synth_partial_ratio(p, lowest) < p->min_partial_hz) {
+           base * synth_partial_ratio(s, lowest) < p->min_partial_hz) {
       lowest++;
     }
   }
@@ -979,11 +1422,19 @@ static void update_controls(struct Synth* s, bool playing) {
   for (int i = lowest - 1; i < active; i++) {
     int n = i + 1;
     float amp;
-    if (p->octave_stack_hz > 0) {
+    if (s->drawbar) {
+      // Nine sines at fixed footages and nothing else: no width, no tilt, no
+      // cutoff and no dynamics.  A tonewheel organ has no filter in it, and
+      // the only thing a player can do to the timbre while playing is pull a
+      // drawbar -- so what a whistle's dynamics reach here is the level and
+      // the valve amp downstream, which is exactly what an expression pedal
+      // reaches on the real instrument.
+      amp = s->drawbar_amp[i];
+    } else if (p->octave_stack_hz > 0) {
       // A bell fixed in Hz, not in partial number.  That is the whole trick:
       // the components move under a weighting that doesn't, so an octave of
       // played pitch slides the stack one slot and lands back on itself.
-      float hz = base * synth_partial_ratio(p, n);
+      float hz = base * synth_partial_ratio(s, n);
       float bell = p->octave_stack_hz;
       if (p->octave_stack_track > 0) {
         // Moves `track` octaves for every octave of played pitch.  At 0 this
@@ -1013,7 +1464,22 @@ static void update_controls(struct Synth* s, bool playing) {
     }
     s->harmonic_target[i] = amp;
     power += amp * amp;
-    heard += amp * amp * synth_audibility(base * synth_partial_ratio(p, n));
+    float hz = base * synth_partial_ratio(s, n);
+    // What the listener gets of this partial, which is not only the room and
+    // the ear: a voice that models the box it comes out of has already
+    // thrown some of it away.  `top_hz` is applied after the saturator and so
+    // cannot be part of the partial amplitudes, but leaving it out of the
+    // weighting here means the compensation holds the *unfiltered* level
+    // steady and the filtered one tilts -- which is audible as a voice
+    // getting quieter as it climbs, because the whole spectrum is moving up
+    // against a corner that is not moving.  Two one-poles, in power.
+    float weight = synth_audibility(hz);
+    if (p->top_hz > 0) {
+      float t = hz / p->top_hz;
+      float lp = 1 / (1 + t * t);
+      weight *= lp * lp;
+    }
+    heard += amp * amp * weight;
   }
   for (int i = active; i < SYNTH_MAX_HARMONICS; i++) {
     s->harmonic_target[i] = 0;
@@ -1034,6 +1500,47 @@ static void update_controls(struct Synth* s, bool playing) {
   }
   for (int i = lowest - 1; i < active; i++) {
     s->harmonic_target[i] *= 0.7f / norm;
+  }
+
+  // The leslie's amplitude half, and the one place in this file where a
+  // modulation deliberately goes *after* the normalisation rather than
+  // before it.  The tail shimmer is applied before, so that the balance
+  // between partials moves and the level does not; a leslie is the opposite
+  // instruction -- the level moving is the whole effect, and a speaker
+  // pointing away from you really is quieter.  Normalising it away would
+  // leave a rotating timbre and no rotation.
+  //
+  // Split at the box's crossover, so the horn's partials and the drum's swing
+  // at their own rates and drift through each other, which is what stops a
+  // leslie sounding like one tremolo.  It is also why this is worth doing per
+  // partial rather than on the output.
+  if (p->leslie_horn_soft_hz > 0) {
+    float horn = 1 + p->leslie_horn_am * sinf(2 * (float)M_PI * s->leslie_horn_pos);
+    float drum = 1 + p->leslie_drum_am * sinf(2 * (float)M_PI * s->leslie_drum_pos);
+    for (int i = 0; i < active; i++) {
+      // How much of this partial comes out of the horn: a 12dB-an-octave
+      // split at the crossover, half and half in power where it sits, rather
+      // than one rotor or the other.
+      //
+      // A hard assignment is what a crossover is not, and it would be
+      // audible: a partial parked near 800Hz would jump between a rotor 1.45
+      // times its level and one 0.78 times it every time the player's pitch
+      // wandered a cent across the line, which is a flutter on that partial
+      // and nothing a leslie does.  Sharing it is also what happens in the
+      // box -- near the crossover the note comes out of both speakers.
+      //
+      // Steep rather than gentle, because the two ends of it are doing
+      // different jobs.  On a 6dB slope the horn still has a third of the
+      // note itself at the bottom of the range, which swings the fundamental
+      // 27 cents and reads as vibrato on the melody; at 12dB the note is the
+      // drum's, the upper drawbars are the horn's, and only the partials
+      // actually near 800Hz are shared.
+      float x = base * synth_partial_ratio(s, i + 1) / p->leslie_crossover_hz;
+      float x2 = x * x;
+      float w = x2 * x2 / (1 + x2 * x2);
+      s->leslie_mix[i] = w;
+      s->harmonic_target[i] *= drum + w * (horn - drum);
+    }
   }
 
   // And how far under that the listener actually hears it.  A note low enough
@@ -1398,6 +1905,29 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   if (s->vibrato_pos >= 1) {
     s->vibrato_pos -= 1;
   }
+  // Free-running for the same reason the growl is, and more so: a leslie does
+  // not stop between notes, and starting the horn from the same angle on
+  // every note would be the one thing that gives away that it is not actually
+  // turning.  It does not stop between *phrases* either, which is why the
+  // speed chases the dynamics whether or not anything is sounding: the rotors
+  // coast down through a rest and are still coasting when the next note
+  // arrives, exactly as they would in the room.
+  if (p->leslie_horn_soft_hz > 0) {
+    s->leslie_speed += coeff(p->leslie_spin_s, s->sample_rate) *
+                       (s->leslie_target - s->leslie_speed);
+    float horn_hz = p->leslie_horn_soft_hz +
+      (p->leslie_horn_loud_hz - p->leslie_horn_soft_hz) * s->leslie_speed;
+    float drum_hz = p->leslie_drum_soft_hz +
+      (p->leslie_drum_loud_hz - p->leslie_drum_soft_hz) * s->leslie_speed;
+    s->leslie_horn_pos += horn_hz / s->sample_rate;
+    if (s->leslie_horn_pos >= 1) {
+      s->leslie_horn_pos -= 1;
+    }
+    s->leslie_drum_pos += drum_hz / s->sample_rate;
+    if (s->leslie_drum_pos >= 1) {
+      s->leslie_drum_pos -= 1;
+    }
+  }
 
   s->drop -= coeff(p->drop_s, s->sample_rate) * s->drop;
   s->cutoff_env -= coeff(p->cutoff_env_s, s->sample_rate) * s->cutoff_env;
@@ -1423,6 +1953,16 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   }
 
   float f0 = exp2f(synth_pitch_log(s)) * synth_octave(s);
+  // The rotors' doppler, per sample rather than at the control rate: this is
+  // a frequency, and a frequency that steps 1455 times a second has a 1455Hz
+  // buzz on it.  Unlike a gain there is nothing downstream smoothing it.
+  float doppler_horn = 1, doppler_drum = 1;
+  if (p->leslie_horn_soft_hz > 0) {
+    doppler_horn = exp2f(p->leslie_horn_cents / 1200.0f *
+                         cosf(2 * (float)M_PI * s->leslie_horn_pos));
+    doppler_drum = exp2f(p->leslie_drum_cents / 1200.0f *
+                         cosf(2 * (float)M_PI * s->leslie_drum_pos));
+  }
   float out = 0;
   // The same sum again, but weighted by where each copy sits.  Accumulated
   // here rather than reconstructed later because this is the only place the
@@ -1449,12 +1989,30 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
       float mod = sinf(2 * (float)M_PI * s->fm_phase[u]);
       voice = 0.7f * sinf(2 * (float)M_PI * s->phase[u] +
                           s->fm_index_smoothed * mod);
-    } else if (synth_needs_partial_phase(p)) {
+    } else if (synth_needs_partial_phase(s)) {
       // Partials aren't multiples of anything, so each one carries its own
       // phase and costs a sinf.
       for (int i = 0; i < s->harmonics_active; i++) {
         float* ph = &s->partial_phase[u][i];
-        *ph += base * synth_partial_ratio(p, i + 1) / s->sample_rate;
+        float hz = base * synth_partial_ratio(s, i + 1);
+        // The leslie's other half: the doppler shift of a speaker swinging
+        // towards you and away again.  On the cosine of the rotor angle where
+        // the amplitude is on the sine, because a horn is moving towards you
+        // fastest a quarter turn before it points at you -- see the leslie
+        // block in synth.h.  Each partial follows the rotor on its side of
+        // the crossover, so the horn's pitch swing and the drum's pull
+        // against each other instead of the whole voice wobbling as one,
+        // which is all a vibrato would be.
+        if (p->leslie_horn_soft_hz > 0) {
+          // Interpolated between the two rotors on the same crossover split
+          // the amplitude uses, so a partial shared between them is pulled
+          // about by both.  Linear in the multiplier rather than in cents,
+          // which for swings this small is the same thing to well under a
+          // cent and costs a multiply instead of an exp2f per partial.
+          float w = s->leslie_mix[i];
+          hz *= doppler_drum + w * (doppler_horn - doppler_drum);
+        }
+        *ph += hz / s->sample_rate;
         if (*ph >= 1) {
           *ph -= (int)*ph;
         }
@@ -1570,6 +2128,17 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
       s->hp_x[stage] = out;
       s->hp_y[stage] = y;
       out = y;
+    }
+  }
+
+  // And the top, for a voice that is meant to be coming out of something.  A
+  // leslie is a horn driver and a wooden box, not a full-range monitor, and
+  // nine sines running to 6kHz with a saturator on top of them is neither.
+  if (p->top_hz > 0) {
+    float a = 1 - expf(-2 * (float)M_PI * p->top_hz / s->sample_rate);
+    for (int stage = 0; stage < 2; stage++) {
+      s->lp_y[stage] += a * (out - s->lp_y[stage]);
+      out = s->lp_y[stage];
     }
   }
 
