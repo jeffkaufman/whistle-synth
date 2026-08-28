@@ -237,6 +237,17 @@
 // under 5 and J_n(x) is negligible past about x + 5.
 #define SYNTH_FM_TERMS 12
 
+// How close to the note the tone-hole lattice's corner may come, as a
+// multiple of the played pitch.  The lattice is fixed in Hz and the note is
+// not, so a high enough note walks up to its own cutoff -- and a real flute
+// played there does not speak, which is a true thing about the instrument and
+// an unacceptable thing for a voice to do to a pitch the player asked for.
+// The note itself is safe whatever this is, because the stage is divided
+// back out by its own gain at the played pitch and so the loop's gain at the
+// fundamental is `breath` wherever the corner sits.  This only stops the
+// corner from going under the note it is supposed to be shaping.
+#define SYNTH_LATTICE_MIN_RATIO 1.2f
+
 // What the waveguide's breath falls back to between notes, as a fraction of
 // the threshold of oscillation.
 //
@@ -736,26 +747,42 @@ static const struct SynthParams presets[] = {
     // 39ms to -6dB against the real 34-39 and `flute-low`'s 26.  Both are
     // slower for a low note than a high one, because the loop is a period
     // long and a low note's period is longer -- which is a thing the real
-    // instrument does and no number here asks for.  It is also one
-    // instrument at every pitch: every audible partial lands within 0.8dB
-    // of itself from 233Hz to 660Hz, where `flute` needed two measured
-    // tables and a register blend between them to be that.
+    // instrument does and no number here asks for.
     //
-    // What it misses is the spectrum, by 9.6dB rms against the measured
-    // table where the additive voice is exact by construction.  Most of that
-    // is one thing: a real flute's fourth partial sits 15dB under its third,
-    // and no smooth nonlinearity in a smooth loop makes a notch.  It is the
-    // same wall the pulse formula hit before the tables replaced it.
+    // It also has a register now, which is what `jet_lattice_hz` is for and
+    // is the one structural thing the first version of this voice got
+    // backwards.  It used to be the same instrument at every pitch -- every
+    // audible partial within 0.8dB of itself over the whole range -- and a
+    // real flute is emphatically not that.  Measured across thirteen held
+    // notes spanning 400 to 1084Hz, the frequency at which the real
+    // instrument's harmonic series has fallen 40dB under the fundamental
+    // does not move with the note: it sits at 2569Hz, fitted against pitch
+    // with a log-log slope of +0.057 where fixed-in-Hz predicts 0 and a
+    // fixed harmonic number predicts 1.  This voice measured +1.00, exactly
+    // the wrong end.  With the lattice it measures +0.66, and the second
+    // partial runs from -19.9dB at the bottom of the range to -25.2 at the
+    // top, where before it sat within a dB of -17.9 at every pitch.
+    //
+    // The spectrum is 6.8dB rms off the measured table, against 9.0 before
+    // and against an additive voice that is exact by construction.  What is
+    // left is still mostly one thing: a real flute's fourth partial sits
+    // 15dB under its third, and no smooth nonlinearity in a smooth loop
+    // makes a notch -- here the gap is 8.3dB at the bottom of the range.  It
+    // is the same wall the pulse formula hit before the tables replaced it.
     .name = "flute-jet",
     .octave = 0.25f,
     // Above 1 this is a waveguide, and it is the loop's small-signal gain at
-    // full breath: 1.0 is exactly the threshold of oscillation.  2.4 is a
-    // compromise between the two things one number here has to set at once.
-    // Held at a steady 1.35 the spectrum is closest to the measured flute --
-    // 6.7dB rms against 9.6 here -- but the loop then takes 84-120ms to build
-    // and nothing can be played on it; held at 3.6 it speaks in 30ms but is
-    // 11.5dB out and starting to buzz.
-    .jet_drive = 2.4f,
+    // full breath: 1.0 is exactly the threshold of oscillation.
+    //
+    // 2.4 before the lattice, and the two move together: the lattice takes
+    // the top off the spectrum, so the jet has to be driven harder for what
+    // is left under the corner to come out at the right level.  Swept against
+    // the corner, 3.2 is the bottom of the flat part -- 6.8dB rms at both
+    // 3.2 and 4.2, against 10.3 at 2.4 -- and the lower of the two is worth
+    // having because the higher one costs headroom and starts to buzz.  It
+    // speaks faster than 2.4 did at every pitch, which is the direction this
+    // voice has always needed to move.
+    .jet_drive = 3.2f,
     // How far the jet sits off the labium, which is what puts the even
     // harmonics in.  0.7 is what the second partial wants: it lands at
     // -18.9dB, against the -17.3 the measured table blends to at the loud end
@@ -772,6 +799,20 @@ static const struct SynthParams presets[] = {
     // 0.002 to 0.2, took 70ms down to 42.  The breath does that job, and this
     // only has to be enough to get the loop going.
     .jet_noise = 0.03f,
+    // The tone-hole lattice, and the only thing in this loop that stands
+    // still while the note moves -- see jet_lattice_hz in synth.h for the
+    // measurement behind it.
+    //
+    // 2569Hz is the real concert flute's, measured, and it is used here
+    // unchanged rather than halved for an instrument an octave down.  That
+    // looks wrong and is not: `flute-low` is `flute`'s measured spectrum
+    // played an octave lower with the measured numbers deliberately left as
+    // measured, so the spectrum this voice is being asked to match is the
+    // concert flute's.  The corner that reproduces it is therefore the
+    // concert flute's too.  Swept independently, the best fit landed at
+    // 2600Hz -- within 1% of the measured 2569 -- which is the check that
+    // this is the lattice and not a curve fit that happens to help.
+    .jet_lattice_hz = 2569.0f,
     // Near-linear, and for the same reason `flute` is: the saturator makes
     // harmonics, and every harmonic in this voice is supposed to have come
     // out of the jet.  It does not move with the dynamics here, because the
@@ -804,7 +845,11 @@ static const struct SynthParams presets[] = {
     .attack_s = 0.008f, .release_s = 0.025f,
     .articulation_s = 0.020f,
     .glide_s = 0.006f,
-    .out_gain = 2.057f,
+    // Re-matched after the lattice and the drive both moved: 2.057 before.
+    // Measured as LUFS over prototypes/in-ladder.f32 at full volume, this
+    // and `flute-low` agree to 0.00dB, with this one peaking at 0.373
+    // against 0.217 -- a near-sine carries more of its level in the peak.
+    .out_gain = 1.556f,
   },
 };
 
@@ -1157,6 +1202,9 @@ void synth_sanitize_params(struct SynthParams* p) {
     if (!(p->jet_noise >= 0)) {
       p->jet_noise = 0;
     }
+    if (!(p->jet_lattice_hz >= 0)) {
+      p->jet_lattice_hz = 0;
+    }
   }
 }
 
@@ -1194,6 +1242,11 @@ void synth_set_params(struct Synth* s, const struct SynthParams* params) {
   s->bore_t0 = tanhf(params->jet_bias);
   float slope = 1 - s->bore_t0 * s->bore_t0;
   s->bore_slope_inv = slope > 1e-3f ? 1.0f / slope : 1e3f;
+  for (int k = 0; k < SYNTH_LATTICE_POLES; k++) {
+    s->bore_lat[k] = 0;
+  }
+  s->bore_lat_a = 0;
+  s->bore_lat_norm = 1;
   // The tube is a different length for a different voice, so a length carried
   // over from the last one would be read once before the control rate caught
   // up.  Zero means "take the next one outright" -- see synth_process.
@@ -1336,8 +1389,24 @@ static void update_controls(struct Synth* s, bool playing) {
     s->bore_hp_r = r;
     s->bore_lp_norm = 1.0f / synth_pole_gain(a, w);
     s->bore_hp_norm = 1.0f / synth_hp_gain(r, w);
+    // The lattice, which is the one corner here that stands still while the
+    // note moves.  Clamped to stay above the note: a flute played above its
+    // own lattice cutoff does not speak, which is true of the instrument but
+    // is not a thing this voice may do to a pitch the player asked for.
+    float lat = 0, lat_delay = 0;
+    if (p->jet_lattice_hz > 0) {
+      float corner = fmaxf(p->jet_lattice_hz, SYNTH_LATTICE_MIN_RATIO * base);
+      lat = expf(-2 * (float)M_PI * corner / s->sample_rate);
+      s->bore_lat_a = lat;
+      s->bore_lat_norm = 1.0f / synth_pole_gain(lat, w);
+      lat_delay = SYNTH_LATTICE_POLES * synth_pole_delay(lat, w);
+    } else {
+      s->bore_lat_a = 0;
+      s->bore_lat_norm = 1.0f;
+    }
     float len = s->sample_rate / base -
-                2 * synth_pole_delay(a, w) - 2 * synth_hp_delay(r, w);
+                2 * synth_pole_delay(a, w) - 2 * synth_hp_delay(r, w) -
+                lat_delay;
     s->bore_len_target =
         fmaxf(4.0f, fminf((float)(SYNTH_BORE_MAX - 2), len));
 
@@ -1523,7 +1592,30 @@ static float synth_bore(struct Synth* s, const struct SynthParams* p,
   // rather than the one just injected at the embouchure.
   s->bore_lp[0] += (1 - s->bore_lp_a) * (wave - s->bore_lp[0]);
   wave = s->bore_lp[0] * s->bore_lp_norm;
+
+  // The tone-hole lattice, which sits at the far end of the tube because that
+  // is where the open holes are.  Two poles fixed in Hz: below the corner the
+  // holes reflect and the note stands in the bore; above it they stop
+  // reflecting, the wave runs off down the lattice, and nothing comes back.
+  //
+  // It is the only stage here that does not move with the note, and so the
+  // only thing that gives this voice a register -- see jet_lattice_hz.
+  if (s->bore_lat_a > 0) {
+    for (int k = 0; k < SYNTH_LATTICE_POLES; k++) {
+      s->bore_lat[k] += (1 - s->bore_lat_a) * (wave - s->bore_lat[k]);
+      wave = s->bore_lat[k] * s->bore_lat_norm;
+    }
+  }
+
+  // What the listener hears, tapped here rather than before the lattice
+  // because the sound leaves the instrument through those same open holes:
+  // whatever the lattice will not carry back up the tube it also will not
+  // radiate.  Tapped before it, the jet's harmonics reached the output having
+  // passed only one of the bore's two loss poles and none of the lattice at
+  // all, which is why a lattice put anywhere else in the loop changed the
+  // spectrum by two or three dB and left the comb standing.
   float at_end = wave;
+
   s->bore_lp[1] += (1 - s->bore_lp_a) * (wave - s->bore_lp[1]);
   wave = s->bore_lp[1] * s->bore_lp_norm;
 

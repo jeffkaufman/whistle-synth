@@ -21,6 +21,15 @@
 // range with the fifth switched on.
 #define SYNTH_BORE_MAX 2048
 
+// How many poles the tone-hole lattice is.  A row of tone holes is a periodic
+// structure rather than a single aperture, and a periodic structure has a stop
+// band with a sharp edge rather than a gentle corner, so an order above one is
+// the physical case rather than a convenience.  It is also what lets the
+// corner sit high enough to leave a low note's harmonics alone while still
+// cutting hard above it: at two poles the shape of the spectrum still moved
+// with the note (log-log slope +0.76, where the real flute is +0.06).
+#define SYNTH_LATTICE_POLES 4
+
 // How often the slow-moving controls (timbre, drive) are recomputed, in
 // samples.  Everything derived here is smoothed on the way out, so this only
 // has to be fast compared to how quickly a player changes anything.
@@ -338,6 +347,37 @@ struct SynthParams {
   // note grows out of and it is part of how fast the voice speaks.
   float jet_noise;
 
+  // The tone-hole lattice cutoff, in Hz, and the one thing in this loop that
+  // does *not* track the note.
+  //
+  // A flute is not a plain tube: it is a tube with a row of open holes down
+  // it, and that row behaves like a filter with a corner of its own.  Below
+  // the corner the open holes reflect and the note stands in the bore; above
+  // it they stop reflecting, the wave runs off down the lattice and radiates,
+  // and the bore supports nothing.  Where that corner sits is set by how big
+  // the holes are and how far apart -- the instrument's geometry -- so it
+  // stands still while the note moves, which is the opposite of `jet_damp`
+  // and `jet_hp` above and is why it is in Hz rather than in multiples.
+  //
+  // Measured across thirteen held notes in the recordings, spanning 400 to
+  // 1084Hz, the frequency at which the harmonic series has fallen 40dB under
+  // the fundamental sits at 2569Hz and does not move with the note: fitted
+  // against pitch in log-log it has a slope of +0.057, where fixed-in-Hz
+  // predicts 0 and a fixed harmonic number predicts 1.  Described as a
+  // frequency it scatters by 17 centi-octaves; described as a harmonic
+  // number, by 45.
+  //
+  // This is what gives the voice a register.  With every stage tracking the
+  // note the model came out the same shape at every pitch -- every audible
+  // partial within 0.8dB of itself over an octave and a half -- and a real
+  // flute is emphatically not that: it gets purer as it goes up, which is
+  // exactly what a fixed corner does to a note climbing towards it.  It is
+  // the same behaviour `flute-low` needs two measured tables and a register
+  // blend between them to express, here falling out of one number.
+  //
+  // 0 disables it, which leaves the loop as it was.
+  float jet_lattice_hz;
+
   // How many dB the partials above the fundamental drop as the player goes
   // from soft to hard, on top of the tables above, which are the spectrum at
   // mid dynamics.  Positive means the tone gets *purer* when pushed, which is
@@ -470,6 +510,10 @@ struct Synth {
   // at the control rate, which is what makes them cheap enough to derive
   // exactly rather than approximate.
   float bore_lp_a, bore_hp_r, bore_lp_norm, bore_hp_norm;
+  // The lattice's two poles, fixed in Hz rather than in multiples of the
+  // note, and the gain they are divided back out by at the played pitch.
+  float bore_lat[SYNTH_LATTICE_POLES];
+  float bore_lat_a, bore_lat_norm;
   // tanh at the jet's offset, and the reciprocal of its slope there.  Both
   // depend only on the preset, so they are worked out when it is set.
   float bore_t0, bore_slope_inv;

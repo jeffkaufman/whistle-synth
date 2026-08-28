@@ -24,8 +24,10 @@ Renders to listen to are in this directory (gitignored).
 waveguide rather than as a measured spectrum, so nothing in its preset says
 what it should sound like.  See "The flute by physics" in the top-level README
 for the loop, for the two things that had to be given up to make it playable,
-and for where it beats the additive voice (the transients) and where it loses
-badly (the steady spectrum, by 9.6dB rms).
+for the tone-hole lattice that gives it a register, and for where it beats the
+additive voice (the transients, and the breath noise, which is period-
+synchronous the way the real instrument's is and the additive voice's is not)
+and where it still loses (the steady spectrum, by 6.8dB rms).
 
 `flute` is the odd one out among the rest and deliberately so: it is not a bass, it plays one
 octave down instead of four or five, and every number in it is measured

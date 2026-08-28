@@ -542,8 +542,9 @@ One delay line and four filter stages, once round per period:
 ```
   the tube      a delay line, one period long
   the losses    two one-poles at 0.8 times the note
-  the cutoff    two high-pass stages at 0.5 times the note
+  the lattice   four one-poles at 2569Hz, fixed
   the open end  the sign flip
+  the cutoff    two high-pass stages at 0.5 times the note
   the jet       tanh of the acoustic field at the embouchure, offset
 ```
 
@@ -568,14 +569,82 @@ frequency checked; the high-pass term alone is worth 45 cents, because
 period wherever the note is.  Rendered, the voice plays +4.3 to +6.5 cents
 sharp across the whole range and the whole of its dynamics.
 
-**Both corners track the note rather than sitting fixed in Hz.**  That is a
-property of the tube and not a convenience -- a low note is played on a longer
-tube, so the same loss per metre compounds over more of it -- and it is also
-what makes the voice play in tune.  Fixed in Hz, a low note's partials run
-round a loop that barely damps them, come back with the wrong phase because a
-one-pole's delay is not the same at every frequency, and the jet mixes them
-back down onto the fundamental and drags it flat.  Measured that way the
-bottom of the range played 30-65 cents under the top's 10.
+**The bore's own corners track the note rather than sitting fixed in Hz.**
+That is a property of the tube and not a convenience -- a low note is played
+on a longer tube, so the same loss per metre compounds over more of it -- and
+it is also what makes the voice play in tune.  Fixed in Hz, a low note's
+partials run round a loop that barely damps them, come back with the wrong
+phase because a one-pole's delay is not the same at every frequency, and the
+jet mixes them back down onto the fundamental and drags it flat.  Measured
+that way the bottom of the range played 30-65 cents under the top's 10.
+
+### The lattice, which does not track the note
+
+Everything above was the first version of this voice, and it had one thing
+backwards.  A flute is not a plain tube: it is a tube with a row of open holes
+down it, and that row behaves like a filter with a corner of its own.  Below
+the corner the open holes reflect and the note stands in the bore; above it
+they stop reflecting, the wave runs off down the lattice and radiates, and the
+bore supports nothing.  Where that corner sits is set by how big the holes are
+and how far apart they are -- the instrument's geometry -- so **it stands
+still while the note moves**, which is the opposite of everything else in the
+loop.
+
+That is measurable, and it was measured before it was built.  Take every
+steady held note in the four flute recordings, track its pitch, resample it to
+constant pitch so vibrato does not smear the harmonics, and find the frequency
+at which the harmonic series has fallen 40dB under the fundamental.  Across
+thirteen notes spanning 400 to 1084Hz:
+
+```
+  described as...        value    scatter
+  a frequency            2569Hz   17 centi-octaves
+  a harmonic number      h4.9     45 centi-octaves
+```
+
+Fitted against pitch in log-log, the slope is **+0.057**, where fixed-in-Hz
+predicts 0 and a fixed harmonic number predicts 1.  The instrument's spectrum
+is shaped by something that does not move with the note.
+
+The first version of this voice measured **+1.00** on the same test -- exactly
+the wrong end of the scale, and not by accident: every stage in it tracked the
+note by design, so the spectrum came out the same shape at every pitch.  That
+was written up as a virtue at the time ("every audible partial lands within
+0.8dB of itself"), and it is the opposite of what a flute does.  A real flute
+gets purer as it goes up, which is exactly what a fixed corner does to a note
+climbing towards it.  It is the same behaviour `flute-low` needs two measured
+tables and a register blend between them to express.
+
+So the lattice goes in as four one-pole stages at 2569Hz, normalized and
+delay-compensated at the played pitch like everything else in the loop, and
+the output is tapped after it rather than before.  Three details, each of
+which cost a measurement to find:
+
+* **Four poles, not two.**  A row of tone holes is a periodic structure, and a
+  periodic structure has a stop band with a sharp edge rather than a gentle
+  corner, so the order is the physical case rather than a convenience.  It is
+  also what lets the corner sit high enough to leave a low note's harmonics
+  alone while still cutting hard above it: at two poles the slope only came
+  back to +0.76.
+* **Tapped after it.**  The sound leaves the instrument through those same
+  open holes, so whatever the lattice will not carry back up the tube it also
+  will not radiate.  Tapped before it -- which is where the output tap already
+  was -- the jet's harmonics reached the output having passed one of the
+  bore's two loss poles and none of the lattice at all, and a lattice put
+  anywhere else in the loop moved the spectrum by two or three dB and left the
+  comb standing.
+* **2569Hz, not half of it.**  This voice is an alto flute an octave down, and
+  the lattice is geometry, so halving it looks right.  It is not: `flute-low`
+  is `flute`'s measured spectrum played an octave lower with the measured
+  numbers deliberately left as measured, so the spectrum this voice is asked
+  to match is the concert flute's, and the corner that reproduces it is the
+  concert flute's too.  Swept independently against the target the best fit
+  landed at 2600Hz, within 1% of the measured 2569 -- which is the check that
+  this is the lattice and not a curve fit that happens to help.
+
+The drive moves with it, from 2.4 to 3.2.  The two set the same thing between
+them: the lattice takes the top off the spectrum, so the jet has to be driven
+harder for what is left under the corner to come out at the right level.
 
 ### What had to be given up
 
@@ -632,35 +701,87 @@ and it stops when the tube stops:
   flute-low           36ms        26ms           62ms
 ```
 
-Both are slower for a low note than a high one -- 29.5ms at the bottom of the
-range against 25.2 at the top, and 87ms of release against 73 -- because the
-loop is a period long and a low note's period is longer.  No number in the
-preset asks for that; it is the only voice here where the envelope is a
-consequence rather than a setting.
+Both are slower for a low note than a high one, because the loop is a period
+long and a low note's period is longer.  No number in the preset asks for
+that; it is the only voice here where the envelope is a consequence rather
+than a setting.  Measured on a hard-gated steady whistle, the lattice made it
+speak faster at every pitch it was checked at:
 
-Pushed harder it gets **louder and rounder**, which is the measured
-crescendo's direction and backwards from every other voice: over the same
-15dB crescendo the second partial goes from -14.8dB to -18.9.  The third goes
-the other way, from -27.0 to -19.9, which the real instrument does not do.
+```
+                     147Hz    392Hz    787Hz
+  before              92ms     48ms     33ms
+  after               78ms     41ms     29ms
+```
 
-What it misses is the steady spectrum, by 9.6dB rms against the measured
-table where the additive voice is exact by construction:
+The bottom of the range is still slow, and always was.
+
+**It now has a register**, which is the thing the first version did not.  The
+second partial runs from -19.9dB at the bottom of the range to -25.2 at the
+top; before, it sat within a dB of -17.9 at every pitch.  The 40dB knee runs 949 to 3027Hz across
+the range against a flat 2569Hz on the real instrument -- a log-log slope of
++0.66 where before it was +1.00 and the real flute is +0.06.  So the register
+is there and it is about two thirds of the way to being right.
+
+The comb goes with it.  A real flute has no harmonic standing clear of its own
+noise above about 3.5kHz; this voice used to have one running past 8kHz and
+sitting 25dB over the noise between harmonics, which is a buzz where the
+instrument is pure air.  It now dies out between h9 and h13, which is where
+the real one dies.
+
+What it still misses is the steady spectrum, by 6.8dB rms against the measured
+table -- against 9.0 before -- where the additive voice is exact by
+construction:
 
 ```
                  h2     h3     h4     h5     h6     h7
   measured    -11.3  -19.6  -35.0  -37.3  -50.6  -47.4
-  flute-jet   -18.9  -19.9  -26.7  -34.4  -33.7  -54.1
+  flute-jet   -19.9  -19.3  -27.6  -32.8  -34.8  -46.9
 ```
 
-Most of that is one thing.  A real flute's fourth partial sits 15dB under its
-third, and no smooth nonlinearity in a smooth loop makes a notch: driven to
-where the third partial is right, the fourth comes out within a few dB of it
-every time.  That is the same wall the pulse formula hit before the measured
-tables replaced it, and it is why `flute-low` exists in the form it does.
+Most of what is left is still one thing.  A real flute's fourth partial sits
+15dB under its third, and no smooth nonlinearity in a smooth loop makes a
+notch: here the gap is 8.3dB.  That is the same wall the pulse formula hit
+before the measured tables replaced it, and it is why `flute-low` exists in
+the form it does.  The other half is the low register, which is still too
+pure: the real instrument's second partial is -11.3dB down there and this is
+-19.9.  The lattice can only darken the top; nothing in the voice can enrich
+the bottom, because how hard the jet is driven is one number for the whole
+range.
 
-So the two are worth having side by side rather than one replacing the other.
-`flute-low` is right about what a flute sounds like; `flute-jet` is right
-about what one does.
+So the two are still worth having side by side rather than one replacing the
+other.  `flute-low` is right about what a flute sounds like; `flute-jet` is
+right about what one does.
+
+### The noise, which was already right
+
+The usual advice about synthetic flutes is that the breathiness has to be
+correlated with the tone rather than mixed in on top -- filtered noise summed
+under a clean oscillator is said to be what gives a synthesized flute away.
+That is testable here, and it was worth testing before building anything.
+
+Take a band with no harmonics in it at all -- above 3.5kHz the real flute has
+none -- pull out its amplitude envelope, and look for a peak at the played
+pitch.  A peak there means the noise is being switched on and off once a
+period.  The control is the same band with its phases randomized, which is
+stationary noise of an identical spectrum:
+
+```
+                    band        peak at f0    same band, phases randomized
+  real flute      5-9kHz          +31.9dB              +10.9dB
+  flute-jet      12-18kHz         +25.4dB               +8.2dB
+  flute-low       7-11kHz          +9.6dB               +7.7dB
+```
+
+So the real instrument's noise is strongly period-synchronous, 21dB above what
+stationary noise of the same spectrum produces.  `flute-jet` already does the
+same thing, by 17dB, and gets it for nothing: its turbulence is injected at
+the embouchure *inside* the loop, so it passes through the jet's tanh, whose
+slope varies over the acoustic cycle.  `flute-low`, which adds a filtered
+noise band to a finished tone, shows none of it -- 1.9dB, which is nothing.
+
+That is the difference between the two voices stated as a measurement, and it
+is a point for the physical model.  It is also why none of this work went into
+the noise: the model was already doing the thing that is supposed to be hard.
 
 ## Loudness
 
@@ -670,7 +791,7 @@ of each other, so changing voice mid-tune doesn't jump.  `flute-jet` was
 matched the same way and against `flute-low` directly, since the two are the
 same instrument and the swap between them has to be inaudible in level:
 measured over `prototypes/in-ladder.f32` at full volume they agree to 0.0dB,
-with `flute-jet` peaking at 0.361 against `flute-low`'s 0.215 -- a near-sine
+with `flute-jet` peaking at 0.373 against `flute-low`'s 0.217 -- a near-sine
 carries more of its level in the peak.
 
 LUFS (ITU-R BS.1770) is used because it is the standard model for *perceived*
