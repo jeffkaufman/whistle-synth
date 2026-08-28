@@ -12,6 +12,13 @@
 // How many independent slow LFOs move the partials of a sustained note.
 #define SYNTH_SHIMMER_LFOS 3
 
+// How many independent slow modulators move the partials of a note that is
+// still being played.  Five rather than three because these have to make the
+// partials move *apart* rather than together, and three sources shared
+// between twelve partials leaves them in four groups of one movement each,
+// which is a comb sweeping rather than a spectrum breathing.  See wander_db.
+#define SYNTH_WANDER_SOURCES 5
+
 #define SYNTH_UNISON 3
 #define SYNTH_MAX_HARMONICS 32
 
@@ -295,6 +302,46 @@ struct SynthParams {
   // mid dynamics.  Positive means the tone gets *purer* when pushed, which is
   // backwards from a filter opening up and is what a flute measurably does.
   float purity_loud;
+
+  // How much each partial's amplitude wanders on its own while a note is
+  // being played, in dB rms, at the top of the spectrum.  This is what makes
+  // a held note sound like an instrument rather than an oscillator, and it
+  // was missing from the first version of these voices because the thing that
+  // was measured was the wrong thing.
+  //
+  // A real flute's *total* level on a held note holds to 0.20dB rms, which is
+  // steadier than anything else here manages, and that was measured
+  // correctly.  What it does not mean is that nothing is moving.  Heterodyned
+  // down one partial at a time, `recordings/flute2.f32` -- the held C5 these
+  // presets were fitted against -- has its fundamental moving 0.41dB rms
+  // below 3Hz, its third 1.06 and its fourth through tenth about 1.9.  The
+  // total is steady *because* those movements are independent and average
+  // out, not because they are absent.
+  //
+  // And independent is the whole point.  Measured over the same note, the
+  // mean correlation between one partial's slow movement and another's is
+  // -0.04: they are essentially unrelated, and the first two are
+  // anti-correlated at -0.52, trading energy back and forth.  The voice
+  // before this change measured +0.88, and `flute-jet` -- a physical model,
+  // where the movement comes from a real jet in a real loop -- measures
+  // +0.96, which is why it sounds barely more alive than the additive voice.
+  // One jet drives every mode of one tube, so every mode moves together.
+  //
+  // That is the difference this parameter exists to make.  Partials moving
+  // together is a volume knob wobbling, which the ear hears as one event and
+  // files as tremolo; partials moving apart is the spectrum breathing at
+  // constant loudness, which it hears as an instrument.  Depth is not what
+  // was missing -- the old voice moved its partials 2.2-3.4dB rms, *more*
+  // than the real thing -- so this is not "add movement" but "stop the
+  // movement being the same movement".
+  float wander_db;
+
+  // Where that movement sits, as the corner of the one-pole that shapes it.
+  // The measured fluctuation is roughly flat from nothing up to about 8Hz and
+  // falls above that, so this is a corner rather than a rate: an LFO at a
+  // fixed frequency is audible *as* a frequency, which is the one thing a
+  // real flute's movement never sounds like.
+  float wander_hz;
 };
 
 struct Synth {
@@ -375,6 +422,15 @@ struct Synth {
   // How far the LFOs have come up to speed, 0 to 1: see
   // SYNTH_TAIL_SHIMMER_S.
   float shimmer_rate;
+
+  // The independent slow modulators, each low-passed noise with unit
+  // variance, and their own noise generator.  Separate from the breath's so
+  // that adding this leaves the air bit-identical to what it was, which is
+  // what makes an A/B of the two changes mean anything.  Free-running like
+  // the growl and the wobble: how a note moves is a property of the
+  // instrument, not of where in the note you are.
+  float wander[SYNTH_WANDER_SOURCES];
+  uint32_t wander_noise_state;
   // How much louder this spectrum has to be played to be heard as loudly as
   // one sitting where the cabinet and the ear are at their best.  See
   // synth_audibility.

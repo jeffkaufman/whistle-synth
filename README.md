@@ -426,6 +426,75 @@ It is also slow to speak and quick to stop -- 60ms to arrive, 48ms to fall
 any wobble, because the recordings are straight tone: the pitch holds to 2-3
 cents rms over a held note and the level to 0.20dB.
 
+### The partials move apart
+
+That 0.20dB is correct and it was, for two versions of this voice, read
+backwards.  A total that steady was taken to mean a spectrum that still, so
+every partial was a fixed function of pitch and dynamics -- and the voice came
+out lifeless in a way no amount of adjusting the tables fixed.
+
+Heterodyne the partials down one at a time and the note is not still at all.
+On the held C5 in `recordings/flute2.f32` the fundamental moves 0.41dB rms
+below 3Hz, the second partial 0.70, the third 1.06, and the fourth through
+tenth about 1.9 each.  The total holds to 0.20dB **because** those movements
+are independent and average out, not because they are absent.
+
+Independent is the measurement that matters.  Correlating each partial's slow
+movement against every other's over that note gives a mean of **-0.04** --
+essentially unrelated -- and the first two partials come out at -0.52, trading
+energy back and forth.  Over the long held note in `flute5.f32`, which is a
+performance rather than a reference tone, the mean is 0.50, and what the extra
+correlation is is the player: it falls off with distance, the first partial
+tracking the third at 0.91, the sixth at 0.42, and the third tracking the
+sixth at 0.19.  Two partials move alike to the extent they are close in
+octaves.
+
+Measured the same way, the voice before this change came out at **+0.88**, and
+`flute-jet` -- a physical model, where the movement comes from a real jet in a
+real loop rather than from any table -- comes out at **+0.96**.  That is why
+it sounded only slightly more alive than the additive voice despite being
+built from the physics: one jet drives every mode of one tube, so every mode
+moves together, and what the model adds instead is broadband turbulence
+(5-11dB rms above 12Hz against the real flute's 1-3), which the ear files as
+breathiness rather than as life.
+
+So the fault was never depth.  The old voice moved its partials 2.2-3.4dB rms,
+*more* than the real thing does; it moved them all at once.  Partials moving
+together is a volume knob wobbling, which is heard as one event and filed as
+tremolo.  Partials moving apart is the spectrum breathing at constant
+loudness, which is heard as an instrument.
+
+`wander_db` is that movement: five slow modulators, each low-passed noise
+rather than an LFO -- the measured fluctuation is flat to about 8Hz with no
+rate in it to hear -- shared between the partials by spacing them
+logarithmically across the bank, so neighbours move alike and distant partials
+do not.  Depth grows with partial number and flattens after the fourth, as
+measured.  It goes in **before** the power normalisation, which is half of why
+it works: dividing by the total takes out whatever part of the movement the
+partials happen to share, leaving the part where they differ.
+
+Where it lands, over the whistled C5 in `flute3.f32`:
+
+```
+                        mean correlation    h1 slow    h4 slow
+  real, reference note        -0.04          0.41dB     1.86dB
+  real, performance            0.50          0.92       3.72
+  flute-jet                    0.96          1.78       3.33
+  flute, before                0.88          2.53       3.35
+  flute, after                 0.56          2.54       3.58
+```
+
+The remaining 0.56 is the player and not the voice: a whistle held as steadily
+as a person can hold one still moves 2.96dB rms, against the 0.41 a flutist
+manages, and that common movement is passed through faithfully to every
+partial.  Against a real flute *performance* rather than a reference tone,
+0.56 against 0.50 is where this should sit.  The total level is untouched --
+0.86dB rms over the same passage before and after, to the same peak.
+
+`flute-low` takes the same numbers unchanged: how much a partial wanders is a
+property of the jet and the player, and a bass flute is played by the same
+lungs.  It moves from 0.91 to 0.64 on the same measurement.
+
 ### The air
 
 `flute` is what brought `breath` back to life; until it, no preset set it and

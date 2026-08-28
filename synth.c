@@ -623,7 +623,17 @@ static const struct SynthParams presets[] = {
     // rms, which is steadier than anything else here manages.  The first
     // version of this voice put a 2.4Hz cutoff wobble on it to keep a held
     // note alive and measured 0.96dB of level movement for it, five times the
-    // real thing.  A flute held still really is that still.
+    // real thing.
+    //
+    // What that argument got wrong -- and it is why this voice was lifeless
+    // for two versions -- is that it reasoned from the total to the parts.
+    // The total really does hold to 0.20dB.  The parts do not: heterodyned
+    // one at a time, the partials of that same held note move about 2dB rms
+    // each, independently of one another, and it is the independence that
+    // makes the total steady.  A wobble was the wrong fix not because a flute
+    // does not move but because a wobble moves everything at once, which is
+    // the one kind of movement a flute never makes.  See wander_db.
+    .wander_db = 2.5f, .wander_hz = 4.0f,
     .level_full = 0.22f,
     // Slow to speak and quick to stop, which is the flute's envelope and the
     // opposite of everything else in this table -- the basses all start in
@@ -674,6 +684,10 @@ static const struct SynthParams presets[] = {
     .drive_soft = 0.15f, .drive_loud = 0.22f,
     .unison = 1, .detune_cents = 0.0f, .harmonics = 12,
     .breath = 0.0175f,
+    // Unchanged, like everything else that was measured rather than derived.
+    // How much a partial wanders is a property of the jet and the player, and
+    // a bass flute is played by the same lungs as a concert flute.
+    .wander_db = 2.5f, .wander_hz = 4.0f,
     // And this is the second.  The air is fixed in Hz because it is made at
     // the embouchure and in the player's mouth -- but a bass flute's
     // embouchure hole is roughly twice the size, so its air sits lower.  Left
@@ -733,13 +747,57 @@ static bool synth_needs_partial_phase(const struct SynthParams* p) {
 // so taking the whole word puts a periodic component *in* the noise, and
 // through a band that emphasizes nothing in particular it is audible as a
 // buzz rather than as air.  Xorshift's bits are all equally good.
-static float synth_noise(struct Synth* s) {
-  uint32_t x = s->noise_state ? s->noise_state : 0x9e3779b9u;
+static float synth_noise_from(uint32_t* state) {
+  uint32_t x = *state ? *state : 0x9e3779b9u;
   x ^= x << 13;
   x ^= x >> 17;
   x ^= x << 5;
-  s->noise_state = x;
+  *state = x;
   return (float)(int32_t)x * (1.0f / 2147483648.0f);
+}
+
+static float synth_noise(struct Synth* s) {
+  return synth_noise_from(&s->noise_state);
+}
+
+// How far partial n is up or down right now, as a linear gain.  See wander_db.
+static float synth_wander_gain(const struct Synth* s,
+                               const struct SynthParams* p, int n) {
+  // Depth grows with partial number and then stops.  Measured on the held C5
+  // in recordings/flute2.f32, the slow movement of the fundamental is 0.41dB
+  // rms, the second partial 0.70, the third 1.06 and the fourth 1.86, after
+  // which it is flat to the tenth.  A fundamental that moved as much as its
+  // harmonics do would be a tremolo, since it carries most of the power.
+  float depth = p->wander_db * (0.22f + 0.78f * fminf(1.0f, (n - 1) / 3.0f));
+
+  // Where this partial sits along the bank of sources.  Logarithmic in
+  // partial number, because that is how the measured correlation falls off:
+  // over the long held note in recordings/flute5.f32 the first partial tracks
+  // the third at 0.91 and the sixth at 0.42, while the third tracks the sixth
+  // at 0.19.  What decides how alike two partials move is the distance
+  // between them in octaves, not in partial number.
+  int top = p->harmonics > 1 ? p->harmonics : 2;
+  float x = log2f((float)n) / log2f((float)top) * (SYNTH_WANDER_SOURCES - 1);
+  x = fmaxf(0.0f, fminf((float)(SYNTH_WANDER_SOURCES - 1), x));
+  int i = (int)x;
+  if (i > SYNTH_WANDER_SOURCES - 2) {
+    i = SYNTH_WANDER_SOURCES - 2;
+  }
+  float f = x - (float)i;
+
+  // Neighbouring partials share sources and so move alike; partials more than
+  // one slot apart share none and move independently.  Divided by the norm of
+  // the weights, or a partial landing halfway between two sources would move
+  // 3dB less than one landing on top of one -- a depth that rippled with
+  // partial number for no reason but the arithmetic.
+  float mix = (1 - f) * s->wander[i] + f * s->wander[i + 1];
+  mix /= sqrtf((1 - f) * (1 - f) + f * f);
+  // The sources are noise and so unbounded; nothing here should ever put a
+  // partial 20dB out because a tail of the distribution said so.
+  mix = fmaxf(-3.0f, fminf(3.0f, mix));
+
+  // dB to gain: 20*log10(2) is 6.0206.
+  return exp2f(depth * mix / 6.0206f);
 }
 
 // One-pole coefficient reaching ~63% of the way in `seconds`.
@@ -1047,6 +1105,9 @@ void synth_init(struct Synth* s, float sample_rate, int preset) {
   // at full, not silent, or the very first note is missing its attack.
   s->pluck = 1;
   s->audibility_comp = 1;
+  // Anything but zero, which synth_noise_from maps to the same seed the
+  // breath starts from.
+  s->wander_noise_state = 0x6d2b79f5u;
   synth_set_preset(s, preset);
 }
 
@@ -1092,6 +1153,26 @@ static void update_controls(struct Synth* s, bool playing) {
                                                : SYNTH_TAIL_SHIMMER);
   for (int g = 0; g < SYNTH_SHIMMER_LFOS; g++) {
     s->shimmer_gain[g] = sinf(2 * (float)M_PI * s->shimmer_pos[g]);
+  }
+
+  // And the movement that is there the whole time the note is sounding,
+  // rather than only in its tail.  Low-passed noise rather than an LFO: what
+  // was measured is a shape, flat to about 8Hz and falling above, with no
+  // rate in it to hear.  Advanced here because the control hop is what these
+  // are shaped against, and once per hop at 1.5kHz is far faster than
+  // anything at 4Hz needs.
+  if (p->wander_db > 0) {
+    float rate = s->sample_rate / (float)SYNTH_CONTROL_HOP;
+    float a = expf(-2 * (float)M_PI * p->wander_hz / rate);
+    // Scaled to unit variance whatever the corner is, so that wander_db means
+    // dB rms and not dB rms at one particular setting of wander_hz: a one-pole
+    // fed noise of variance v settles at v*(1-a)/(1+a), and synth_noise is
+    // uniform over -1..1, whose variance is 1/3.
+    float g = sqrtf(3 * (1 + a) / (1 - a));
+    for (int k = 0; k < SYNTH_WANDER_SOURCES; k++) {
+      s->wander[k] = a * s->wander[k] +
+                     (1 - a) * g * synth_noise_from(&s->wander_noise_state);
+    }
   }
 
   // How long they have been on this note.  Note length rather than level,
@@ -1195,6 +1276,16 @@ static void update_controls(struct Synth* s, bool playing) {
       // Negative is meaningful and wanted: past the first null the pulse
       // series flips sign, and that is part of the PWM sound.
       amp = sinf(n * (float)M_PI * width) / powf((float)n, p->tilt) * rolloff;
+    }
+    // Each partial's own slow movement, and like the tail's it goes in before
+    // the normalisation below -- which here is not just so the level does not
+    // follow it but is half of what makes it work.  Dividing by the total
+    // power takes out whatever part of the movement the partials happen to
+    // share, so what is left is the part where they differ.  That is why a
+    // real flute can hold its level to 0.20dB rms while its partials each
+    // move by two.  See wander_db.
+    if (p->wander_db > 0) {
+      amp *= synth_wander_gain(s, p, n);
     }
     // The tail's movement, before the normalisation so the level does not
     // follow it.  See SYNTH_TAIL_SHIMMER.

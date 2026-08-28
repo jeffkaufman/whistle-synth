@@ -340,6 +340,18 @@ enum VoiceParameters {
             help: "How deep the movement is in a sustained tail, overriding the default. Only exists when the sustain switch on the Play tab is on and a note has been held long enough to earn a tail; it moves the balance between partials rather than the level. A voice whose partials are an octave apart moves very differently under the same number from one whose partials are a harmonic series.",
             format: { $0 <= 0 ? "default (0.35)" : fixed(2)($0) },
             get: { Double($0.shimmer_depth) }, set: { $0.shimmer_depth = Float($1) }),
+        ParamSpec(
+            id: "wander_db", label: "Partial wander", group: .movement,
+            range: 0...6, step: nil,
+            help: "How much each partial's level drifts on its own while a note is sounding, at the top of the spectrum. Unlike every other movement here it does not move the partials together: each one goes its own way, so the balance between them keeps changing while the total level stays put. That is what a held flute note does, and it is the difference between an instrument and an oscillator. Turning it up past what was measured (2.5) starts to sound like a bad tape rather than a player.",
+            format: offAtZero({ String(format: "%.1f dB", $0) }),
+            get: { Double($0.wander_db) }, set: { $0.wander_db = Float($1) }),
+        ParamSpec(
+            id: "wander_hz", label: "Wander rate", group: .movement,
+            range: 0.5...15, step: nil,
+            help: "How fast that drifting is, as a corner rather than a rate: the movement is noise shaped by this, not an LFO at this frequency, so there is no speed to hear in it. Low is a note that swells and sags; high stops reading as a player and starts reading as roughness.",
+            format: { String(format: "%.1f Hz", $0) },
+            get: { Double($0.wander_hz) }, set: { $0.wander_hz = Float($1) }),
 
         ParamSpec(
             id: "attack_s", label: "Attack", group: .note,
