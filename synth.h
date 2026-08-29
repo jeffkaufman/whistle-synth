@@ -153,6 +153,32 @@ struct SynthParams {
   // 0 leaves the level as expression, which is what every other voice does.
   float contact_level;
 
+  // How long the hammer is in contact with the string, in seconds.  Above
+  // zero the note takes its level from the loudest the player got within
+  // this long of the onset and then *holds* it: what the breath does after
+  // that no longer reaches the level, the brightness or the drive.
+  //
+  // This is the third answer in the table to the same question -- what the
+  // player's breath is for.  Most voices spend it on the level continuously,
+  // which is a wind instrument; `contact_level` spends it on nothing, which
+  // is an organ; and this spends it once, at the start of the note, which is
+  // what struck means.  A hammer leaves the string before the string has
+  // finished speaking, and from then on nothing the player does can make the
+  // note louder, brighter or dirtier -- only shorter, by lifting the key.
+  //
+  // The peak rather than the value at the end of the window, because a
+  // whistled note does not start at its body level: it scoops in, and a
+  // sample taken at a fixed instant lands wherever the scoop happened to be.
+  // Peak-holding costs a calibration instead -- see `level_full` on the
+  // preset that sets this -- and a calibration is a number, where landing on
+  // the scoop is a lottery.
+  //
+  // What the player still has is the two things a keyboard player has: how
+  // hard each note is struck, and how long the key is held.  The second one
+  // is the gate and the damper, and it is unchanged.  The breath after the
+  // strike is not nothing either -- see the tremolo below.
+  float strike_s;
+
   // Note shaping: how the sound starts and stops.
   float attack_s;
   float release_s;
@@ -369,6 +395,29 @@ struct SynthParams {
   // rather than a moving mouth, so it moves much less.
   float leslie_horn_cents;
   float leslie_drum_cents;
+
+  // The suitcase tremolo, and where the breath goes once the strike has taken
+  // what it needs.
+  //
+  // This is the same question `drawbar` answered with rotor speed, asked
+  // again for a different reason.  There the level had nowhere to go because
+  // an organ has no dynamics at all; here it has nowhere to go because the
+  // hammer has already left the string, and a player leaning into a note that
+  // is already ringing has to be doing *something*.  On a suitcase Rhodes
+  // that something is on the front panel: the amplifier swings the note back
+  // and forth, and how far it swings is a knob.
+  //
+  // So depth is what the breath reaches.  Whistle harder into a ringing note
+  // and it starts to wobble; back off and it settles into a clean piano.
+  // Rate is not on the breath -- a real player sets it once for the tune and
+  // then plays, and one control that does one thing is worth more than two
+  // that fight.  0 on the rate switches the whole thing off.
+  float trem_hz;
+  // Depth when the player has backed off and when they lean in, 0 to 1, in
+  // the `_soft`/`_loud` sense the cutoff and the drive use.  1 is the note
+  // swinging between silence and twice its level.
+  float trem_soft;
+  float trem_loud;
 };
 
 struct Synth {
@@ -458,6 +507,20 @@ struct Synth {
 
   // The plucked part of the note envelope, falling from 1 to sustain_level.
   float pluck;
+
+  // The level this note was struck at, latched over the first `strike_s` of
+  // it and held for the rest.  Zero when the preset does not strike, and
+  // reset to zero at every onset so a new note weighs itself rather than
+  // inheriting the last one's.
+  float strike;
+
+  // The tremolo: a free-running phase, the depth actually being applied, and
+  // the depth being asked for.  The target is held while nothing is being
+  // played, for the reason `leslie_target` is -- a rest is not an instruction
+  // to turn the tremolo off, and a real one keeps swinging between phrases.
+  float trem_pos;
+  float trem_depth;
+  float trem_target;
 
   // FM modulator phases, and the index smoothed the way drive is.
   float fm_phase[SYNTH_UNISON];

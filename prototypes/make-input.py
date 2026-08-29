@@ -77,6 +77,40 @@ def steps_gate(t):
     u = t % STEP_S
     return steps_amp(t) * min(1.0, u / 0.020, (STEP_S - u) / 0.050)
 
+# A ladder of *struck* notes: one pitch at six velocities with real silence
+# between them, then two notes whose breath moves after the onset.  `steps`
+# cannot do this job -- its 50ms gate dip does not un-voice the detector, so
+# six seconds in it is one held note and there are two onsets in the whole
+# file.  That is exactly what `drawbar` wanted (the rotors answer a breath
+# that never stops) and exactly wrong for a voice where every note is a
+# separate strike.
+#
+# The last two notes are the measurement that says a struck voice is struck:
+# one starts quiet and swells, one starts loud and falls away, and both should
+# render as a note whose whole shape was decided in its first tenth of a
+# second.
+STRIKE_LEVELS = [0.06, 0.10, 0.15, 0.22, 0.32, 0.45]
+STRIKE_ON, STRIKE_OFF = 2.5, 1.0
+STRIKE_SLOT = STRIKE_ON + STRIKE_OFF
+# (level at the strike, level it moves to over the note)
+STRIKE_MOVES = [(0.10, 0.45), (0.45, 0.10)]
+STRIKE_N = len(STRIKE_LEVELS) + len(STRIKE_MOVES)
+STRIKE_S = STRIKE_N * STRIKE_SLOT
+
+def strike_freq(t):
+    return 1320.0
+def strike_gate(t):
+    slot = int(t / STRIKE_SLOT)
+    u = t % STRIKE_SLOT
+    if slot >= STRIKE_N or u > STRIKE_ON:
+        return 0.0
+    if slot < len(STRIKE_LEVELS):
+        a = STRIKE_LEVELS[slot]
+    else:
+        lo, hi = STRIKE_MOVES[slot - len(STRIKE_LEVELS)]
+        a = lo + (hi - lo) * (u / STRIKE_ON)
+    return (a / 0.30) * min(1.0, u / 0.020, (STRIKE_ON - u) / 0.050)
+
 # How the pad is actually played: a few steady notes, seconds apart, with the
 # gaps left in so the hold and the decay can be heard doing their work.  The
 # last one is deliberately too short to arm anything.
@@ -131,7 +165,9 @@ def fast_gate(t):
     return 0.0
 
 which = sys.argv[1]
-if which == 'steps':
+if which == 'strike':
+    buf = render(strike_freq, STRIKE_S, strike_gate)
+elif which == 'steps':
     buf = render(steps_freq, STEPS_S, steps_gate)
 elif which == 'padfast':
     buf = render(fast_freq, FAST_S, fast_gate)

@@ -229,6 +229,14 @@
 // under 5 and J_n(x) is negligible past about x + 5.
 #define SYNTH_FM_TERMS 12
 
+// How long the tremolo takes to reach the depth the breath is asking for.
+// Much quicker than the leslie's rotors, and for the opposite reason: a rotor
+// has mass and must ignore the shape of individual notes, while this is a
+// gesture *inside* a note -- the player leans into something already ringing
+// -- so it has to arrive while the note is still there.  Slow enough that the
+// ordinary tremor of a held whistle does not reach the depth.
+#define SYNTH_TREM_RISE_S 0.25f
+
 #define SYNTH_TAIL_SHIMMER 0.35f
 #define SYNTH_TAIL_SHIMMER_FM 0.30f
 static const float synth_shimmer_hz[SYNTH_SHIMMER_LFOS] = { 0.31f, 0.53f, 0.79f };
@@ -868,6 +876,242 @@ static const struct SynthParams presets[] = {
     .shimmer_depth = 0.12f,
     .out_gain = 0.245f,
   },
+  {
+    // A tine electric piano: a Fender Rhodes, which is a piano action hitting
+    // a steel tine next to an electromagnetic pickup, into an amp.  The third
+    // voice here that is not a bass, and the first one that is *struck*.
+    //
+    // Two octaves down, the same register `drawbar` plays in: a 550-3150Hz
+    // whistle lands at 137-787Hz, C#3 to G5, which is the middle of a Rhodes
+    // and where the instrument is most itself.
+    //
+    // The breath does two things and they are separate.  At the onset it sets
+    // the velocity, and then the hammer leaves and nothing can change the
+    // note -- see `strike_s`.  After that it works the tremolo, which is the
+    // suitcase's amplifier and the one control a player of the real thing has
+    // while a note is ringing -- see `trem_hz`.  Between them the player has
+    // what a keyboard player has: how hard each note is hit, how long the key
+    // is held, and a foot on the front panel.
+    .name = "rhodes",
+    .octave = 0.25f,
+    // A narrow pulse with a true 1/n on it, which is a flat bank of partials
+    // out to about the eleventh and then a rolloff -- not a timbre, a supply
+    // for the filter below to shape.  That is the opposite of what the other
+    // pulse voices do and it is what this one needs: everything audible here
+    // is the corner moving, and a series with its own nulls in it puts holes
+    // in the bell.  At the 0.35 width this started on, the pulse's first null
+    // landed on the third partial and the body came out hollow rather than
+    // round -- partial 3 at -20dB with partial 4 at -5.
+    .tilt = 1.0f,
+    .pwm_center = 0.045f,
+    .harmonics = 24,
+    // The tine is a steel bar clamped at one end, not a string, and a stiff
+    // bar's modes are not harmonics: they go progressively sharp, which is
+    // most of why a Rhodes reads as a bell rather than as a filtered saw.
+    // 0.012 puts partial 8 at 8.7 and partial 16 at 18.9 -- a smear of an
+    // inharmonic cluster where the bell is, and only 21 cents on the second
+    // partial, where a bigger number starts sounding out of tune rather than
+    // struck.
+    //
+    // 21 cents is small and it is not nothing.  The saturator's own second
+    // harmonic sits at exactly twice the note while this partial sits 21
+    // cents above it, so the second-partial region is a doublet rather than a
+    // line -- scanned at 5Hz over a 330Hz note it reads 660:-9  665:-4
+    // 670:0 dB -- and it beats instead of sitting still.  A real Rhodes beats
+    // there too, because the tine is coupled to a tonebar tuned beside it.
+    // This is not that mechanism and does not claim to be; it is a side
+    // effect of the stretch meeting the drive, in the right place.
+    .stretch = 0.012f,
+    // The body.  Low corner, 12dB an octave, so a note that has stopped
+    // ringing its bell is very nearly a sine with a little colour on it,
+    // which is what a Rhodes actually is once the attack is over.  The
+    // resonant peak rides the corner rather than replacing the rolloff, so
+    // that the fall from bell to body reads as something moving.  It is
+    // deliberately modest -- at `pluck`'s 2.5 the sweep starts sounding like
+    // a filter being swept, which is the one thing this must not sound like,
+    // and a narrow peak riding a corner that is up at 4kHz on a hard note is
+    // a resonance parked exactly where harshness lives.
+    .cutoff_soft = 0.9f, .cutoff_loud = 1.2f, .rolloff_exp = 2.0f,
+    .resonance = 1.2f, .resonance_width = 0.50f,
+    // The bark: the tine's high modes, loud for a moment and gone.  3.4
+    // octaves over the corner, falling back with a 180ms time constant, which
+    // puts the bell essentially over inside half a second.
+    //
+    // On a struck voice this number is the *loud* end rather than the whole
+    // envelope, and each note takes the share of it that it earned -- see
+    // update_controls.  That is the difference between a piano and everything
+    // else here: touch reaches the attack far harder than it reaches the
+    // body.  Measured at 330Hz, spectral centroid at 80ms against the same
+    // note's centroid once it has settled:
+    //
+    //     breath   0.06  0.10  0.15  0.22  0.32  0.45   of the input
+    //     attack    553   726   878  1096  1175  1105   Hz
+    //     body      344   342   353   345   356   359
+    //     level   -30.1 -26.6 -23.8 -21.0 -18.1 -15.9   dB, at 50ms
+    //
+    // The attack moves 2.1 to 1 across the range of the strike and the body
+    // barely moves at all.  A soft note is a sine with a hint of bell on it
+    // and a hard one is a bell that becomes a sine, and that is the whole
+    // touch of the instrument.  With the envelope fixed rather than earned
+    // the attack read 1583, 1567 and 1604Hz across the same range, which is a
+    // piano that does not care how it is played.
+    //
+    // This started at 4.2 octaves over a corner of 1.6 and came down when the
+    // voice was played loudly on the speaker, where it was harsh -- see
+    // `top_hz`.  What that cost is nothing measurable: the attack's range is
+    // 2.1 to 1 where it was 1.7 to 1, because the body came down further than
+    // the attack did.
+    .cutoff_env_octaves = 3.4f, .cutoff_env_s = 0.18f,
+    // The note's own decay.  A hammer leaves and the tine rings down: this is
+    // the first voice here whose level falls while the player is still on the
+    // note.  1.0s to a twentieth, which renders as -1.8dB at half a second,
+    // -5.6 at one and -12.6 at two.
+    //
+    // Set on the rendered result rather than on the number, because the
+    // audibility compensation partly undoes it: the note darkens as its bell
+    // dies, a darker spectrum is worth less per unit of electrical power, and
+    // the compensation hands some of that back.  Measured, with the bark
+    // switched off the same envelope renders -4.4dB at one second and with it
+    // on -2.3, so 2.2dB of the first second's decay is the compensation and
+    // not the envelope.  That is the compensation doing what it says --
+    // holding what a listener hears steady -- and it is worth knowing about
+    // because it is the reason this number is smaller than a real Rhodes'
+    // decay and still sounds like one.
+    .decay_s = 1.0f, .sustain_level = 0.05f,
+    // A tenth of a second of contact.  Measured over recordings/whistling.f32
+    // a real whistled note is at a median 76% of its eventual peak 30ms in,
+    // 96% at 80ms and all of it by 100ms; the p10 note is still at 59% at
+    // 100ms, which is a note with a slow attack and not one being struck
+    // hard.  Shorter and the quiet start of a note is read as its velocity;
+    // longer and a note the player is already leaning out of is still setting
+    // it.
+    //
+    // It costs nothing on short notes, which was the thing to check: over
+    // prototypes/in-padfast.f32 a 60ms note comes out 0.2dB under a 1.2s one,
+    // against `bass`'s 0.9dB.
+    .strike_s = 0.10f,
+    // The pickup and the amp.  A Rhodes pickup is an electromagnet a
+    // millimetre from a steel tine and its field is nothing like linear, so
+    // the instrument distorts on its own before anything downstream does; the
+    // bias is what puts the even harmonics in.
+    //
+    // The loud end was 2.2 and it was most of why loud playing was harsh.  A
+    // saturator on a *stretched* spectrum is not the same thing as one on a
+    // harmonic one: the intermodulation products land nowhere near the
+    // partials, so what a hard drive makes here is dense inharmonic grit
+    // rather than warmth.  Measured on a hard strike, energy sitting more
+    // than 3.5% away from any partial, as a fraction of the note:
+    //
+    //     drive 0.7-2.2   -12.8 dB      drive 0.7-1.3   -15.8 dB
+    //
+    // An eighth of the note against a twenty-fifth.  1.3 still bends the
+    // waveform audibly -- it is a pickup, not a fuzzbox -- and it is the
+    // second of only two things the velocity reaches.
+    .drive_soft = 0.7f, .drive_loud = 1.3f, .drive_bias = 0.25f,
+    // One tine per note.  A Rhodes is not detuned against itself.
+    .unison = 1, .detune_cents = 0.0f,
+    // The amp, and it is doing a different job from `drawbar`'s cabinet.
+    // There the 8kHz was the saturator inventing what no leslie could
+    // radiate, and the fix was to stop radiating it.  Here the same band is
+    // the bell itself: taking the drive down by 7dB of level moves the 8k
+    // octave by 0.7dB.  So this corner is shaping real content and has to be
+    // set by what the instrument's own amplifier is.
+    //
+    // 2.6kHz, two poles, and that is a suitcase: four twelve-inch speakers in
+    // a wooden box with no horn and no tweeter in it anywhere.  It started at
+    // 4.5kHz on the theory that the bell needs the room, and playing it
+    // loudly on the speaker disagreed -- which is the second time in this
+    // table that a treble voice built on headphones was too bright through a
+    // PA, and the first time it should have been expected.  In octave bands
+    // over recordings/whistling.f32, relative to each voice's own total:
+    //
+    //              125    250    500     1k     2k     4k     8k
+    //   drawbar    -8.7   -7.5   -9.8  -15.2  -21.8  -31.8  -50.6
+    //   rhodes    -22.6  -10.9   -9.3   -8.9  -10.8  -16.5  -28.2  (before)
+    //   rhodes    -21.0   -9.2   -8.4   -9.1  -12.7  -21.5  -37.3  (now)
+    //
+    // 5dB off the 4k octave and 9dB off the 8k.  What is left at 2k is not
+    // the bell and cannot be taken out this way: at the top of the range it
+    // is the note itself and its second partial.
+    .top_hz = 2600.0f,
+    // A third higher than the rest of the table, and it is a calibration
+    // rather than a taste: this voice latches the *peak* of the attack where
+    // every other one follows the body, and over recordings/whistling.f32 a
+    // note's first peak runs a median 1.26 times its body.  0.22 x 1.26 is
+    // 0.28.  Left at 0.22 the median note would render at 0.80 of full and
+    // the top fifth of real playing would be against the cap, which on a
+    // piano is the whole instrument gone.
+    .level_full = 0.30f,
+    // The damper.  25ms, which is short for this table and is the price of
+    // being struck: every other voice's level collapses in the gap between
+    // two notes because it follows the breath, and this one's does not --
+    // it is holding the velocity it was struck at.  So the gate is the only
+    // thing separating two notes and it has to do the whole job.  Measured
+    // over prototypes/in-scale.f32, 300ms notes with 60ms gaps, how far down
+    // the previous note is when the next one starts:
+    //
+    //     rhodes at 50ms   -7.6 dB      bass    -26.6
+    //     rhodes at 25ms  -13.9         drawbar -23.5
+    //     rhodes at 18ms  -18.5         pluck   -36.2
+    //
+    // Still the least separated voice in the table, and that is what a felt
+    // damper landing on a ringing tine actually is -- but at 50ms a fast run
+    // was one sound.
+    .attack_s = 0.003f, .release_s = 0.025f,
+    .articulation_s = 0.008f, .glide_s = 0.004f,
+    // The suitcase tremolo, and where the breath goes once the strike has
+    // taken what it needs.  Lean into a note that is already ringing and it
+    // begins to swing; back off and it settles into a clean piano.  Measured
+    // over the ladder, the note's envelope peak to trough with its own decay
+    // taken out:
+    //
+    //     breath   0.06  0.10  0.15  0.22  0.32  0.45   of the input
+    //     swing     3.4   4.3   5.6   7.8  11.8  19.3   dB
+    //
+    // And on the two notes whose breath moves after the strike, which is what
+    // this control exists for:
+    //
+    //     struck at 0.10, breath rising to 0.45    7.0 dB -> 13.6
+    //     struck at 0.45, breath falling to 0.10  13.9    ->  8.9
+    //
+    // Those same two notes still render at the level and the brightness they
+    // were *struck* at, to a fraction of a dB.  The player is working the
+    // amplifier, not the hammer.
+    //
+    // 5.5Hz, and the rate is deliberately not on the breath.  A suitcase has
+    // a rate knob and a depth knob, an organist has a speed switch, and the
+    // difference is that a leslie speeding up is the gesture while a tremolo
+    // changing rate is a fault.  Depth is what a player rides.
+    //
+    // `trem_soft` is zero on purpose: quiet playing is a clean electric piano
+    // and there is no tremolo in it at all.  That is what the front panel
+    // looks like with the depth knob down, and it means the effect is
+    // something the player switches on by leaning in rather than something
+    // the voice always does.
+    .trem_hz = 5.5f, .trem_soft = 0.0f, .trem_loud = 0.85f,
+    // The sustain control is the sustain pedal, which is the one place this
+    // voice gets that machinery for free: the tail keeps the strike's
+    // velocity, the decay goes on running underneath it, and the tremolo goes
+    // on swinging, so what comes out is a note still ringing down rather than
+    // a drone.  Measured over recordings/holding.f32, a held note continues
+    // at -10dB three tenths of a second after the player stops and -15dB
+    // after one second, where with the control off it is 59dB down inside
+    // three tenths.  The snap to the nearest semitone, which every other
+    // voice has to be argued into, is simply what a keyboard is.
+    //
+    // The table's usual match: equal LUFS through the K10.2 model over
+    // recordings/whistling.f32, landing at -23.5 against `drawbar`'s -23.1
+    // and `bass`'s -23.8, at 0.53 peak.  The peak is the tremolo -- a depth
+    // of 0.85 puts 4dB of crest on the note that the integrated measurement
+    // does not see -- and it is still well under `subbass`'s 0.82.  Unlike
+    // `pluck` this does not need the peak match instead: its notes ring for
+    // most of their length rather than being an attack and a gap.
+    //
+    // Across pitch it is among the flattest things in the table: 0.3dB from
+    // the bottom of the whistle range to the top, against `drawbar`'s 0.5 and
+    // `square`'s 3.8.
+    .out_gain = 0.462f,
+  },
 };
 
 #define N_PRESETS ((int)(sizeof(presets)/sizeof(presets[0])))
@@ -1082,6 +1326,28 @@ void synth_preset_defaults(int preset, struct SynthParams* out) {
   *out = presets[preset];
 }
 
+// A tremolo swinging deeper than 1 would take the note through zero and out
+// the other side, which is a phase inversion rather than an amplifier turning
+// down.
+static void synth_sanitize_trem(struct SynthParams* p) {
+  if (!(p->trem_hz > 0)) {
+    p->trem_hz = 0;
+    return;
+  }
+  if (!(p->trem_soft >= 0)) {
+    p->trem_soft = 0;
+  }
+  if (p->trem_soft > 1) {
+    p->trem_soft = 1;
+  }
+  if (!(p->trem_loud >= 0)) {
+    p->trem_loud = 0;
+  }
+  if (p->trem_loud > 1) {
+    p->trem_loud = 1;
+  }
+}
+
 void synth_sanitize_params(struct SynthParams* p) {
   // level_full is a divisor, and octave multiplies every partial's frequency.
   if (!(p->level_full > 1e-4f)) {
@@ -1219,6 +1485,7 @@ void synth_sanitize_params(struct SynthParams* p) {
   if (p->top_hz < 0) {
     p->top_hz = 0;
   }
+  synth_sanitize_trem(p);
 }
 
 void synth_set_params(struct Synth* s, const struct SynthParams* params) {
@@ -1313,7 +1580,43 @@ static bool synth_earned(const struct Synth* s) {
 static void update_controls(struct Synth* s, bool playing) {
   const struct SynthParams* p = s->params;
 
-  float reach = fmaxf(0, s->level / p->level_full);
+  // What the player's breath has to say about this note.  Normally that is
+  // whatever they are doing right now; on a struck voice it is what they did
+  // in the first `strike_s` of the note and nothing since, because that is
+  // when the hammer was touching the string.  Everything downstream of here
+  // -- the level, the brightness, the drive -- then holds for the rest of the
+  // note, which is what makes it a piano rather than a wind instrument with a
+  // decay on it.
+  //
+  // The peak over the window rather than the value at the end of it.  A
+  // whistled note scoops in over a few tens of milliseconds, so a sample
+  // taken at a fixed instant reads whatever the scoop had reached; the peak
+  // reads the note.  What that costs is a calibration -- a whistle's first
+  // peak runs above its body -- and `level_full` on the preset is where it is
+  // paid.
+  // The breath as it is right now, before the strike latches anything.  On
+  // every other voice this and `level` below are the same number; on a struck
+  // one they are the two halves of what the player is saying -- how hard the
+  // note was hit, and what they are doing to it since.  Only the tremolo
+  // reads this one.
+  float breath = fmaxf(0, s->level / p->level_full);
+
+  float level = s->level;
+  if (p->strike_s > 0) {
+    // `playing` as well as the window, and not just for tidiness: `note_age`
+    // is reset whenever the detector stops hearing anything, so under the
+    // sustain control a tail sits at note_age 0 forever.  Without this the
+    // contact would re-open the moment the player stopped -- the latch would
+    // start following the level the sustain is easing onto the note's
+    // average, and the bell below would be re-armed on a note that was struck
+    // seconds ago.  A hammer that came back is not a hammer.
+    if (playing && s->note_age <= p->strike_s) {
+      s->strike = fmaxf(s->strike, level);
+    }
+    level = s->strike;
+  }
+
+  float reach = fmaxf(0, level / p->level_full);
 
   // Loudness stays close to what was played -- a slight compression, no more,
   // or the lead stops responding to how hard it's being pushed.  It is frozen
@@ -1324,7 +1627,7 @@ static void update_controls(struct Synth* s, bool playing) {
   // the player stops -- it eases onto the note's own average and stays there,
   // so there is nothing here to double up with the gate.
   if (playing || synth_earned(s)) {
-    s->loudness = synth_loudness_of(s, s->level);
+    s->loudness = synth_loudness_of(s, level);
   }
 
   // Brightness and drive get a soft knee instead: they should keep responding
@@ -1334,6 +1637,19 @@ static void update_controls(struct Synth* s, bool playing) {
   // rather than buzzing at full brightness the whole way down.
   float dynamics = 1 - expf(-2.2f * reach);
   s->dynamics = dynamics;
+
+  // What the tremolo is being asked for: the breath, straight, and frozen the
+  // moment the player stops -- the same shape and for the same reasons as
+  // `leslie_target` below.  A rest is not an instruction to turn the tremolo
+  // off, and under the sustain control there is a note still ringing that the
+  // amplifier is still swinging.
+  //
+  // The level rather than the soft-kneed `dynamics`, because the knee is
+  // already at 0.47 by the quietest breath anything here sounds at, and a
+  // depth control whose bottom half is unreachable is not a control.
+  if (p->trem_hz > 0 && playing) {
+    s->trem_target = fminf(1.0f, breath);
+  }
 
   // What the leslie's rotors are being asked for, frozen the moment the
   // player stops so that a gap between phrases does not read as a request to
@@ -1378,6 +1694,27 @@ static void update_controls(struct Synth* s, bool playing) {
   // filter.  cutoff_env is what the note has left of its opening sweep.
   if (p->wobble_octaves > 0) {
     cutoff *= exp2f(p->wobble_octaves * sinf(2 * (float)M_PI * s->wobble_pos));
+  }
+  // How much bell this note gets, and it is decided by how hard it was
+  // struck.  On a struck instrument the touch reaches the attack far harder
+  // than it reaches the body -- a soft note is very nearly a sine with a
+  // little bell on the front, and a hard one is a bell that turns into a sine
+  // -- and an envelope sitting a fixed number of octaves above wherever the
+  // dynamics have put the corner cannot say that, because it moves both ends
+  // by the same ratio.  Measured, with the envelope fixed: the attack's
+  // centroid at 330Hz came out 1583, 1567 and 1604Hz across the whole range
+  // of the strike, which is a voice whose bell does not care how it was
+  // played.
+  //
+  // So on a struck voice `cutoff_env_octaves` is the loud end rather than the
+  // whole envelope, and the note takes the fraction of it that it earned.
+  // Re-armed rather than set once, and only ever upward, because at the
+  // onset itself the strike has not been measured yet -- it is a peak over
+  // the contact window, and this follows it up as the window discovers it
+  // without ever holding the decay back.
+  if (p->strike_s > 0 && p->cutoff_env_octaves > 0 &&
+      playing && s->note_age <= p->strike_s) {
+    s->cutoff_env = fmaxf(s->cutoff_env, p->cutoff_env_octaves * dynamics);
   }
   if (p->cutoff_env_octaves > 0) {
     cutoff *= exp2f(s->cutoff_env);
@@ -1716,8 +2053,19 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     // set rather than added to, so a fast run gets the same swoop on every
     // note instead of stacking them up.
     s->drop = p->drop_octaves;
-    s->cutoff_env = p->cutoff_env_octaves;
+    // A struck voice arms the cutoff envelope from the strike instead, and
+    // cannot do it here: at the onset the strike has not been measured yet,
+    // because the level in this hint is the very start of the note and not
+    // how hard it turned out to be.  Arming it full here and letting
+    // update_controls only raise it made every note's bell the same size --
+    // measured, the quietest note in the ladder came out with a spectrum flat
+    // to its seventh partial, which is the loudest note's attack.
+    s->cutoff_env = p->strike_s > 0 ? 0 : p->cutoff_env_octaves;
     s->pluck = 1;
+    // A new note weighs itself.  Without this a quiet note struck after a
+    // loud one would inherit the loud one's velocity and never come down,
+    // since the latch only ever goes up inside its window.
+    s->strike = 0;
   } else if (playing) {
     // Otherwise track continuously.  Glide is in the log domain so a bend
     // takes the same time everywhere, and it is fast enough to feel instant
@@ -1912,6 +2260,19 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // speed chases the dynamics whether or not anything is sounding: the rotors
   // coast down through a rest and are still coasting when the next note
   // arrives, exactly as they would in the room.
+  // The tremolo, free-running for the same reason: an amplifier does not
+  // restart its oscillator when a key goes down, and one that did would put
+  // the same swell on the front of every note.
+  if (p->trem_hz > 0) {
+    float want = p->trem_soft +
+                 (p->trem_loud - p->trem_soft) * s->trem_target;
+    s->trem_depth += coeff(SYNTH_TREM_RISE_S, s->sample_rate) *
+                     (want - s->trem_depth);
+    s->trem_pos += p->trem_hz / s->sample_rate;
+    if (s->trem_pos >= 1) {
+      s->trem_pos -= 1;
+    }
+  }
   if (p->leslie_horn_soft_hz > 0) {
     s->leslie_speed += coeff(p->leslie_spin_s, s->sample_rate) *
                        (s->leslie_target - s->leslie_speed);
@@ -2142,6 +2503,24 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     }
   }
 
+  // The tremolo, last of all, because it is the power amp: on a suitcase the
+  // oscillator swings the output stage and not the preamp, so it must not
+  // change how hard the saturator upstream is being driven.
+  //
+  // Divided by its own rms, which is the whole point of putting the breath
+  // here.  A plain `1 + depth*sin` has an rms of sqrt(1 + depth^2/2), so
+  // winding the depth up would also wind the level up -- and the level going
+  // up with the breath is exactly the thing `strike_s` exists to stop.  With
+  // this the depth changes how much the note moves and not how loud it is:
+  // measured over recordings/whistling.f32 the voice lands within 0.1dB of
+  // where it does with the tremolo switched off entirely.
+  float trem = 1;
+  if (p->trem_hz > 0) {
+    float d = s->trem_depth;
+    trem = (1 + d * sinf(2 * (float)M_PI * s->trem_pos)) /
+           sqrtf(1 + 0.5f * d * d);
+  }
+
   // Same envelope and gain as the mid, so width changes where a note sits
   // and not how loud it is.  It skips the high-pass: only single-oscillator
   // voices ask for one, and those have no spread to begin with.
@@ -2151,7 +2530,7 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // anything cancelling, which for detuned copies is otherwise exactly what
   // goes wrong.
   s->side = spread * drive_gain * p->stereo_width * s->amp * p->out_gain *
-            s->audibility_comp;
+            s->audibility_comp * trem;
 
-  return out * s->amp * p->out_gain * s->audibility_comp;
+  return out * s->amp * p->out_gain * s->audibility_comp * trem;
 }

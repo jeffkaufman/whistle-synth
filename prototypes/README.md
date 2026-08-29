@@ -16,6 +16,7 @@ through a QSC K10.2.  Renders to listen to are in this directory (gitignored).
   10: square            a plain hollow square
   11: drawbar           tonewheel organ, 2 down, breath drives the leslie
   12: drawbar-hi        the same organ an octave up, same leslie
+  13: rhodes            tine electric piano, 2 down, struck; breath drives the tremolo
 ```
 
 Plus two controls that are not voices: `current-fifth` and `current-sustain`,
@@ -476,6 +477,391 @@ Across pitch it is the flattest voice here:
 That is not the audibility compensation working hard.  It is a voice whose
 lowest partial is 69Hz never asking it for anything -- plus the correction
 above, which is what took these from 1.0 and 2.2.
+
+## The tine piano
+
+`rhodes` is a Fender Rhodes: a piano action hitting a steel tine next to an
+electromagnetic pickup, into an amp.  Two octaves down, the same register
+`drawbar` plays in -- a 550-3150Hz whistle lands at 137-787Hz, C#3 to G5,
+which is the middle of the instrument.
+
+It is the first voice here that is **struck**, and the breath does two
+separate things: at the onset it sets the velocity and then the hammer leaves,
+and after that it works the suitcase tremolo.  Between them the player has
+what a keyboard player has -- how hard each note is hit, how long the key is
+held, and a foot on the front panel.
+
+### The strike
+
+Every other preset in this table spends the player's breath continuously.
+Ten of them spend it on level, which is a wind instrument; the two organs
+spend it on rotor speed, because an organ has no dynamics at all.  A hammer
+is in contact with the string for a few milliseconds and then it is gone, and
+from that moment nothing the player does can make the note louder, brighter
+or dirtier.  Only shorter, by lifting the key.
+
+`strike_s` is how long the contact lasts.  Inside it the voice takes the peak
+of the level; outside it, the level, the brightness and the drive all hold
+where the strike put them.  `prototypes/in-strike.f32` is the measurement:
+six notes at a ladder of velocities, then one struck quiet that swells to
+full and one struck full that fades away.
+
+```
+   struck at 0.10, breath rising to 0.45   -27.0 dB   (a steady 0.10 note: -27.7)
+   struck at 0.45, breath falling to 0.10  -16.1      (a steady 0.45 note: -16.1)
+```
+
+Both render as the note they were struck at, to a fraction of a dB.
+
+**The peak over the window, not the value at the end of it.**  A whistled note
+scoops in over a few tens of milliseconds, so a sample taken at a fixed
+instant reads wherever the scoop had got to.  Over
+`recordings/whistling.f32`, how much of its eventual peak a note has reached:
+
+```
+   30ms   median 0.76   p10 0.39
+   80ms          0.96       0.59
+  100ms          1.00       0.59
+```
+
+100ms is where the median note has arrived and where the p10 note -- one with
+a genuinely slow attack, not one being struck hard -- has mostly arrived.
+
+**The peak costs a calibration.**  Every other voice's `level_full` is 0.22,
+set against the level the synth sees continuously; this one reads a note's
+first peak, which over the same recording runs a median 1.26x its body.  0.22
+x 1.26 is 0.28, and `level_full` is 0.30.  Left at 0.22 the median note would
+render at 0.80 of full and the top fifth of real playing would be against the
+cap, which on a piano is the instrument gone.
+
+**Short notes do not suffer for it**, which was the thing to check: over
+`in-padfast.f32` a 60ms note comes out 0.2dB under a 1.2s one, against
+`bass`'s 0.9dB.  The latch reads a smoothed level and a 60ms note's peak is
+still that note's peak.
+
+**`in-steps.f32` could not do this job.**  Its 50ms gate dip does not
+un-voice the detector, so six seconds in it is one held note -- two onsets in
+the whole file.  That is exactly what `drawbar` wanted, since rotors answer a
+breath that never stops, and exactly wrong for a voice where every note is a
+separate strike.  Rendered with `rhodes` it is one note decaying for
+thirty-six seconds while the player blows harder and harder at it, which is a
+fair demonstration of the strike and a useless velocity ladder.
+
+### The bark
+
+A Rhodes note is two sounds: a bright inharmonic cluster that dies in a few
+hundred milliseconds, and a near-sine body that rings for seconds.  The
+cluster is the tine's own high bending modes -- it is a steel bar clamped at
+one end, and a stiff bar's modes go progressively sharp rather than landing on
+harmonics, which is why the attack reads as a bell.
+
+Three things build it, and all three already existed:
+
+- `stretch` at 0.012 puts partial 8 at 8.7 and partial 16 at 18.9.  Enough
+  smear to be a bell; small enough that the second partial is only 21 cents
+  sharp, where a bigger number starts sounding out of tune rather than struck.
+- `pwm_center` at 0.045 with `tilt` at 1.0, which is not a timbre but a
+  supply: a flat bank of partials out to about the eleventh for the filter to
+  shape.  This started at 0.35, where the pulse's first null landed on the
+  third partial and the body came out hollow -- partial 3 at -20dB with
+  partial 4 at -5.
+- `cutoff_env_octaves`, 3.4 octaves over the corner falling back with a 180ms
+  time constant.
+
+### Touch reaches the attack, not the body
+
+The third of those needed a change, and it is the only new mechanism here
+besides the strike itself.
+
+`cutoff_env_octaves` is a fixed number of octaves above wherever the dynamics
+have put the corner, so it moves the attack and the body by the same ratio.
+On a struck instrument they do not move together at all: a soft note is very
+nearly a sine with a hint of bell on the front, a hard one is a bell that
+becomes a sine, and the body barely changes between them.  With the envelope
+fixed, the attack's spectral centroid at 330Hz came out 1583, 1567 and 1604Hz
+across the whole range of the strike -- a piano that does not care how it is
+played.
+
+So on a voice with `strike_s` set, `cutoff_env_octaves` is the *loud* end and
+each note takes the share of it that it earned.  Re-armed rather than set
+once, because at the onset itself the strike has not been measured yet, and
+only ever upward, so it never holds the decay back.  Measured at 330Hz:
+
+```
+   breath      0.06  0.10  0.15  0.22  0.32  0.45   of the input
+   attack       553   726   878  1096  1175  1105   Hz, centroid at 80ms
+   body         344   342   353   345   356   359   Hz, centroid at 1.2s
+   level      -30.1 -26.6 -23.8 -21.0 -18.1 -15.9   dB, at 50ms
+```
+
+The attack moves 2.1 to 1 across the range of the strike and the body barely
+moves at all.  That is the touch of the instrument.
+
+(These are measured with the tremolo off.  The decay, the note separation and
+the partial levels below are too: they are properties of the envelope and the
+oscillator, and an amplitude modulation on top of them only makes the
+measurement noisy.)
+
+One thing to know: the onset used to arm this envelope at full, which quietly
+made every note's bell the same size -- the quietest note in the ladder came
+out with a spectrum flat to its seventh partial, which is the *loudest*
+note's attack.  A struck voice arms it from the strike instead.
+
+The same window has to be gated on the note actually being played, not on
+`note_age`, which is reset whenever the detector stops hearing anything.
+Without that a tail under the sustain control sits at note_age 0 forever, the
+contact re-opens, and the bell is re-armed on a note struck seconds ago.
+
+### The decay, and what the compensation does to it
+
+`decay_s` is 1.0s to a twentieth, which renders as -1.8dB at half a second,
+-5.6 at one and -12.6 at two.
+
+That number is set on the rendered result rather than on the parameter,
+because the audibility compensation partly undoes it.  The note darkens as its
+bell dies; a darker spectrum is worth less per unit of electrical power; the
+compensation hands some of it back.  With the bark switched off the same
+envelope renders -4.4dB at one second, and with it on -2.3.
+
+```
+   bark on,  decay 1.6     0.0   0.0  -0.4  -2.3  -4.6  -6.8  -8.3
+   bark off, decay 1.6     0.0  -0.8  -2.0  -4.4  -6.7  -8.9 -10.5
+                          0.05  0.20  0.50  1.00  1.50  2.00  2.40  s
+```
+
+So 2.2dB of the first second's decay is the compensation and not the
+envelope.  That is the compensation doing exactly what it says -- holding what
+a listener hears steady -- and it is worth writing down because it is the
+reason this number is shorter than a real Rhodes' decay and still sounds like
+one.  It is also the one place in the table where a voice's own timbre moving
+inside a note reaches the loudness match; every other voice's spectrum is
+settled by the time the note is.
+
+### The damper
+
+`release_s` is 25ms, short for this table, and it is the price of being
+struck.  Every other voice's level collapses in the gap between two notes
+because it follows the breath; this one's does not, because it is holding the
+velocity it was struck at.  So the gate is the only thing separating two notes
+and it has to do the whole job.  Over `in-scale.f32` -- 300ms notes with 60ms
+gaps -- how far down the previous note is when the next one starts:
+
+```
+   rhodes, release 50ms    -7.6 dB        bass     -26.6
+   rhodes, release 25ms   -13.9           drawbar  -23.5
+   rhodes, release 18ms   -18.5           pluck    -36.2
+```
+
+Still the least separated voice in the table, which is what a felt damper
+landing on a ringing tine is.  At 50ms a fast run was one sound.
+
+### The pickup and the amp
+
+A Rhodes pickup is an electromagnet a millimetre from a steel tine, and its
+field is nothing like linear, so the instrument distorts on its own before
+anything downstream does.  `drive_bias` is what puts the even harmonics in,
+and with the strike latched the drive is the second of only two things the
+velocity reaches.
+
+`top_hz` is doing a different job from `drawbar`'s cabinet.  There the 8kHz
+was the saturator inventing what no leslie could radiate, and the fix was to
+stop radiating it.  Here the same band is the bell itself: taking the drive
+from 0.7-2.2 down to 0.3-0.6, which is 7dB of level, moves the 8k octave by
+0.7dB.  So this corner is shaping real content and has to be set by what the
+instrument's own amplifier is rather than by where an artifact stops.  It is
+2.6kHz -- see "Too harsh when played loudly" below, which is where that number
+came from.
+
+### Too harsh when played loudly
+
+The first version of this voice was built and measured at the level the
+reference recording was made at, and it was harsh on the speaker when played
+hard.  That is the same mistake `drawbar` made, and this time it should have
+been expected.
+
+Three things were wrong and they are worth separating, because only one of
+them is the one that shows up in a band table.
+
+**The saturator, which was most of it.**  `drive_loud` was 2.2.  A saturator
+on a *stretched* spectrum is not the same thing as one on a harmonic spectrum:
+the intermodulation products land nowhere near the partials, so what a hard
+drive makes here is dense inharmonic grit rather than warmth.  Measured on a
+hard strike, energy sitting more than 3.5% away from any partial, as a
+fraction of the note:
+
+```
+   drive 0.7-2.2   -12.8 dB        drive 0.7-1.3   -15.8 dB
+```
+
+An eighth of the note against a twenty-fifth.
+
+**The bell opening too far.**  `cutoff_env_octaves` was 4.2 over a loud corner
+of 1.6, which puts the corner at partial 28 -- 9kHz on a 330Hz note and past
+Nyquist at the top of the range.  At full open a flat bank of 24 partials is
+very nearly a sawtooth, and that is not a bell.  3.4 octaves over a corner of
+1.2 keeps the bark and loses the buzz, and it costs nothing measurable: the
+attack's velocity range is now 2.1 to 1 where it was 1.7 to 1, because the
+body came down further than the attack did.
+
+**The cabinet.**  4.5kHz was chosen on the theory that the bell needs the
+room.  A suitcase Rhodes is four twelve-inch speakers in a wooden box with no
+horn and no tweeter in it anywhere, and 2.6kHz is what that is.
+
+Together, in octave bands over `recordings/whistling.f32`, relative to each
+voice's own total:
+
+```
+              125    250    500     1k     2k     4k     8k
+  drawbar    -8.7   -7.5   -9.8  -15.2  -21.8  -31.8  -50.6
+  rhodes    -22.6  -10.9   -9.3   -8.9  -10.8  -16.5  -28.2   before
+  rhodes    -21.0   -9.2   -8.4   -9.1  -12.7  -21.5  -37.3   now
+```
+
+**What could not be fixed this way is the 2k octave**, which moved 1.9dB and
+will not move much further.  At the top of the range that band is the note
+itself and its second partial, not the bell, so taking it out means taking out
+the voice.  If this is still hot on the speaker the answer is the register --
+an octave down, `octave` at 0.125 -- and not the cabinet.
+
+One thing that is *not* a lever, and it cost a measurement to find out: the
+whole band table barely moves with how hard the player is whistling.
+Amplifying the reference recording by 1.6x and 2.4x moved the 2k octave by
+0.4dB.  Loud playing is harsher because each *note* opens its bark further and
+because the whole thing is louder, not because the voice's balance changes
+with the phrase.
+
+### Where the breath goes after the strike
+
+`drawbar` had to answer this question because an organ has no dynamics at all.
+This one has to answer it because the hammer has already left the string, and
+a player leaning into a note that is still ringing has to be doing
+*something*.  On a suitcase Rhodes that something is on the front panel: the
+amplifier swings the note back and forth, and how far it swings is a knob.
+
+So the breath is the **depth**.  Measured over the velocity ladder, each
+note's envelope peak to trough with its own decay taken out:
+
+```
+   breath   0.06  0.10  0.15  0.22  0.32  0.45   of the input
+   swing     3.4   4.3   5.6   7.8  11.8  19.3   dB
+```
+
+And on the two notes in `in-strike.f32` whose breath moves *after* the onset,
+which is what this control exists for:
+
+```
+   struck at 0.10, breath rising to 0.45     7.0 dB  ->  13.6
+   struck at 0.45, breath falling to 0.10   13.9     ->   8.9
+```
+
+Those same two notes still render at the level and the brightness they were
+struck at, to a fraction of a dB.  The player is working the amplifier, not
+the hammer.
+
+**The rate is not on the breath.**  A suitcase has a rate knob and a depth
+knob and a player sets the rate once for the tune.  This is the opposite of
+the leslie, where the speed *is* the gesture -- an organist ends a phrase by
+kicking the speed switch.  A tremolo whose rate moved while you played would
+read as a fault rather than as expression.  5.5Hz, free-running, because an
+amplifier does not restart its oscillator when a key goes down.
+
+**`trem_soft` is zero.**  Quiet playing is a clean electric piano with no
+tremolo in it at all, which is what the front panel looks like with the depth
+knob down.  The effect is something the player switches on by leaning in
+rather than something the voice always does.
+
+**The depth must not become volume**, or the strike has been undone: leaning
+into a ringing note would make it louder again, which is exactly what
+`strike_s` exists to prevent.  A plain `1 + depth*sin` has an rms of
+`sqrt(1 + depth^2/2)`, so the tremolo is divided by its own rms.  Over
+`recordings/whistling.f32` the voice lands at -23.51 LUFS with the tremolo
+following the breath, -23.51 with it switched off entirely, and -23.56 with
+the depth pinned at 0.85.  What the breath changes is how much the note moves.
+
+It costs peak headroom rather than level: 0.44 with the tremolo off and 0.53
+with it on, because a depth of 0.85 puts about 4dB of crest on the note that
+an integrating meter does not see.
+
+### The sustain control is the sustain pedal
+
+This is the one voice that gets that machinery for free.  The tail keeps the
+strike's velocity, the decay goes on running underneath it, and what comes out
+is a note still ringing down rather than a drone.  Over
+`recordings/holding.f32`, a held note relative to where it was when the player
+stopped:
+
+```
+                    +0.3s   +1.0s
+   sustain on       -10.0   -14.9   dB
+   sustain off      -59.0     gone
+```
+
+The snap to the nearest semitone, which every other voice has to be argued
+into, is simply what a keyboard is.
+
+### Loudness
+
+The table's usual match: -23.5 LUFS through the K10.2 model over
+`recordings/whistling.f32`, against `drawbar`'s -23.1 and `bass`'s -23.8, at
+0.53 peak.  Unlike `pluck` it does not need the peak match instead -- its
+notes ring for most of their length rather than being an attack and a gap, so
+an integrating meter reads it where it belongs.  The peak is the tremolo,
+which puts about 4dB of crest on a note that the integrated measurement does
+not see.
+
+Across pitch it is among the flattest things in the table, 0.3dB from the
+bottom of the whistle range to the top against `drawbar`'s 0.5 and `square`'s
+3.8.
+Nothing here goes near the cabinet's corner and the compensation is barely
+asked for anything.
+
+### What is not modelled
+
+**The tremolo is mono.**  A real suitcase pans between two speakers rather
+than turning the level up and down, and summed to one speaker that is very
+nearly nothing at all.  This table is mono through a K10.2 -- see the top of
+this file -- so the effect has to be an amplitude swing, which is what every
+mono recording of a suitcase sounds like anyway.
+
+**The tonebar.**  A real tine is paired with a tuned steel bar behind it and
+the two are coupled; that is where the long ring comes from.  Here the ring is
+an envelope.  The beating in the second-partial region is real but arrives by
+a different route -- see the stretch, above.
+
+**Velocity reaching the decay time.**  On a real piano a hard note rings
+longer than a soft one.  `decay_s` is one number.
+
+### Renders for the speaker
+
+The cabinet corner and the tremolo rate are settled by ear on the box this
+gets played through rather than by measurement, which is how `drawbar` found
+its own corner.  All six are rendered over `recordings/whistling.f32`
+**amplified 1.6x**, because loud playing is the case that went wrong, and all
+six are matched to -23.0 LUFS so the comparison is about tone and not level:
+
+```
+   rhodes-ab-a.wav   the preset
+   rhodes-ab-b.wav   what it was: drive 2.2, bell 4.2 octaves, cabinet 4.5kHz
+   rhodes-ab-c.wav   darker still: cabinet 1.9kHz, drive 1.1
+   rhodes-ab-d.wav   tremolo slower, 4.0Hz
+   rhodes-ab-e.wav   tremolo faster, 7.5Hz
+   rhodes-ab-f.wav   tremolo deeper at the top, trem_loud 1.0
+```
+
+`-b` is the reference for how far this moved.  If `-c` wins, the 2k octave is
+the thing still in the way and the register is the better answer -- see above.
+`-d` through `-f` are one line each and change nothing else: the tremolo is
+divided by its own rms, so depth and rate do not move the loudness match.
+
+`whistling-rhodes-loud.wav` is the same amplified input through the preset at
+its own gain, for judging it against the other voices rather than against
+itself.
+
+**The one thing a whistle cannot give it** is the strike itself.  A hammer
+takes a couple of milliseconds; a whistled note is at a median 76% of its
+level 30ms in.  So the bell blooms over the first few tens of milliseconds
+rather than arriving, and no setting here changes that -- it is the same limit
+`drawbar` ran into looking for the key click.
 
 ## The fifth
 
@@ -1152,6 +1538,7 @@ the pads.
   python3 prototypes/make-input.py glide > prototypes/in-glide.f32
   python3 prototypes/make-input.py scale > prototypes/in-scale.f32
   python3 prototypes/make-input.py steps > prototypes/in-steps.f32
+  python3 prototypes/make-input.py strike > prototypes/in-strike.f32
   ./zeros2-offline <voice> 9 5 < prototypes/in-scale.f32 > /tmp/o.f32
   ffmpeg -y -f f32le -ar 48000 -ac 1 -i /tmp/o.f32 out.wav
 ```
@@ -1172,7 +1559,10 @@ for `zeros2-offline`, with a `.sections` file naming what was being asked for
 when.  `--record` is the same thing for the voices that follow the whistle.
 
 `in-ladder.f32` is five steady notes across the range at identical amplitude,
-which is what the loudness match is measured over.  `in-scale.f32` is a
+which is what the loudness match is measured over.  `in-strike.f32` is one
+pitch at six velocities with real silence between the notes, plus a note that
+swells after the strike and one that fades after it, which is how a struck
+voice is shown to be struck.  `in-scale.f32` is a
 two-octave chromatic climb repeated three times;
 `in-glide.f32` is the same range as a continuous rise; `in-pad.f32` is six
 steady notes spaced seconds apart.  The last two were made for the pads and
