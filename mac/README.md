@@ -690,3 +690,57 @@ reads and clears a plain float that the audio thread writes every sample --
 calling it from the UI thread, as the command-line build does from its own
 main loop, would be a race.  It is taken on the audio thread instead and
 folded into an atomic like the rest.
+
+## The 24Hz tick, and which views may see it
+
+Those meters arrive at 24Hz, and where they land in the view tree turned out
+to matter more than anything else about the UI's performance.  This is written
+down because the failure was invisible in ordinary use and took nine hours to
+become obvious.
+
+**The symptom.**  Left running overnight, the app was sluggish by morning: one
+core pegged, 875MB resident, and the window redrawing about 1.4 times a
+second.  The engine was innocent -- the audio thread was parked in
+`semaphore_wait_signal_trap` for 3104 of 3118 samples, with 11 in the DSP.
+All of it was on the main thread, in SwiftUI layout.
+
+**The cause is that `ObservableObject` has one `objectWillChange`.**  Writing
+*any* `@Published` re-renders *every* view holding the object, whatever that
+view actually reads.  `SynthController` is one such object, and
+`refreshStatus` wrote eighteen of them 24 times a second without checking
+whether anything had changed -- so the whole window, `TabView` included, was
+rebuilt continuously.
+
+**Rebuilding the `TabView` is what made it a leak rather than merely waste.**
+Re-evaluating `MainTabs.body` rebuilds the three `.tabItem { Label(...) }`,
+and SwiftUI does not release the old ones.  After nine hours there were
+293,000 orphaned labels and 285,000 observation registrars behind them.  Each
+new invalidation then had to walk that registry
+(`ObservationRegistrar.Context.cancel`, hashing `AnyKeyPath` through a
+dictionary of that size), so the cost of a render grew with the number already
+leaked.  That is the compounding part: it started at 24 renders a second and
+had throttled itself to 1.4 by morning, which is both the sluggishness and the
+reason the leak rate fell off as it ran.
+
+**Three rules came out of it**, and the first two are enforced by structure
+rather than by remembering:
+
+* **The fast readouts live on `Meters`, not on the controller.**  Six values
+  that change on a tick, on their own `ObservableObject`, observed only by the
+  three small views that draw them -- `HearingStrip`, `ListeningSection` and
+  `FullBlowBar`.  Anything added there should be something that changes on a
+  tick; anything that changes when a *person* does something belongs on
+  `SynthController`.
+* **`MainTabs` does not observe anything.**  It owns the `TabView`, so
+  anything that re-renders it leaks.  The route banner reads the route from
+  inside its own body instead.  If something there ever needs controller
+  state, give it a subview rather than an `@EnvironmentObject` on that struct.
+* **`refreshStatus` assigns through `set(_:_:)`, which writes only on a
+  change.**  The device names and the latencies come back from the engine 24
+  times a second and differ about once a session.
+
+Measured before and after, same machine, audio running: 100% of a core and
+293,000 leaked labels, against 59% of the main thread idle and 42 labels
+holding flat.  The check, if this ever needs redoing, is
+`heap <pid> | grep 'Label<SwiftUI.Text, SwiftUI.Image>'` twice a minute apart:
+that count must not grow.

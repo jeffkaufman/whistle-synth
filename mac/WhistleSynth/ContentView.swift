@@ -43,24 +43,30 @@ struct ContentView: View {
     }
 }
 
+/// Deliberately does **not** observe `SynthController`.
+///
+/// This is the view that owns the `TabView`, and re-evaluating its body
+/// rebuilds the three `.tabItem { Label(...) }` below.  SwiftUI keeps those
+/// rather than releasing them, so anything that re-renders this view
+/// repeatedly leaks: a 24Hz meter tick reaching here once cost 293,000
+/// orphaned labels and 875MB in a single overnight run, and slowed the app
+/// down as it went, because every later invalidation had to walk the
+/// registrars piling up behind them.
+///
+/// `Meters` is the fix for that particular tick.  This is the guard against
+/// the next one: the banner reads the route from inside its own body, so
+/// nothing the controller publishes re-evaluates this body at all, and the
+/// tab items are built once.  Keep it that way -- if something here needs
+/// controller state, give it a subview rather than an `@EnvironmentObject`
+/// on this struct.
 private struct MainTabs: View {
-    @EnvironmentObject private var synth: SynthController
     @State private var tab = Tab.play
 
     enum Tab { case play, voice, audio }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Above the tabs rather than inside one, because it is true of
-            // the whole app: nothing sounds while it is showing, whichever
-            // tab is in front.
-            if let problem = synth.route.problem {
-                RouteBlockView(title: synth.route.problemTitle,
-                               problem: problem,
-                               showDevicesButton: tab != .audio) {
-                    tab = .audio
-                }
-            }
+            RouteBanner(tab: $tab)
 
             TabView(selection: $tab) {
                 PlayView().tabItem { Label("Play", systemImage: "waveform") }
@@ -74,6 +80,26 @@ private struct MainTabs: View {
 
             Divider()
             StatusBar()
+        }
+    }
+}
+
+/// The banner, wrapped so that watching the route does not mean re-rendering
+/// the `TabView` that sits under it.  See `MainTabs`.
+///
+/// Above the tabs rather than inside one, because it is true of the whole
+/// app: nothing sounds while it is showing, whichever tab is in front.
+private struct RouteBanner: View {
+    @Binding var tab: MainTabs.Tab
+    @EnvironmentObject private var synth: SynthController
+
+    @ViewBuilder var body: some View {
+        if let problem = synth.route.problem {
+            RouteBlockView(title: synth.route.problemTitle,
+                           problem: problem,
+                           showDevicesButton: tab != .audio) {
+                tab = .audio
+            }
         }
     }
 }

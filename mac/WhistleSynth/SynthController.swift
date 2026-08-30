@@ -3,6 +3,70 @@ import AppKit
 import Combine
 import Foundation
 
+/// The readouts that change on every tick, deliberately kept off
+/// `SynthController`.
+///
+/// An `ObservableObject` has exactly one `objectWillChange`, so writing *any*
+/// `@Published` on it re-renders *every* view holding it, whatever that view
+/// actually reads.  These six change 24 times a second by design.  While they
+/// lived on the controller, that meant the entire window -- the tab bar
+/// included -- was rebuilt 24 times a second for as long as the app was open.
+///
+/// That was not merely wasted CPU.  Rebuilding the `TabView` rebuilds the
+/// three `.tabItem { Label(...) }` in `ContentView`, and SwiftUI holds on to
+/// those: after one nine-hour run there were 293,000 of them, 285,000
+/// observation registrars behind them, and 875MB resident.  Because each
+/// invalidation then has to walk that accumulated registry, the cost of a
+/// render grew with the number already leaked -- so the app got measurably
+/// slower the longer it ran, which is how this was found.  It had dropped
+/// from 24 renders a second to 1.4.
+///
+/// So the fast numbers live here, and only the two small views that actually
+/// draw them observe this object.  Anything added here should be something
+/// that changes on a tick; anything that changes when a *person* does
+/// something belongs on the controller.
+@MainActor
+final class Meters: ObservableObject {
+    @Published fileprivate(set) var inputPeak: Float = 0
+    @Published fileprivate(set) var outputPeak: Float = 0
+    @Published fileprivate(set) var detectedHz: Float = 0
+    /// The detector's own level while a note was sounding, which is what
+    /// `level_full` is measured against.  See `WhistleStatus.playing_level`.
+    @Published fileprivate(set) var playingLevel: Float = 0
+    /// The same, held far longer: the mark on the full-blow knob has to stay
+    /// where your loudest whistle put it while you take your mouth off the
+    /// microphone and reach for the mouse.
+    @Published fileprivate(set) var playingHold: Float = 0
+    @Published fileprivate(set) var voiced = false
+
+    /// The nearest note name to what is being detected, which is the quickest
+    /// way to tell a detector problem from a whistling problem.
+    var detectedNote: String? {
+        guard voiced, detectedHz > 20 else { return nil }
+        return SynthController.noteName(withCents: detectedHz)
+    }
+
+    fileprivate func update(from status: WhistleStatus) {
+        voiced = status.voiced
+        detectedHz = status.freq
+
+        // Held and let fall like the peaks below, and slower: this is read
+        // while whistling a long note to set `level_full`, so it has to stay
+        // legible between the analysis hops that produce it.
+        playingLevel = max(status.playing_level, playingLevel * 0.94)
+        // About eight seconds to fall by half at 24Hz, which is long enough
+        // to whistle, stop, look and click, and short enough that it is
+        // still about what you just did.
+        playingHold = max(status.playing_level, playingHold * 0.9964)
+
+        // The C side reports the peak since it was last asked and then
+        // resets, so hold the needle and let it fall, or a meter sampled at
+        // 24Hz mostly shows the gaps between notes.
+        inputPeak = max(status.input_peak, inputPeak * 0.82)
+        outputPeak = max(status.output_peak, outputPeak * 0.82)
+    }
+}
+
 /// Everything the UI binds to, and the only thing that talks to the C side.
 ///
 /// Settings live in UserDefaults, which is what a Mac app is expected to do:
@@ -173,17 +237,10 @@ final class SynthController: ObservableObject {
     /// when someone tries to start.
     @Published private(set) var route = AudioRoute()
 
-    @Published private(set) var inputPeak: Float = 0
-    @Published private(set) var outputPeak: Float = 0
-    @Published private(set) var detectedHz: Float = 0
-    /// The detector's own level while a note was sounding, which is what
-    /// `level_full` is measured against.  See `WhistleStatus.playing_level`.
-    @Published private(set) var playingLevel: Float = 0
-    /// The same, held far longer: the mark on the full-blow knob has to stay
-    /// where your loudest whistle put it while you take your mouth off the
-    /// microphone and reach for the mouse.
-    @Published private(set) var playingHold: Float = 0
-    @Published private(set) var voiced = false
+    /// The 24Hz readouts, on their own object so that they invalidate only
+    /// the two views that draw them.  See `Meters` for why that matters.
+    let meters = Meters()
+
     @Published private(set) var xruns = 0
     @Published private(set) var dropouts = 0
 
@@ -357,9 +414,9 @@ final class SynthController: ObservableObject {
     ///
     /// nil unless the knob has been touched in the last 30 seconds: see
     /// `showingFullBlowMarker`.
-    var playingStep: Double? {
-        guard showingFullBlowMarker, playingHold > 0.0005 else { return nil }
-        let steps = log10(Double(playingHold) / SynthController.levelFull(atStep: 5))
+    func playingStep(_ meters: Meters) -> Double? {
+        guard showingFullBlowMarker, meters.playingHold > 0.0005 else { return nil }
+        let steps = log10(Double(meters.playingHold) / SynthController.levelFull(atStep: 5))
                     / 0.15
         return min(9, max(0, 5 + steps))
     }
@@ -433,11 +490,16 @@ final class SynthController: ObservableObject {
     /// `detectedHz` holds its last trustworthy reading rather than going to
     /// zero: without that guard, one refused note would leave the message on
     /// screen for the rest of a silent room.
-    var refusedNote: String? {
-        guard !voiced, inputPeak > 0.02, isOutOfRange(hz: detectedHz) else {
+    ///
+    /// Takes the meters rather than reading them off `self`, because they no
+    /// longer live here: the range is a setting and the pitch is a reading,
+    /// and this is the one place the two have to meet.
+    func refusedNote(_ meters: Meters) -> String? {
+        guard !meters.voiced, meters.inputPeak > 0.02,
+              isOutOfRange(hz: meters.detectedHz) else {
             return nil
         }
-        return SynthController.noteName(withCents: detectedHz)
+        return SynthController.noteName(withCents: meters.detectedHz)
     }
 
     private func publishRange() {
@@ -742,50 +804,47 @@ final class SynthController: ObservableObject {
         meterTimer = timer
     }
 
+    /// Assign only if the value actually changed.
+    ///
+    /// Every `@Published` write sends `objectWillChange`, so an unconditional
+    /// assignment invalidates the whole window whether or not it changed
+    /// anything.  The fields below are read from the engine 24 times a second
+    /// and almost never differ -- the device names and the latencies change
+    /// when a device changes, which is to say hardly ever -- so writing them
+    /// blind was sending some 400 invalidations a second to say nothing.
+    private func set<T: Equatable>(_ path: ReferenceWritableKeyPath<SynthController, T>,
+                                   _ value: T) {
+        if self[keyPath: path] != value { self[keyPath: path] = value }
+    }
+
     private func refreshStatus() {
         var status = WhistleStatus()
         whistle_status(&status)
 
-        running = status.running
-        actualSampleRate = status.sample_rate
-        actualBufferFrames = Int(status.buffer_frames)
-        inputLatencyMs = status.input_latency_ms
-        outputLatencyMs = status.output_latency_ms
-        detectionLagMs = status.detection_lag_ms
-        splitDevices = status.split_devices
-        inputName = whistleString(status.input_name)
-        outputName = whistleString(status.output_name)
-        xruns = Int(status.xruns)
-        dropouts = Int(status.dropouts)
-        voiced = status.voiced
-        detectedHz = status.freq
+        // The meters are the only thing here that really does change on
+        // every tick, and they are on their own object so that they
+        // re-render the two views that draw them rather than the window.
+        meters.update(from: status)
 
-        // Held and let fall like the peaks below, and slower: this is read
-        // while whistling a long note to set `level_full`, so it has to stay
-        // legible between the analysis hops that produce it.
-        playingLevel = max(status.playing_level, playingLevel * 0.94)
-        // About eight seconds to fall by half at 24Hz, which is long enough
-        // to whistle, stop, look and click, and short enough that it is
-        // still about what you just did.
-        playingHold = max(status.playing_level, playingHold * 0.9964)
-
-        // The C side reports the peak since it was last asked and then
-        // resets, so hold the needle and let it fall, or a meter sampled at
-        // 24Hz mostly shows the gaps between notes.
-        inputPeak = max(status.input_peak, inputPeak * 0.82)
-        outputPeak = max(status.output_peak, outputPeak * 0.82)
+        set(\.running, status.running)
+        set(\.actualSampleRate, status.sample_rate)
+        set(\.actualBufferFrames, Int(status.buffer_frames))
+        set(\.inputLatencyMs, status.input_latency_ms)
+        set(\.outputLatencyMs, status.output_latency_ms)
+        set(\.detectionLagMs, status.detection_lag_ms)
+        set(\.splitDevices, status.split_devices)
+        set(\.inputName, whistleString(status.input_name))
+        set(\.outputName, whistleString(status.output_name))
+        set(\.xruns, Int(status.xruns))
+        set(\.dropouts, Int(status.dropouts))
     }
 
     // MARK: - Readouts
 
     var roundTripMs: Double { inputLatencyMs + outputLatencyMs }
 
-    /// The nearest note name to what is being detected, which is the quickest
-    /// way to tell a detector problem from a whistling problem.
-    var detectedNote: String? {
-        guard voiced, detectedHz > 20 else { return nil }
-        return SynthController.noteName(withCents: detectedHz)
-    }
+    /// The nearest note name to what is being detected is on `Meters`, which
+    /// is where the pitch it reads now lives.
 
     /// The same, without asking whether it is being played -- for saying what
     /// was heard and refused.

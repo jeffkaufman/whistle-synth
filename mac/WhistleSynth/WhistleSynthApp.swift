@@ -10,6 +10,12 @@ struct WhistleSynthApp: App {
         Window("Whistle Synth", id: "main") {
             ContentView()
                 .environmentObject(synth)
+                // Injected separately rather than reached through `synth`,
+                // so that a view can observe the 24Hz readouts without
+                // thereby observing everything else -- and, more to the
+                // point, so that a view that wants everything else does not
+                // get re-rendered 24 times a second.  See `Meters`.
+                .environmentObject(synth.meters)
                 .onDisappear { synth.shutdown() }
         }
         // Sized so that a window screenshot comes out at exactly 2560x1600,

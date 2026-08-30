@@ -87,15 +87,7 @@ struct PlayView: View {
                     // can usefully say: the number goes up as the gating goes
                     // down, and nobody guesses that from "gate".
                     hint: "how far above the room a note has to be — higher gates less")
-            // A playing control, not a voice one: it is an input level in
-            // input units, so what it describes is the microphone and the
-            // player rather than any sound.  The mark under the bar is where
-            // your loudest whistle actually landed, which turns "set this to
-            // the number you measured" into "click where the mark is".
-            StepBar(title: "Full blow", value: $synth.fullBlow,
-                    hint: "how hard you blow to reach the top of a voice",
-                    valueText: String(format: "%.3f", synth.fullBlowLevel),
-                    marker: synth.playingStep)
+            FullBlowBar()
         }
     }
 
@@ -467,27 +459,51 @@ private struct SwitchTileStyle: ButtonStyle {
     }
 }
 
+/// A playing control, not a voice one: it is an input level in input units,
+/// so what it describes is the microphone and the player rather than any
+/// sound.  The mark under the bar is where your loudest whistle actually
+/// landed, which turns "set this to the number you measured" into "click
+/// where the mark is".
+///
+/// Its own view because the mark follows `playingHold`, which moves 24 times
+/// a second.  Observing `Meters` from here costs one row of re-rendering at
+/// that rate; observing it from `PlayView` would cost the whole tab, and
+/// observing it from anything containing the `TabView` used to cost 875MB
+/// overnight.  See `Meters`.
+private struct FullBlowBar: View {
+    @EnvironmentObject private var synth: SynthController
+    @EnvironmentObject private var meters: Meters
+
+    var body: some View {
+        StepBar(title: "Full blow", value: $synth.fullBlow,
+                hint: "how hard you blow to reach the top of a voice",
+                valueText: String(format: "%.3f", synth.fullBlowLevel),
+                marker: synth.playingStep(meters))
+    }
+}
+
 /// The one readout worth having while playing: is it hearing me, and does it
 /// agree with me about what note that was.  Everything else about the signal
 /// is a setting-up question and lives where the setting is.
 private struct HearingStrip: View {
     @EnvironmentObject private var synth: SynthController
+    @EnvironmentObject private var meters: Meters
 
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "mic.fill")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            MeterView(level: synth.inputPeak, warn: 0.9)
-            Text(synth.detectedNote ?? "—")
+            MeterView(level: meters.inputPeak, warn: 0.9)
+            Text(meters.detectedNote ?? "—")
                 .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(synth.voiced ? .primary : .secondary)
+                .foregroundStyle(meters.voiced ? .primary : .secondary)
                 .frame(width: 90, alignment: .leading)
             // "Nothing is happening" is the hardest thing to work out while
             // playing, and a range someone set and forgot is one of the ways
             // to arrive at it.  Say which note was refused, not just that one
             // was.
-            if let refused = synth.refusedNote {
+            if let refused = synth.refusedNote(meters) {
                 Text("\(refused) — outside the range")
                     .font(.caption)
                     .foregroundStyle(.orange)

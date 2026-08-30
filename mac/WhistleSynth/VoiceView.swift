@@ -49,38 +49,7 @@ struct VoiceView: View {
             // the detector hears while a note is sounding -- is the number
             // "Full-blow level" below is compared against, so it belongs on
             // the same page as the slider it is for.
-            Section {
-                StatRow(title: "Input") {
-                    MeterView(level: synth.inputPeak, warn: 0.9)
-                }
-                StatRow(title: "Output") {
-                    MeterView(level: synth.outputPeak, warn: 0.98)
-                }
-                StatRow(title: "While playing") {
-                    Text(synth.playingLevel > 0.0005
-                         ? String(format: "%.3f", synth.playingLevel)
-                         : "—")
-                        .font(.system(.body, design: .monospaced))
-                }
-                StatRow(title: "Detected") {
-                    Text(synth.detectedNote ?? "—")
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(synth.voiced ? .primary : .secondary)
-                }
-                StatRow(title: "Pitch") {
-                    Text(synth.voiced
-                         ? String(format: "%.1f Hz", synth.detectedHz)
-                         : "—")
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(synth.voiced ? .primary : .secondary)
-                }
-            } header: {
-                Text("Listening")
-            } footer: {
-                Text("\"While playing\" is what the detector heard while a note was actually sounding — not the input meter above it, which is a sample peak and counts the room between notes. Whistle your loudest and set Full-blow level to what it reads.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            ListeningSection()
 
             if !synth.isPassthrough {
                 ForEach(ParamSpec.Group.allCases) { group in
@@ -99,6 +68,49 @@ struct VoiceView: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// The five live numbers, in their own view so that they are the only thing
+/// on this tab that a 24Hz meter tick re-renders.  Inline in `VoiceView.body`
+/// they would have rebuilt the whole form -- every parameter row and its
+/// slider -- twenty-four times a second.  See `Meters`.
+private struct ListeningSection: View {
+    @EnvironmentObject private var meters: Meters
+
+    var body: some View {
+        Section {
+            StatRow(title: "Input") {
+                MeterView(level: meters.inputPeak, warn: 0.9)
+            }
+            StatRow(title: "Output") {
+                MeterView(level: meters.outputPeak, warn: 0.98)
+            }
+            StatRow(title: "While playing") {
+                Text(meters.playingLevel > 0.0005
+                     ? String(format: "%.3f", meters.playingLevel)
+                     : "—")
+                    .font(.system(.body, design: .monospaced))
+            }
+            StatRow(title: "Detected") {
+                Text(meters.detectedNote ?? "—")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(meters.voiced ? .primary : .secondary)
+            }
+            StatRow(title: "Pitch") {
+                Text(meters.voiced
+                     ? String(format: "%.1f Hz", meters.detectedHz)
+                     : "—")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(meters.voiced ? .primary : .secondary)
+            }
+        } header: {
+            Text("Listening")
+        } footer: {
+            Text("\"While playing\" is what the detector heard while a note was actually sounding — not the input meter above it, which is a sample peak and counts the room between notes. Whistle your loudest and set Full-blow level to what it reads.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
