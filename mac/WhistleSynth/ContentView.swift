@@ -16,7 +16,27 @@ struct ContentView: View {
         }
         // Tall enough that the Play tab never scrolls: everything a player
         // touches is above the fold at the smallest the window goes.
-        .frame(minWidth: 620, minHeight: 600)
+        //
+        // The ideal size is what the window actually opens at, and it is not
+        // a taste decision: at this size a shadow-inclusive window screenshot
+        // comes out at exactly 2560x1600, which is one of the four sizes the
+        // Mac App Store accepts.  See the comment on the scene in
+        // WhistleSynthApp.swift for the arithmetic.
+        //
+        // Two things about these numbers are worth knowing before changing
+        // them, both established by measuring rather than by reading.
+        //
+        // They have to agree with the scene's .defaultSize, and the two are
+        // not interchangeable: .defaultSize on its own is ignored -- the
+        // window opens at whatever size the content happens to want -- while
+        // an ideal size on its own is overridden by a .defaultSize that
+        // disagrees with it.  Set both, to the same numbers.
+        //
+        // And what they set is the *window frame*, title bar included: an
+        // ideal height of 688 produces a window 688 tall, not 688 plus a
+        // 32pt title bar.
+        .frame(minWidth: 620, idealWidth: 1168,
+               minHeight: 600, idealHeight: 688)
         .task {
             await synth.requestPermission()
         }

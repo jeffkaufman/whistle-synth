@@ -103,8 +103,7 @@ final class SynthController: ObservableObject {
     @Published var octaveShift: Int {
         didSet {
             defaults.set(octaveShift, forKey: Key.octaveShift)
-            whistle_set_level_full(Int32(fullBlow))
-        whistle_set_octave(Int32(octaveShift))
+            whistle_set_octave(Int32(octaveShift))
         }
     }
 

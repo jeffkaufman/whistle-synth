@@ -17,3 +17,8 @@ recordings/
 
 # Built by mac/build.sh
 mac/build/
+
+# Xcode's per-user state, which lands inside the .xcodeproj bundle.
+mac/WhistleSynth.xcodeproj/xcuserdata/
+mac/WhistleSynth.xcodeproj/project.xcworkspace/xcuserdata/
+.DS_Store

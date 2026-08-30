@@ -23,9 +23,16 @@ struct HelpView: View {
                 }
             }
             .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // A measure rather than the window's full width.  The window is
+            // wide because a screenshot of it has to match the main window's
+            // dimensions (see WhistleSynthApp), and help text set across
+            // 1100pt is help text nobody reads; a column of about 60
+            // characters, centred, is what a wide reading window should do
+            // with the space.
+            .frame(maxWidth: 620, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .frame(minWidth: 460, idealWidth: 520, minHeight: 420, idealHeight: 620)
+        .frame(minWidth: 460, idealWidth: 1168, minHeight: 420, idealHeight: 688)
     }
 }
 
