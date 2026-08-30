@@ -370,8 +370,11 @@ static int start_audio(int device_index) {
          stream_info->inputLatency * 1000,
          stream_info->outputLatency * 1000,
          (stream_info->inputLatency + stream_info->outputLatency) * 1000);
+  // Half the analysis window, which depends on how low the detector has been
+  // pointed.  Read here rather than from PITCH_WINDOW, which is only the room
+  // set aside for the longest one.
   printf("Detection lag: about %.2fms on top of that\n",
-         500.0 * PITCH_WINDOW / SAMPLE_RATE);
+         500.0 * engine.detector.window_len / SAMPLE_RATE);
   fflush(stdout);
 
   int reported_xruns = 0;

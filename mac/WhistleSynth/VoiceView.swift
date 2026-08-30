@@ -14,8 +14,10 @@ struct VoiceView: View {
                     // at this tab, would change what you hear behind your back.
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Passthrough has no sound of its own to edit.")
-                        Button("Switch to \(SynthController.displayName(ofVoice: 1))") {
-                            synth.voice = 1
+                        // The same round trip the Play tab's button makes:
+                        // back to what was playing, not to a fixed voice.
+                        Button("Switch to \(SynthController.displayName(ofVoice: synth.comeBackToVoice))") {
+                            synth.togglePassthrough()
                         }
                     }
                 }
@@ -39,6 +41,45 @@ struct VoiceView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            // Here rather than on the Play tab, which is now only the
+            // controls someone touches mid-tune.  These are numbers you read
+            // while setting the thing up, and the one that matters -- what
+            // the detector hears while a note is sounding -- is the number
+            // "Full-blow level" below is compared against, so it belongs on
+            // the same page as the slider it is for.
+            Section {
+                StatRow(title: "Input") {
+                    MeterView(level: synth.inputPeak, warn: 0.9)
+                }
+                StatRow(title: "Output") {
+                    MeterView(level: synth.outputPeak, warn: 0.98)
+                }
+                StatRow(title: "While playing") {
+                    Text(synth.playingLevel > 0.0005
+                         ? String(format: "%.3f", synth.playingLevel)
+                         : "—")
+                        .font(.system(.body, design: .monospaced))
+                }
+                StatRow(title: "Detected") {
+                    Text(synth.detectedNote ?? "—")
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(synth.voiced ? .primary : .secondary)
+                }
+                StatRow(title: "Pitch") {
+                    Text(synth.voiced
+                         ? String(format: "%.1f Hz", synth.detectedHz)
+                         : "—")
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(synth.voiced ? .primary : .secondary)
+                }
+            } header: {
+                Text("Listening")
+            } footer: {
+                Text("\"While playing\" is what the detector heard while a note was actually sounding — not the input meter above it, which is a sample peak and counts the room between notes. Whistle your loudest and set Full-blow level to what it reads.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             if !synth.isPassthrough {

@@ -14,7 +14,9 @@ struct ContentView: View {
                 PermissionView(state: .denied)
             }
         }
-        .frame(minWidth: 620, minHeight: 560)
+        // Tall enough that the Play tab never scrolls: everything a player
+        // touches is above the fold at the smallest the window goes.
+        .frame(minWidth: 620, minHeight: 600)
         .task {
             await synth.requestPermission()
         }
@@ -110,6 +112,18 @@ private struct StatusBar: View {
             Circle()
                 .fill(synth.running ? Color.green : Color.secondary.opacity(0.4))
                 .frame(width: 8, height: 8)
+
+            // Worth a line of its own here, because the mute can be on
+            // while some other tab is in front, and "no sound" is otherwise
+            // a hardware question.
+            if synth.muted {
+                Text("Muted")
+                    .foregroundStyle(.red)
+                    .fontWeight(.semibold)
+                Button("Unmute") { synth.muted = false }
+                    .controlSize(.small)
+                Divider().frame(height: 12)
+            }
 
             if let error = synth.errorMessage {
                 Text(error)

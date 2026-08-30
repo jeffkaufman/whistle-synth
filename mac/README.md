@@ -206,7 +206,8 @@ command-line build reads (`current-voice` and friends) could not have been
 reached from inside the sandbox anyway.
 
 Voice, volume, gate, the fifth, the sustain, the two device UIDs, the sample
-rate and the buffer size are stored as plain values.  Edited voice parameters are stored as JSON under
+rate and the buffer size are stored as plain values.  The mute is not; see
+above.  Edited voice parameters are stored as JSON under
 `voiceOverrides`, keyed by voice name and holding **only the fields that
 differ from the built-in preset**.  Two consequences, both wanted:
 
@@ -313,18 +314,222 @@ The **Audio** tab reports what the stream actually got rather than what was
 asked for, because devices clamp both the sample rate and the buffer size and
 say nothing about it.
 
-## The player's controls, and the patch's
+## The Play tab
 
-The **Play** tab carries two switches that are deliberately *not* on the Voice
-tab and are not stored per voice:
+The tab the app opens on is the one that has to work while someone is
+playing, so it is a page of controls rather than a `Form`: voice, volume,
+gate, the octave, the range, the fifth, the sustain and a mute, all of them
+above the fold at the window's minimum size, none of them scrolling, and the ones
+touched while playing big enough to hit without aiming.  The three switches
+share a row and the range is a single line, which is what pays for the grid of
+voices and the two rows of ten being as big as they are.  A control you have to go looking for mid-tune
+is a control you do not use.
+
+Two things follow from that, and both are the reason the layout is hand-built
+rather than a list of rows:
+
+* **Selection is a filled block, not a dot.**  Voices are a grid of tiles and
+  the current one is solid accent; the 0-9 knobs are ten tiles you click
+  directly and they fill like a meter, so the setting reads from across a room
+  without reading a number.  `TileButtonStyle` and `StepTileStyle` are the
+  same idea twice.
+* **The readouts left.**  The meters, the detected note and the playing level
+  are on the **Voice** tab now, beside the full-blow level they exist to set.
+  What stays on Play is one line -- input meter and detected note -- which is
+  the only readout worth a glance while playing: is it hearing me, and does it
+  agree with me about what note that was.
+
+`Passthrough` is beside the heading rather than in the grid.  It is a tool for
+setting the input level and the gate, not a voice, and a tile in the grid is
+something you land on by accident.
+
+It is also a **round trip**: pressing it again puts back the voice that was
+playing, rather than leaving you to pick one.  That is not tidiness.
+Passthrough is an unconditional microphone-to-speaker loop, so it is the one
+thing in the app that can start howling on a rig where nothing else does --
+and the way out of a howl has to be the control that is already under the
+pointer, pressed again, not a different control found while the room is
+screaming.  `SynthController.comeBackTo` follows every voice change, so it is
+whatever was last playing; a launch that comes up in passthrough falls back to
+the voice a first run would have started on.  The label stays "Passthrough"
+either way, because a label that grew would move the button.  The Voice tab's
+"Switch to ..." button, which is the same escape hatch in the other place it
+is reachable, makes the same trip.
+
+### Full blow
+
+The third 0-9 bar, under Volume and Gate, and the odd one out: it edits a
+field of `SynthParams`.  It is here because it is not a property of a sound.
+`level_full` is an input RMS in input units, so what it describes is the
+microphone, the preamp and how hard this particular person whistles -- and
+the table has been saying so all along, since **every preset in it asks for
+the same 0.22**.  Two players swapping rigs want to change one number, not
+twelve.
+
+So `synth_set_level_full` overrides it for every voice at once, 0 leaving each
+voice on its own -- which is where the command-line build stays, so nothing
+about it changes.  `contact_level` follows along, being a fraction of
+`level_full` by construction.  Step 5 *is* 0.22, bit for bit: measured, the
+same whistle through step 5 and through an untouched engine both come out at
+0.1691 RMS.  3dB a step, so the ten of them span 27dB, which is about the
+difference between a laptop microphone across the room and a vocal mic at the
+lip.
+
+It has therefore left the Voice tab, which is no longer quite exhaustive over
+`SynthParams` -- the one field it omits is the one that was never about the
+voice.  A slider that silently did nothing because a player control overrode
+it would be worse.
+
+**The mark under the bar is the point.**  "Whistle your loudest and set this
+to the number you measured" is two numbers and a tab change; the same
+instruction with a caret on the bar is "whistle your loudest and click where
+the caret is".  It is the playing level -- the same RMS-while-a-note-sounds
+that the Voice tab reports -- held for about eight seconds so that it is still
+there after you take your mouth off the microphone and reach for the mouse.
+
+It appears only for **30 seconds after the bar is last touched**, and so never
+at startup.  A live readout twitching under a bar is exactly the right thing
+to look at while calibrating and exactly the wrong thing to have on screen for
+the rest of a set, on a page whose whole point is that there is little to
+read.  Touching the bar is what asks for it -- clicking the step you are
+already on counts, since that is how someone who wants the mark back asks for
+it without changing anything -- and it is drawn twice the size it would be if
+it lived there permanently, because something that appears for half a minute
+and then goes may as well be seen from across the room.
+
+### Octave
+
+Two buttons and a number, moving every voice by whole octaves on top of the
+octave its preset already plays at, within `SYNTH_OCTAVE_SHIFT` either way.
+"Default" appears when it is not zero.
+
+It is the one transposition that is musically free.  An octave is a power of
+two, so the tuning does not move, the sustain's snap lands on the same grid,
+and `synth_musical_offset` -- which is what the snap sees through -- is
+already `log2f(synth_octave(s))` and needs nothing added to it.  Everything
+that turns a played pitch into a frequency goes through `synth_octave`, so the
+shift is one multiply in one place.
+
+It lives beside the fifth in the synth rather than in the params, for the same
+reason the fifth does: where a line sits is a decision about the arrangement
+-- the same bass voice down one to sit under a tune, up two to play it -- and
+not a property of the timbre, so it survives a voice change and is stored once
+rather than per voice.  The two are kept as separate fields and multiplied
+into `octave_mul`, so that switching the fifth cannot undo the octave someone
+is playing in, and vice versa.  Verified directly: `octave_mul` is 2^n times
+2/3-or-1 across every combination, clamps beyond +/-3, and each control
+survives the other being changed and a voice change on top of that.  Measured
+at the output, +1, +2 and +3 come out at exactly 1.0000, 2.0000 and 3.0000
+octaves.
+
+Whole octaves rather than semitones because that is the control it is: an
+instrument that transposes by an interval is a different instrument, and the
+fifth is already the one exception to that.
+
+### Range
+
+The lowest and highest notes that will trigger, as two menus of note names on
+one line.
+
+The menus offer **F3 to E9** -- the lowest and highest notes anyone has been
+recorded whistling -- and start on **C♯5 to G7**, the ordinary whistle range,
+which is what the detector has always been pointed at.  Both pairs come from
+`whistle_lowest_note` and `whistle_default_low_note` rather than being written
+down in Swift, so the menu and the default follow `ENGINE_LOWEST_HZ` and
+`ENGINE_MIN_HZ` instead of repeating them.  "Default" appears beside the menus
+whenever either end has been moved, and goes back to C♯5-G7.
+
+At the top the range is purely a **veto on the answer**, and that is the whole
+of why it works.  Narrowing YIN's search does not stop a whistle above the top
+from being heard -- it makes it come out an octave *down*, because with the
+true period excluded the first lag that explains the signal is the
+subharmonic, and if that lands inside the range it is played as a note nobody
+whistled.  So `min_period` always reaches `ENGINE_HIGHEST_HZ`, whatever the
+range, and the veto refuses the committed pitch instead: out of range a
+whistle is heard clearly, understood correctly, and not played.  It is folded
+in with the confidence test, so leaving the range ends a note the way losing
+the pitch does, after `OFF_HOPS` rather than on the first analysis window that
+says so.  Raising the top therefore costs nothing at all -- shorter lags are
+cheaper -- which is why E9 is simply offered.
+
+At the bottom it is **also the search**, because it has to be: a lag can only
+be measured against what is left of the window behind it, so finding F3 at
+48kHz means comparing lags out to 275 samples inside a window three times
+that.  The window is chosen per range (`window_for`, four times the longest
+lag) and the detection lag is half of it:
+
+| range | window | detection lag | detector CPU |
+|---|---|---|---|
+| C♯5-G7, the default | 384 | 4.0 ms | 1.1% of a core |
+| F3-E9, the widest | 1152 | 12.0 ms | 8.1% |
+
+Measured, rendering 10s of audio through `engine_process`.  So the player who
+wants those notes pays for them and nobody else does -- and the Audio tab's
+detection lag is read from the live window rather than from a constant, so it
+tells the truth about which case you are in.  The command-line build never
+moves the range and is always the first row.
+
+Two things to know before reaching for the bottom of it.  The voices transpose
+*down* from what you whistle -- four octaves for `bass` -- so a whistled F3
+comes out near 11Hz, which is cone excursion rather than a note.  And at
+88.2/96kHz the window is in samples, so it doubles to hold the same amount of
+signal; that is a fix rather than a cost, since before this the detector
+silently could not hear below 1kHz at 96kHz at all (`PITCH_MAX_PERIOD` clamped
+it), and now it can.
+
+A refused note does **not** raise the noise floor, which would otherwise be
+the cruel failure: the floor is tracked on periodicity rather than on level,
+and a refused whistle is still plainly periodic, so it cannot pull the gate up
+behind it and take the in-range notes with it.
+
+The ends are inclusive by half a semitone each, applied in `whistle.c` where
+the note numbers become Hz.  The choice is a note, so the note named has to
+trigger whether the player lands 40 cents under it or over it -- and a range
+of one note is a legitimate thing to ask for, which it would not be if the
+ends met exactly.
+
+Measured against tones: with the range set to C5-C6, 700Hz plays and 1400Hz
+and 2500Hz are silent; with it set to C6 alone, C6 and C6 ±40 cents play and a
+semitone above does not; with only the bottom set, below it is silent and
+everything above plays.  At the extremes, F3 is tracked at 174.6Hz and E9 at
+5305Hz -- ten cents sharp, which is one sample of lag quantisation at a period
+of nine, and not a note anyone is checking the intonation of.
+
+When something is being refused the Play tab's bottom line says which note it
+was.  "Nothing is happening" is the hardest thing to work out while playing,
+and a range set and forgotten is one of the ways to arrive at it.
+
+### Mute
+
+Not a volume step and not a stop.  `whistle_set_mute` is a gain on the very
+last thing before the buffer, so the engine keeps running behind it: the
+detector still tracks, a held note still sustains, the meters still read, and
+unmuting lands in the middle of whatever was already sounding.  It ramps over
+8ms, because a gain that jumps to zero mid-waveform is a click.
+
+It is the one control with a keyboard shortcut -- a bare `m`, no modifier,
+because a modifier is two hands and nothing in this app takes typed text.  It
+is also the one player control that is **not** stored: everything else here
+should come back the way it was left, but an app that starts silent because of
+something someone did last week is an app that appears broken.  Muted shows in
+the status bar with its own unmute button, since the mute can be on while
+another tab is in front and "no sound" is otherwise a hardware question.
+
+### The player's controls, and the patch's
+
+The two switches are deliberately *not* on the Voice tab and are not stored
+per voice:
 
 * **Down a fifth** plays every voice a just fifth below what it otherwise
   would, so what you whistle is the fifth of what you hear rather than the
   root: a tune whistled in D comes out in G.
-* **Sustain held notes** makes a note you *hold* outlive the breath that made
-  it -- it slides onto the nearest real note, settles under itself, sits for
-  two seconds and fades.  Notes too short to have been meant that way are
-  untouched, so a fast phrase sounds the same either way.
+* **Sustain** makes a note you *hold* outlive the breath that made it -- it
+  slides onto the nearest real note, settles under itself, and stays there.
+  Indefinitely: the only things that end a tail are the next note and the
+  switch, so a drone left alone is still going a minute later.  Notes too
+  short to have been meant that way are untouched, so a fast phrase sounds the
+  same either way, and switching the sustain off under a sounding tail fades
+  it over 0.6s rather than cutting it.
 
 Both correspond to `current-fifth` and `current-sustain` in the command-line
 build.  They belong to the player rather than to the patch: which voice you
@@ -337,13 +542,16 @@ Play tab says so under the switch when the voice you are on is one of them --
 a switch that silently does nothing is how a switch gets a reputation for
 being broken.
 
-The Play tab also reports **While playing**: the loudest the *detector* heard
-while a note was actually sounding.  That is not the input meter above it.
-The input meter is a sample peak over everything, including the room between
-notes; this is an RMS over the analysis window, taken only while a note was
-sounding, and it is the number `level_full` is actually compared against.  So
-it is the one to read when setting `level_full`, and it is the same number the
-command-line build prints every four seconds.
+### While playing
+
+The Voice tab's Listening section reports **While playing**: the loudest the
+*detector* heard while a note was actually sounding.  That is not the input
+meter above it.  The input meter is a sample peak over everything, including
+the room between notes; this is an RMS over the analysis window, taken only
+while a note was sounding, and it is the number `level_full` is actually
+compared against.  So it is the one to read when setting `level_full` -- which
+is why it sits on the same page as that slider -- and it is the same number
+the command-line build prints every four seconds.
 
 ## Editing voices
 
@@ -365,10 +573,17 @@ are off.
 A `ParamSpec`'s `id` is its persistence key, so renaming one silently discards
 that edit for everyone who made it.  Rename the `label` instead.
 
-`out_gain` is on the tab because the tab is exhaustive, but it is not a taste
+`level_full` is the one field of `SynthParams` that is *not* on the tab: it is
+an input level rather than a description of a sound, so it is a 0-9 bar on the
+Play tab instead.  See **Full blow** above.  Everything else is here.
+
+`out_gain` is on the tab because the tab is otherwise exhaustive, but it is not a taste
 control: each preset's value is set so that every voice measures the same
 loudness (ITU-R BS.1770), and changing one means re-running the loudness match
-rather than just that voice.  The slider says so.
+rather than just that voice.  The slider says so.  Three voices sit
+deliberately under the match -- `reese` by one volume step, the two drawbars
+by two -- which is the one place taste overrides the measurement; the reasons
+are in the `out_gain` comment at the top of `synth.c`.
 
 ## Do not use `LabeledContent`
 

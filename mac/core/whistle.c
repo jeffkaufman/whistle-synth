@@ -1,6 +1,7 @@
 #include "whistle.h"
 #include "whistle_internal.h"
 
+#include <math.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
@@ -54,6 +55,44 @@ static _Atomic int published_sustain;
 static int applied_fifth = -1;
 static int applied_sustain = -1;
 
+// -1 is "leave every voice on its own", which is what the engine does before
+// anything is published; the app always publishes a step.
+static _Atomic int published_level_full = -1;
+static int applied_level_full = 0x7fffffff;
+
+static _Atomic int published_octave;
+static int applied_octave = 0x7fffffff;   // no octave, so the first pass publishes
+
+// The playable range, as MIDI note numbers, and a player control for the same
+// reason those two are.  Applied as a pair -- half a range is not a state
+// worth having for a block -- so they are compared as a pair too.
+static _Atomic int published_low_note;
+static _Atomic int published_high_note;
+static int applied_low_note = -1;
+static int applied_high_note = -1;
+
+// A MIDI note number in Hz, moved by `semitones` first.  The move is what
+// makes the ends inclusive: the range runs from half a semitone under the low
+// note to half a semitone over the high one, so both of the notes named are
+// in it however the player's intonation lands.
+static float note_hz(int midi, float semitones) {
+  if (midi <= 0) {
+    return 0;
+  }
+  return 440.0f * exp2f(((float)midi - 69.0f + semitones) / 12.0f);
+}
+
+// The mute is not a volume step and does not go through the engine: it is a
+// gain on the very last thing before the buffer, so that muting leaves the
+// synth running -- the detector still tracks, a held note still sustains, the
+// meters still read -- and unmuting lands in the middle of whatever was
+// already sounding.  Ramped rather than switched, because zeroing a waveform
+// where it happens to be is a click; `mute_gain` and `mute_step` are the
+// audio thread's alone.
+static _Atomic int published_mute;
+static float mute_gain = 1;
+static float mute_step = 1;
+
 static bool read_program(struct Program* out) {
   for (int attempt = 0; attempt < 4; attempt++) {
     unsigned gen = atomic_load_explicit(&program_gen, memory_order_acquire);
@@ -103,6 +142,23 @@ static void apply_controls(void) {
     applied_sustain = sustain;
     engine_set_sustain(&engine, sustain);
   }
+  int full = atomic_load_explicit(&published_level_full, memory_order_relaxed);
+  if (full != applied_level_full) {
+    applied_level_full = full;
+    engine_set_level_full(&engine, full);
+  }
+  int octave = atomic_load_explicit(&published_octave, memory_order_relaxed);
+  if (octave != applied_octave) {
+    applied_octave = octave;
+    engine_set_octave(&engine, octave);
+  }
+  int low = atomic_load_explicit(&published_low_note, memory_order_relaxed);
+  int high = atomic_load_explicit(&published_high_note, memory_order_relaxed);
+  if (low != applied_low_note || high != applied_high_note) {
+    applied_low_note = low;
+    applied_high_note = high;
+    engine_set_range(&engine, note_hz(low, -0.5f), note_hz(high, 0.5f));
+  }
 }
 
 void whistle_set_program(int voice, const struct SynthParams* params) {
@@ -134,6 +190,40 @@ void whistle_set_fifth(bool on) {
   atomic_store_explicit(&published_fifth, on ? 1 : 0, memory_order_relaxed);
 }
 
+// The nearest MIDI note inside `hz`, rounded the way that keeps it inside:
+// up at the bottom of the range and down at the top.
+static int note_inside(float hz, bool up) {
+  float midi = 69.0f + 12.0f * log2f(hz / 440.0f);
+  return (int)(up ? ceilf(midi) : floorf(midi));
+}
+
+int whistle_lowest_note(void) { return note_inside(ENGINE_LOWEST_HZ, true); }
+int whistle_highest_note(void) { return note_inside(ENGINE_HIGHEST_HZ, false); }
+
+int whistle_default_low_note(void) { return note_inside(ENGINE_MIN_HZ, true); }
+int whistle_default_high_note(void) { return note_inside(ENGINE_MAX_HZ, false); }
+
+void whistle_set_level_full(int step) {
+  atomic_store_explicit(&published_level_full, step, memory_order_relaxed);
+}
+
+float whistle_level_full_for_step(int step) {
+  return engine_level_full_for_step(step);
+}
+
+void whistle_set_octave(int octaves) {
+  atomic_store_explicit(&published_octave, octaves, memory_order_relaxed);
+}
+
+void whistle_set_note_range(int low_midi, int high_midi) {
+  atomic_store_explicit(&published_low_note, low_midi, memory_order_relaxed);
+  atomic_store_explicit(&published_high_note, high_midi, memory_order_relaxed);
+}
+
+void whistle_set_mute(bool on) {
+  atomic_store_explicit(&published_mute, on ? 1 : 0, memory_order_relaxed);
+}
+
 void whistle_set_sustain(bool on) {
   atomic_store_explicit(&published_sustain, on ? 1 : 0, memory_order_relaxed);
 }
@@ -162,6 +252,9 @@ static _Atomic int meter_input_peak_bits;   // float, punned: see peak_max
 static _Atomic int meter_output_peak_bits;
 static _Atomic int meter_freq_bits;
 static _Atomic int meter_playing_level_bits;
+// The analysis window in samples, which the detection lag is half of.  A
+// meter rather than a constant now that it follows the player's range.
+static _Atomic int meter_window_len;
 static _Atomic bool meter_voiced;
 
 // The meters are floats but atomic float support is patchy in C, so they are
@@ -273,8 +366,9 @@ void whistle_status(struct WhistleStatus* out) {
   // The analysis window, not buffering: the synth free-runs, so this is how
   // late it hears about a pitch change rather than anything held up on the
   // way through.
-  out->detection_lag_ms = out->sample_rate > 0
-      ? 500.0 * PITCH_WINDOW / out->sample_rate : 0;
+  int window = atomic_load_explicit(&meter_window_len, memory_order_relaxed);
+  out->detection_lag_ms = out->sample_rate > 0 && window > 0
+      ? 500.0 * window / out->sample_rate : 0;
 
   out->xruns = atomic_load_explicit(&meter_xruns, memory_order_relaxed);
   out->dropouts = atomic_load_explicit(&meter_dropouts, memory_order_relaxed);
@@ -298,7 +392,17 @@ void whistle_engine_prepare(double sample_rate) {
   applied_gate = -1;
   applied_fifth = -1;
   applied_sustain = -1;
+  applied_level_full = 0x7fffffff;
+  applied_octave = 0x7fffffff;
+  applied_low_note = -1;
+  applied_high_note = -1;
   apply_controls();
+
+  // Whatever the switch says, start there rather than ramping into it: a
+  // stream that opens muted should open silent.  8ms is short enough to feel
+  // immediate and long enough that the edge is inaudible.
+  mute_gain = atomic_load_explicit(&published_mute, memory_order_relaxed) ? 0 : 1;
+  mute_step = (float)(1.0 / (0.008 * (sample_rate > 0 ? sample_rate : 48000)));
 
   atomic_store_explicit(&meter_xruns, 0, memory_order_relaxed);
   atomic_store_explicit(&meter_dropouts, 0, memory_order_relaxed);
@@ -308,8 +412,17 @@ void whistle_engine_process(const float* in, float* left, float* right,
                             int frames) {
   apply_controls();
 
+  // The window is no longer a constant -- it follows the bottom of the
+  // player's range -- and the detection lag the Audio tab reports is half of
+  // it.  Published like the other meters rather than read off the engine from
+  // the UI thread, for the same reason as the rest of them.
+  atomic_store_explicit(&meter_window_len, engine.detector.window_len,
+                        memory_order_relaxed);
+
   float input_peak = 0;
   float output_peak = 0;
+  float mute_target = atomic_load_explicit(&published_mute, memory_order_relaxed)
+                          ? 0.0f : 1.0f;
 
   for (int i = 0; i < frames; i++) {
     // Read before writing: `in` is allowed to be the same buffer as `left`.
@@ -321,6 +434,21 @@ void whistle_engine_process(const float* in, float* left, float* right,
 
     float l, r;
     engine_process_stereo(&engine, sample, &l, &r);
+
+    if (mute_gain < mute_target) {
+      mute_gain += mute_step;
+      if (mute_gain > mute_target) {
+        mute_gain = mute_target;
+      }
+    } else if (mute_gain > mute_target) {
+      mute_gain -= mute_step;
+      if (mute_gain < mute_target) {
+        mute_gain = mute_target;
+      }
+    }
+    l *= mute_gain;
+    r *= mute_gain;
+
     left[i] = l;
     right[i] = r;
 

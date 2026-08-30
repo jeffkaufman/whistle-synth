@@ -36,29 +36,41 @@ struct HelpTopic: Identifiable {
 
     static let all: [HelpTopic] = [
         HelpTopic(title: "What it does", paragraphs: [
-            "Whistle Synth listens to you whistle, works out what note you are on, and plays that note on a synth voice. It follows the pitch continuously, so a slide comes out as a slide, and it follows how hard you are blowing, so a note you lean into opens up.",
+            "Whistle Synth is a whistle-controlled synthesizer.  It listens to you whistle, works out what note you are on, and plays that note on a synth voice. It follows the pitch continuously, which means you can slide around.  It also tracks how loudly you're whistling, which on most voices controls the output volume.",
             "It is monophonic: one note at a time, the one you are whistling.",
         ]),
-        HelpTopic(title: "You need headphones", paragraphs: [
-            "This Mac's speakers sit a few inches from its microphone and point at it. Played through them, the synth hears its own output, follows it, and howls within a second — so the app will not run in that configuration, and says so until you fix it.",
-            "Headphones fix it. So does any audio interface, or any microphone that is not the built-in one. Plug something in and it starts on its own.",
+        HelpTopic(title: "You need headphones or a separate mic", paragraphs: [
+            "On a typical Mac, the built-in mic and speakers are very close together.  This doesn't work: the synth will hear its own output.  To avoid this, the app refuses to run with the built-in mic and speaker.",
+            "Instead, either use headphones or a mic that's right up by your mouth."
         ]),
         HelpTopic(title: "Getting a sound", paragraphs: [
-            "Whistle steadily. The Play tab's Detected row should show a note name; if it stays blank, whistle louder or lower the Gate.",
-            "Gate is how far above the room a sound has to be before it counts as a note. Raise it if the app plays notes when you are not whistling; lower it if quiet whistling is ignored.",
-            "Volume is the output level, about 3.5 dB a step.",
+            "Whistle steadily. The note name at the bottom of the Play tab should show what you are on; if it stays blank, whistle louder, lower the Gate, or bring your mouth closer to the mic.",
+            "The mic in a typical Mac laptop doesn't work well for this.  You'll get best results with an sm58 or better plugged into an audio interface.",
+            "Gate is how far above the room a sound has to be before it counts as a note, and the number runs the other way round: higher gates less. Raise it if quiet whistling is ignored; lower it if the app plays notes when you are not whistling.",
+            "Volume is the output level, 3.5 dB a step.  Click the number you want.",
+            "Full blow is the input level that counts as blowing as hard as you are going to — it is what the voices measure your dynamics against, so it depends on your microphone and on you rather than on the voice.",
+            "To set it: whistle your loudest, then click anywhere on the Full blow bar. An orange mark appears showing where your loudest whistle actually landed — click the step it points at. The mark stays for half a minute and then gets out of the way, so it is only there while you are setting it.",
+            "Mute silences the output without stopping anything, and you can trigger it by pressing the M key.",
+        ]),
+        HelpTopic(title: "Moving the octave", paragraphs: [
+            "The − and + buttons move every voice up or down a whole octave, on top of wherever that voice already sits.",
+        ]),
+        HelpTopic(title: "Setting the range", paragraphs: [
+            "Range is the lowest and highest note that will play anything. Outside it a whistle is still heard — it just does not trigger a note, and the line at the bottom of the Play tab says which note was refused.",
+            "It starts on the ordinary whistle range, C♯5 to G7, and the menus go from F3 to E9 — the lowest and highest notes anyone has been recorded whistling. There are two reasons to narrow it. A whistle wobbles at the start of a note and the detector sometimes hears the octave below a soft one, both of which land under your tune: set the lowest note to the bottom of what you actually play and they stop. And a room — a chair, a cymbal, a squeak — can be periodic enough to be played as a note, which the highest note stops.",
+            "Widening it upwards is free. Widening it downwards is not: finding a very low note takes a longer listen, so the app hears about your pitch changes a little later — 12ms instead of 4 at the very bottom, which the Audio tab shows. Nothing is delayed on the way through either way.",
+            "Both ends include the note you named, so a lowest note of C5 still triggers on a C5 whistled a little flat. \"Default\" puts the range back to C♯5–G7.",
         ]),
         HelpTopic(title: "Choosing a voice", paragraphs: [
-            "The Play tab lists the voices. They are all bass sounds of one kind or another, chosen to carry through a PA in mono.",
-            "Passthrough is not a synth voice: it plays your microphone straight back, which is how you set your input level and check that the right microphone is selected.",
+            "The Play tab is a grid of the voices; the one you are playing is the filled one.  They should sound good in either stereo or mono.",
+            "Passthrough, in the corner above the grid, is not a synth voice: it plays your microphone straight back, which is how you set your input level and check that the right microphone is selected.  Note that if your mic can hear your speaker well this can cause feedback, so be careful with your mic placement.",
         ]),
         HelpTopic(title: "Down a fifth, and sustain", paragraphs: [
-            "Down a fifth makes what you whistle the fifth of what you hear rather than the root, so a tune whistled in D comes out in G. Useful for playing a bass line under a tune you are thinking of in its own key.",
-            "Sustain lets a note you hold for half a second carry on after your breath does: it settles onto the nearest real note, sits for two seconds and fades, so one held note every couple of bars puts a drone under the tune. Short notes are untouched. Some voices opt out, and the Play tab says so when the one you are on does.",
+            "Down a fifth makes what you whistle the fifth of what you hear rather than the root, so a tune whistled in D comes out in G. You're effectively whistling the third harmonic where the synth plays the second, which is what makes it a just fifth — two cents flat of a tempered one.  This can be helpful for whistling something in a key that's not a good fit for your range.",
+            "Sustain lets a note you hold for half a second carry on after your breath does: it settles onto the nearest concert pitch note and stays there.  The idea is that you can choose a drone by whistling, and then play another instrument until you're ready to choose another drone.  It doesn't stop on its own; whistle a short note (or turn off sustain) to quiet it.  Notes you hold for less than half a second are left alone.",
         ]),
         HelpTopic(title: "Editing a voice", paragraphs: [
-            "The Voice tab edits whichever voice you are playing, and you hear the change as you make it. Anything you change is marked \"edited\" and kept between launches; anything you leave alone follows the built-in preset, including when a later version improves it.",
-            "Full-blow level is the one worth setting for yourself: whistle your loudest, read the \"While playing\" number on the Play tab, and set full-blow level to what it says. That is what tells the voice how hard you are actually blowing.",
+            "The Voice tab edits whichever voice you are playing, and you hear the change as you make it. Anything you change is marked \"edited\" and kept between launches; anything you leave alone follows the built-in preset.",
             "Reset this voice puts one voice back; Reset all voices puts all of them back.",
         ]),
         HelpTopic(title: "Latency", paragraphs: [

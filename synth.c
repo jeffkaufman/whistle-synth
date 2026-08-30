@@ -22,6 +22,22 @@
 // because it depends on the material: matched on synthetic test tones the
 // numbers come out several dB different.
 //
+// Three voices deliberately sit *below* the match, and the offsets are the
+// only numbers here that are taste rather than measurement.  `reese` is one
+// volume step down and the two drawbars are two and a half, in the same
+// 3.5dB-a-step units the volume knob uses (see `volume_steps` in engine.c),
+// so the offsets are 0.667x and 0.363x of what the match asked for.  Half a
+// step is geometric like the knob itself -- 1.5^-0.5, half of 3.5dB -- rather
+// than halfway between two of its numbers.  Equal LUFS is equal
+// *loudness*, and these three are not doing the same job as the rest: the
+// drawbars are a sustained pad with a leslie chewing on it, which measures
+// like a bass line and sits on the ear like a wall, and `reese` carries more
+// going on above the fundamental than the LUFS filter charges it for.  Undo
+// the offset and they are correct on a meter and too loud in a room.
+//
+// Re-running the match therefore does not just replace these three numbers:
+// it produces the matched value, which then has its offset applied again.
+//
 // It is run through a model of the speaker rather than on the signal itself:
 // a QSC K10.2, flat to about 55Hz and then a ported cabinet's cliff.  Every
 // voice here is a bass voice and several of them put real energy under that
@@ -89,18 +105,22 @@
 // Measured over recordings/holding.f32 against the rendered level across the
 // body of the note that made each tail, this lands them a median 6.0dB under.
 // The number to keep true is that measurement, not this constant.
-// How long a held note keeps sounding at full after the player stops, and how
-// it fades once that runs out.  These were the `reese-hold` preset's
-// release_hold_s and release_s before the sustain became a control; they are
-// properties of the tail rather than of any voice, so every voice gets the
-// same ones.
+// A held note keeps sounding at full after the player stops, and keeps doing
+// it: the hold does not expire.  It used to run for two seconds and then
+// fade, which made a drone something you topped up rather than something you
+// set going -- staying under a phrase meant re-whistling the same note every
+// couple of bars, which is the breath the sustain exists to remove.  So the
+// only things that end a tail are the next note and the switch, both of them
+// the player deciding it is over.
 //
-// Held and *then* released, which is two numbers rather than one long
-// release.  A slow release alone starts fading the instant the note ends, so
-// staying up means re-whistling; the flat stretch in the middle is what makes
-// the tail feel deliberate.  0.6s is a time constant, so the tail is 8.7dB
-// down a second after the hold expires and 60dB down 4.1s after it.
-#define SYNTH_HOLD_S 2.0f
+// Which leaves this as the fade for the second of those: letting go of a
+// drone by switching the sustain off.  It was the `reese-hold` preset's
+// release_s before the sustain became a control, and it is a property of the
+// tail rather than of any voice, so every voice gets the same one.  0.6s is a
+// time constant, so a released tail is 8.7dB down after 0.6s and 60dB down
+// after 4.1 -- measured over a real tail let go this way, 9.3dB and 58.9dB,
+// the difference being the settle level it is let go from.  A note that never earned a tail is untouched by any of
+// this and releases at its own release_s.
 #define SYNTH_HOLD_RELEASE_S 0.6f
 
 #define SYNTH_HOLD_SUSTAIN 0.52f
@@ -206,11 +226,13 @@
 // small at the moment the player stops -- it is zero, identically -- and it
 // emerges only as the LFOs drift apart.  Nothing has to be faded at all.
 //
-// A second, not two.  The tail is two seconds at full level and then a 0.6s
-// release, so what is actually audible is about three; spending half of that
-// getting up to speed leaves the movement no room to be movement.  Measured
-// over the tails in recordings/holding.f32, band wander across the whole tail
-// against `reese`'s natural 4.44dB:
+// A second, not two.  A tail now runs until something ends it, but what it
+// has to survive is the first few seconds of being left alone -- the ones a
+// player actually waits through before the next phrase -- and spending half
+// of that getting up to speed leaves the movement no room to be movement.
+// Measured over the tails in recordings/holding.f32 when they were two
+// seconds long plus a 0.6s release, band wander across the whole tail against
+// `reese`'s natural 4.44dB:
 //
 //                 0.0s   1.0s   1.5s   2.0s     (acceleration time)
 //    bass         3.94   1.57   0.91   0.51
@@ -365,7 +387,10 @@ static const struct SynthParams presets[] = {
     .level_full = 0.22f,
     .attack_s = 0.008f, .release_s = 0.060f, .articulation_s = 0.008f,
     .glide_s = 0.006f,
-    .out_gain = 0.276f,
+    // 0.276 matched, one volume step down: see the offsets in the header
+    // comment.  Everything this voice has going on above the fundamental is
+    // loudness the meter does not charge it for.
+    .out_gain = 0.184f,
   },
   {
     // The 808: nearly a sine, with the pitch dropping half an octave over the
@@ -810,7 +835,12 @@ static const struct SynthParams presets[] = {
     // not the audibility compensation working hard, it is a voice with
     // nothing under the cabinet's corner never asking it for anything.  The
     // 1.0 is `top_hz`, which takes more off a high note than a low one.
-    .out_gain = 0.242f,
+    //
+    // 0.242 matched, two and a half volume steps down: see the offsets in the
+    // header comment.  A drawbar registration through a leslie is a sustained
+    // pad, and a pad matched to the same LUFS as a plucked bass line is a pad
+    // that never gets out of the way.
+    .out_gain = 0.088f,
   },
   {
     // The same organ an octave up: a 550-3150Hz whistle lands at 275-1575Hz
@@ -866,7 +896,11 @@ static const struct SynthParams presets[] = {
     .attack_s = 0.002f, .release_s = 0.015f,
     .articulation_s = 0.012f, .glide_s = 0.005f,
     .shimmer_depth = 0.12f,
-    .out_gain = 0.245f,
+    // 0.245 matched, two and a half volume steps down, for the reason
+    // `drawbar` is -- and it has to be the same two and a half, because these
+    // two are each other's manuals and a player changing between them
+    // mid-phrase must not hear a step.
+    .out_gain = 0.089f,
   },
 };
 
@@ -956,6 +990,14 @@ static float synth_pitch_log(const struct Synth* s) {
   return v;
 }
 
+// What counts as full blow: the player's number if they have set one, and
+// the voice's own if they have not.  Everything that measures the input
+// against a level goes through here.
+static float synth_level_full(const struct Synth* s) {
+  return s->player_level_full > 0 ? s->player_level_full
+                                  : s->params->level_full;
+}
+
 // Level mapped to the 0..1 the envelope runs on.  A slight compression, no
 // more, or the voice stops responding to how hard it is being pushed.
 //
@@ -965,11 +1007,12 @@ static float synth_pitch_log(const struct Synth* s) {
 // tongued notes still separates them.  See `contact_level`.
 static float synth_loudness_of(const struct Synth* s, float level) {
   const struct SynthParams* p = s->params;
+  float full = synth_level_full(s);
   if (p->contact_level > 0) {
-    float u = fmaxf(0, level) / (p->contact_level * p->level_full);
+    float u = fmaxf(0, level) / (p->contact_level * full);
     return fminf(1.0f, u * u);
   }
-  return fminf(1.0f, powf(fmaxf(0, level / p->level_full), 0.8f));
+  return fminf(1.0f, powf(fmaxf(0, level / full), 0.8f));
 }
 
 // How much a partial at this frequency contributes to what a listener hears,
@@ -1275,9 +1318,33 @@ void synth_set_preset(struct Synth* s, int preset) {
   synth_set_params(s, &presets[preset]);
 }
 
-void synth_set_fifth(struct Synth* s, bool on) {
+// The two pitch controls, multiplied into the one number everything reads.
+static void synth_update_octave_mul(struct Synth* s) {
   // 2/3 exactly, not exp2f(-7.02/12).  See synth.h.
-  s->octave_mul = on ? 2.0f / 3.0f : 1.0f;
+  s->octave_mul = (s->fifth ? 2.0f / 3.0f : 1.0f) *
+                  exp2f((float)s->octave_shift);
+}
+
+void synth_set_fifth(struct Synth* s, bool on) {
+  s->fifth = on;
+  synth_update_octave_mul(s);
+}
+
+void synth_set_level_full(struct Synth* s, float level) {
+  // The same floor synth_sanitize_params puts on the preset's own: this is a
+  // divisor on the audio thread.
+  s->player_level_full = level > 1e-4f ? level : 0;
+}
+
+void synth_set_octave_shift(struct Synth* s, int octaves) {
+  if (octaves > SYNTH_OCTAVE_SHIFT) {
+    octaves = SYNTH_OCTAVE_SHIFT;
+  }
+  if (octaves < -SYNTH_OCTAVE_SHIFT) {
+    octaves = -SYNTH_OCTAVE_SHIFT;
+  }
+  s->octave_shift = octaves;
+  synth_update_octave_mul(s);
 }
 
 void synth_set_sustain(struct Synth* s, bool on) {
@@ -1287,7 +1354,7 @@ void synth_set_sustain(struct Synth* s, bool on) {
 void synth_init(struct Synth* s, float sample_rate, int preset) {
   memset(s, 0, sizeof(*s));
   s->sample_rate = sample_rate;
-  s->octave_mul = 1;
+  synth_update_octave_mul(s);   // both controls off: exactly 1
   s->log_freq = log2f(440.0f);
   s->control_countdown = 0;
   // All together: detune pulls them apart within a second, and starting them
@@ -1313,7 +1380,7 @@ static bool synth_earned(const struct Synth* s) {
 static void update_controls(struct Synth* s, bool playing) {
   const struct SynthParams* p = s->params;
 
-  float reach = fmaxf(0, s->level / p->level_full);
+  float reach = fmaxf(0, s->level / synth_level_full(s));
 
   // Loudness stays close to what was played -- a slight compression, no more,
   // or the lead stops responding to how hard it's being pushed.  It is frozen
@@ -1686,7 +1753,12 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
                         1.0f / (SYNTH_HOLD_SETTLE_S * s->sample_rate));
       s->shimmer_rate = fminf(1.0f, s->shimmer_rate +
                               1.0f / (SYNTH_TAIL_SHIMMER_S * s->sample_rate));
-    } else {
+    } else if (!s->tail_ending) {
+      // Not while a tail is being let go: unwinding takes p->attack_s, a few
+      // milliseconds against a 0.6s fade, so a tail that unwound as it went
+      // would swell 5.7dB back up to the note's level and then disappear.  It
+      // unwinds after that, once the gate is down and nothing is audible --
+      // or immediately, when a new note arrives and takes the tail with it.
       s->settle -= coeff(p->attack_s, s->sample_rate) * s->settle;
       // Exactly zero, not asymptotically close to it, so that "no tail" is a
       // state the rest of this can test for rather than a small number.
@@ -1824,23 +1896,35 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // stops sound -- there is no hard gate anywhere, so an uncertain detector
   // costs a fade rather than a click.
   //
-  // A note that earned a tail freezes the gate for SYNTH_HOLD_S once the
-  // player stops, and only then releases.  The clock is reset by anything that counts
-  // as still playing, so a guess that the note was ending costs nothing when
-  // it turns out to be wrong: the level comes back up, this resets, and the
-  // whole hold has to expire again before the note starts leaving.  Measured,
-  // the longest wrong guess inside a real note is 148ms against a 2s hold.
+  // A note that earned a tail freezes the gate where it is once the player
+  // stops, and leaves it there.  Armed while the note is still being played,
+  // which is what makes a wrong guess about the end of a note free: if the
+  // level comes back up this is simply set again from a `playing` sample, and
+  // nothing about the gate moved in between.  Measured, the longest wrong
+  // guess inside a real note is 148ms, and now it costs nothing at all rather
+  // than a fraction of a hold.
   if (playing) {
-    s->release_hold = earned ? SYNTH_HOLD_S : 0;
-  } else if (s->release_hold > 0) {
-    s->release_hold -= 1.0f / s->sample_rate;
+    s->tail = earned;
+    s->tail_ending = false;
+  } else if (s->tail && !earned) {
+    // The switch went off -- or the player changed to a voice that opts out
+    // -- under a sounding tail.  That is the gesture for ending a drone, so
+    // it ends like a note rather than being cut: the gate fades at the tail's
+    // own release, and `settle` is held where it is below so the level does
+    // not jump back up to the note's on the way out.
+    s->tail = false;
+    s->tail_ending = true;
   }
-  if (playing || s->release_hold <= 0) {
+  if (s->tail_ending && s->gate < 0.001f) {
+    s->tail_ending = false;
+  }
+  if (playing || !s->tail) {
     float gate_target = playing ? 1.0f : 0.0f;
-    // Only a note that earned a tail gets the tail's slow fade; anything
-    // shorter releases at the voice's own release_s, exactly as it does with
-    // the sustain switched off.
-    float release = earned ? SYNTH_HOLD_RELEASE_S : p->release_s;
+    // Only a tail gets the tail's slow fade; anything shorter releases at the
+    // voice's own release_s, exactly as it does with the sustain switched
+    // off.
+    float release = earned || s->tail_ending ? SYNTH_HOLD_RELEASE_S
+                                             : p->release_s;
     float gate_coeff = coeff(
         gate_target > s->gate ? p->attack_s : release, s->sample_rate);
     s->gate += gate_coeff * (gate_target - s->gate);
@@ -1869,9 +1953,12 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // sound like `reese` while a note is being played: the tail does not
   // inherit the fade, it inherits the note.  With nothing to average it
   // reduces to the plain drop.
-  if (s->sustain) {
-    s->amp *= 1 + settle * (SYNTH_HOLD_SUSTAIN - 1);
-  }
+  //
+  // Not conditional on the switch: with no tail `settle` is zero and this
+  // multiplies by exactly one, and with a tail being let go the switch is
+  // already off while the level it put there still has to be honoured -- ask
+  // the switch and the drone jumps 5.7dB louder at the moment you end it.
+  s->amp *= 1 + settle * (SYNTH_HOLD_SUSTAIN - 1);
 
   if (hint->voiced) {
     s->note_age += 1.0f / s->sample_rate;

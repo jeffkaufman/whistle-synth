@@ -8,10 +8,26 @@
 #include "pitch.h"
 #include "synth.h"
 
-// The whistle range the detector is pointed at.  The bottom is limited by
-// PITCH_MAX_PERIOD.
+// The whistle range the detector is pointed at unless it is told otherwise:
+// what an ordinary player's whistle actually covers, and what the detector
+// costs the least to find.  C#5 to G7 in notes.
 #define ENGINE_MIN_HZ 550
 #define ENGINE_MAX_HZ 3150
+
+// And the widest it can be *asked* for, which is what anyone has been
+// recorded whistling rather than what most people can: F3 (174.6Hz) at the
+// bottom and E9 (5274Hz) at the top, each with half a semitone of margin so
+// that the note itself is reachable however the player's intonation lands.
+//
+// Being able to ask is not free at the bottom -- finding a note that low
+// needs a longer analysis window, which is detection lag -- so the search
+// follows what was asked for and this is only the limit of it.  See
+// pitch_set_trigger_range.  The top costs nothing: shorter lags are cheaper,
+// and the search reaches ENGINE_HIGHEST_HZ at all times whatever the range,
+// because refusing a note by not looking for it plays its subharmonic
+// instead.
+#define ENGINE_LOWEST_HZ 169
+#define ENGINE_HIGHEST_HZ 5450
 
 struct Engine {
   struct PitchDetector detector;
@@ -43,6 +59,36 @@ void engine_set_fifth(struct Engine* e, int step);
 // Like the fifth this belongs to the player rather than to the voice, so it
 // survives a voice change and applies to all of them.
 void engine_set_sustain(struct Engine* e, int step);
+
+// The lowest and highest notes that count as notes, in Hz -- everything
+// outside is heard, understood, and refused.  0 at either end means the
+// widest that end goes, ENGINE_LOWEST_HZ or ENGINE_HIGHEST_HZ; engine_init
+// starts at the default range above rather than at the widest, because the
+// widest costs latency at the bottom and nobody has asked for it yet.
+//
+// A player control like the fifth and the sustain rather than part of a
+// voice: it is about the instrument's range, so it survives a voice change.
+// Its two uses are keeping the bottom of a whistle's own wobble from
+// triggering an octave below the tune, and keeping a room -- a cymbal, a
+// chair, a squeak of feedback -- from being played as a note.
+void engine_set_range(struct Engine* e, float min_hz, float max_hz);
+
+// The input level that counts as playing as hard as the player is going to,
+// as a 0-9 knob; anything negative leaves every voice on the value its preset
+// carries, which is where engine_init starts.
+//
+// A player control, and the clearest case of one in the table: every preset
+// asks for the same 0.22, because it is not a property of the sound at all --
+// it is how hot this microphone, this preamp and this player's whistle
+// happen to run.  See synth_set_level_full.
+void engine_set_level_full(struct Engine* e, int step);
+
+// What that knob's steps mean, for a UI that has to show the number.
+float engine_level_full_for_step(int step);
+
+// Moves every voice by whole octaves, on top of the octave the voice already
+// plays at.  A player control like the fifth: see synth_set_octave_shift.
+void engine_set_octave(struct Engine* e, int octaves);
 
 // Plays `params` rather than the current voice's built-in preset, for voices
 // the player has edited.  Borrowed, not copied -- see synth_set_params.  Has

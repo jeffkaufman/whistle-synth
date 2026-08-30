@@ -172,4 +172,53 @@ void whistle_set_fifth(bool on);
 // exactly as it was.
 void whistle_set_sustain(bool on);
 
+// The input level that counts as full blow, as a 0-9 knob, applying to every
+// voice.  A player control rather than a voice one -- it describes the
+// microphone and the player, not the sound -- which is why it is here beside
+// the fifth and not in the Voice tab's table.  See synth_set_level_full.
+void whistle_set_level_full(int step);
+
+// What each of that knob's steps is, for showing the number beside it.
+float whistle_level_full_for_step(int step);
+
+// Moves every voice by whole octaves, on top of the octave its preset plays
+// at, within +/-SYNTH_OCTAVE_SHIFT.  A player control like the fifth and the
+// sustain: it survives a voice change and is not stored per voice.  See
+// synth_set_octave_shift.
+void whistle_set_octave(int octaves);
+
+// The lowest and highest notes that will trigger one, as MIDI note numbers
+// (60 is middle C, 69 is A440).  0 at either end means no limit there.
+//
+// Notes rather than Hz because a range is a musical choice -- "this tune does
+// not go below C5" -- and because the boundary has to be the note itself:
+// each end is widened by half a semitone here, so the note you named triggers
+// whether you land 40 cents under it or over it.  See engine_set_range for
+// what it does and pitch_set_trigger_range for how.
+void whistle_set_note_range(int low_midi, int high_midi);
+
+// The ends of that range: the lowest and highest notes the detector can find
+// at all, as MIDI note numbers.  Asking for anything outside them is not
+// wrong, it is just the same as asking for these.  Derived from the
+// detector's own search range rather than written down twice, so a change
+// there moves the menu the UI offers with it.
+int whistle_lowest_note(void);
+int whistle_highest_note(void);
+
+// And the range to start in and to come back to: the ordinary whistle range,
+// which is what the detector costs the least to find and what nearly every
+// player stays inside.  The ends above are what has ever been *recorded*, and
+// reaching for them is a decision -- at the bottom it is paid for in
+// detection lag -- so they are offered rather than assumed.
+int whistle_default_low_note(void);
+int whistle_default_high_note(void);
+
+// Silences the output without stopping anything.  The engine keeps running --
+// the detector, the sustain and the meters all carry on -- so the input level
+// and the playing level can still be read while muted, and unmuting drops
+// back into whatever was already sounding rather than starting from nothing.
+// Ramped over a few milliseconds at the very end of the chain, because a
+// gain that jumps to zero mid-waveform is a click.
+void whistle_set_mute(bool on);
+
 #endif  // WHISTLE_H

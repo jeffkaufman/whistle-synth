@@ -21,6 +21,10 @@ final class SynthController: ObservableObject {
         static let gate = "gate"
         static let fifth = "fifth"
         static let sustain = "sustain"
+        static let fullBlow = "fullBlow"
+        static let octaveShift = "octaveShift"
+        static let lowNote = "lowNote"
+        static let highNote = "highNote"
         static let inputUID = "inputDeviceUID"
         static let outputUID = "outputDeviceUID"
         static let sampleRate = "sampleRate"
@@ -29,8 +33,17 @@ final class SynthController: ObservableObject {
     }
 
     @Published var voice: Int {
-        didSet { defaults.set(voice, forKey: Key.voice); publishProgram() }
+        didSet {
+            if voice != 0 { comeBackTo = voice }
+            defaults.set(voice, forKey: Key.voice)
+            publishProgram()
+        }
     }
+    /// Where `togglePassthrough` goes back to: the last actual voice that was
+    /// playing.  Tracked here rather than in the view so that it follows a
+    /// voice change made anywhere, and not stored, because it is only ever
+    /// the answer to "what was I just playing".
+    private var comeBackTo: Int
     @Published var volume: Int {
         didSet { defaults.set(volume, forKey: Key.volume); whistle_set_volume(Int32(volume)) }
     }
@@ -45,6 +58,85 @@ final class SynthController: ObservableObject {
     }
     @Published var sustain: Bool {
         didSet { defaults.set(sustain, forKey: Key.sustain); whistle_set_sustain(sustain) }
+    }
+    /// What counts as blowing as hard as you are going to, as a 0-9 knob
+    /// applying to every voice.  A player control and not a voice one: it is
+    /// an input level in input units, so it describes the microphone, the
+    /// preamp and this player's whistle rather than any sound.  Every preset
+    /// in the table asks for the same value, which is the table saying the
+    /// same thing.
+    @Published var fullBlow: Int {
+        didSet {
+            defaults.set(fullBlow, forKey: Key.fullBlow)
+            whistle_set_level_full(Int32(fullBlow))
+            showFullBlowMarker()
+        }
+    }
+
+    /// Whether to draw the mark showing where the loudest recent whistle
+    /// landed on that bar.
+    ///
+    /// Only while the knob is being set, and never at startup.  It is exactly
+    /// the right thing to look at for the half minute you are calibrating and
+    /// exactly the wrong thing to have twitching under a bar for the rest of
+    /// the set -- a live readout on a page whose whole point is that there is
+    /// little to read.
+    @Published private(set) var showingFullBlowMarker = false
+    private var fullBlowMarkerTimer: Timer?
+
+    private func showFullBlowMarker() {
+        showingFullBlowMarker = true
+        fullBlowMarkerTimer?.invalidate()
+        // Its own timer rather than a deadline checked by the meter tick, so
+        // that it still goes away when the meters are not running.
+        let timer = Timer(timeInterval: 30, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.showingFullBlowMarker = false }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        fullBlowMarkerTimer = timer
+    }
+
+    /// Whole octaves up or down, on top of wherever the voice already sits.
+    /// A player control like the two above -- where a line sits is a decision
+    /// about the arrangement rather than about the timbre -- so it survives a
+    /// voice change and is stored once rather than per voice.
+    @Published var octaveShift: Int {
+        didSet {
+            defaults.set(octaveShift, forKey: Key.octaveShift)
+            whistle_set_level_full(Int32(fullBlow))
+        whistle_set_octave(Int32(octaveShift))
+        }
+    }
+
+    /// The lowest and highest notes that will trigger, as MIDI note numbers.
+    /// A player control like the two above: it is about the range being
+    /// played rather than about the sound, so it survives a voice change.
+    ///
+    /// Pushing one end past the other moves both rather than refusing, which
+    /// is what a pair of menus that can each be set to anything has to do; the
+    /// two ends may meet, and a range of one note is a legitimate thing to
+    /// ask for.
+    @Published var lowNote: Int {
+        didSet {
+            defaults.set(lowNote, forKey: Key.lowNote)
+            if highNote < lowNote { highNote = lowNote }
+            publishRange()
+        }
+    }
+    @Published var highNote: Int {
+        didSet {
+            defaults.set(highNote, forKey: Key.highNote)
+            if lowNote > highNote { lowNote = highNote }
+            publishRange()
+        }
+    }
+
+    /// Deliberately *not* stored.  Everything else here is a setting and
+    /// wants to come back the way it was left; the mute is a thing done for a
+    /// moment, and an app that starts silent because of something someone did
+    /// last week is an app that appears broken.
+    @Published var muted = false {
+        didSet { whistle_set_mute(muted) }
     }
     @Published var inputUID: String {
         didSet { defaults.set(inputUID, forKey: Key.inputUID); restart() }
@@ -88,6 +180,10 @@ final class SynthController: ObservableObject {
     /// The detector's own level while a note was sounding, which is what
     /// `level_full` is measured against.  See `WhistleStatus.playing_level`.
     @Published private(set) var playingLevel: Float = 0
+    /// The same, held far longer: the mark on the full-blow knob has to stay
+    /// where your loudest whistle put it while you take your mouth off the
+    /// microphone and reach for the mouse.
+    @Published private(set) var playingHold: Float = 0
     @Published private(set) var voiced = false
     @Published private(set) var xruns = 0
     @Published private(set) var dropouts = 0
@@ -129,13 +225,32 @@ final class SynthController: ObservableObject {
             // already past where the hardware's fixed converter and safety
             // offset dominate, and it leaves room for a slow machine.
             Key.bufferFrames: 64,
+            // The ordinary whistle range rather than the widest one on
+            // offer.  The extremes are what has ever been recorded, not what
+            // anyone plays, and the bottom of them is paid for in detection
+            // lag -- so they are somewhere to go, not somewhere to start.
+            // The middle of the knob, which is the value every preset in
+            // the table carries: the app starts out doing exactly what it
+            // did when this was a per-voice number.
+            Key.fullBlow: 5,
+            Key.lowNote: Int(whistle_default_low_note()),
+            Key.highNote: Int(whistle_default_high_note()),
         ])
 
-        voice = defaults.integer(forKey: Key.voice)
+        let storedVoice = defaults.integer(forKey: Key.voice)
+        voice = storedVoice
+        // A launch that comes up in passthrough has nothing to come back to
+        // yet, so the way out of it is the same voice a first run would have
+        // started on.
+        comeBackTo = storedVoice == 0 ? SynthController.defaultVoice : storedVoice
         volume = defaults.integer(forKey: Key.volume)
         gate = defaults.integer(forKey: Key.gate)
         fifth = defaults.bool(forKey: Key.fifth)
         sustain = defaults.bool(forKey: Key.sustain)
+        fullBlow = defaults.integer(forKey: Key.fullBlow)
+        octaveShift = defaults.integer(forKey: Key.octaveShift)
+        lowNote = defaults.integer(forKey: Key.lowNote)
+        highNote = defaults.integer(forKey: Key.highNote)
         inputUID = defaults.string(forKey: Key.inputUID) ?? ""
         outputUID = defaults.string(forKey: Key.outputUID) ?? ""
         sampleRate = defaults.integer(forKey: Key.sampleRate)
@@ -148,6 +263,8 @@ final class SynthController: ObservableObject {
         whistle_set_gate(Int32(gate))
         whistle_set_fifth(fifth)
         whistle_set_sustain(sustain)
+        whistle_set_octave(Int32(octaveShift))
+        publishRange()
         publishProgram()
         watchDevices()
         refreshRoute()
@@ -209,6 +326,8 @@ final class SynthController: ObservableObject {
         "fm-sub": "FM Sub",
         "grind": "Grind",
         "square": "Square",
+        "drawbar": "Drawbar",
+        "drawbar-hi": "Drawbar Hi",
     ]
 
     var voiceCount: Int { Int(whistle_preset_count()) + 1 }
@@ -220,6 +339,126 @@ final class SynthController: ObservableObject {
     }
 
     var isPassthrough: Bool { voice == 0 }
+
+    /// The input level one step of that knob stands for, from the engine
+    /// rather than worked out again here.
+    static func levelFull(atStep step: Int) -> Double {
+        Double(whistle_level_full_for_step(Int32(step)))
+    }
+
+    var fullBlowLevel: Double { SynthController.levelFull(atStep: fullBlow) }
+
+    /// Where the loudest recent playing actually landed, on the same 0-9
+    /// scale the knob uses -- nil until something has been played.
+    ///
+    /// This is the whole reason the knob can live on the Play tab at all.
+    /// "Whistle your loudest and set this to what you measured" is two
+    /// numbers to read and a tab to change; the same instruction with a mark
+    /// on the bar is "whistle your loudest and click where the mark is".
+    ///
+    /// nil unless the knob has been touched in the last 30 seconds: see
+    /// `showingFullBlowMarker`.
+    var playingStep: Double? {
+        guard showingFullBlowMarker, playingHold > 0.0005 else { return nil }
+        let steps = log10(Double(playingHold) / SynthController.levelFull(atStep: 5))
+                    / 0.15
+        return min(9, max(0, 5 + steps))
+    }
+
+    /// How far the octave buttons go either way, from the synth rather than
+    /// written down again here.
+    static let octaveLimit = Int(SYNTH_OCTAVE_SHIFT)
+
+    /// What the buttons and the readout say.  Signed, and "0" rather than
+    /// "+0", because zero is the voice as written rather than a shift of
+    /// none.
+    var octaveLabel: String {
+        octaveShift == 0 ? "0"
+            : octaveShift > 0 ? "+\(octaveShift)" : "\(octaveShift)"
+    }
+
+    func bumpOctave(_ delta: Int) {
+        let wanted = octaveShift + delta
+        octaveShift = min(SynthController.octaveLimit,
+                          max(-SynthController.octaveLimit, wanted))
+    }
+
+    // MARK: - Notes
+
+    /// The ends of the menu: the lowest and highest notes anyone has been
+    /// recorded whistling, F3 and E9, which is what the detector can be asked
+    /// for.
+    static let lowestNote = Int(whistle_lowest_note())
+    static let highestNote = Int(whistle_highest_note())
+
+    /// And where it starts, and what "Default" goes back to: the ordinary
+    /// whistle range.  Reaching past it is a decision -- at the bottom it is
+    /// paid for in detection lag -- so it is offered rather than assumed.
+    static let defaultLowNote = Int(whistle_default_low_note())
+    static let defaultHighNote = Int(whistle_default_high_note())
+
+    /// Sharps below the tonic and flats above it, which is how the note names
+    /// in this app have always read.  One copy, because the readout and the
+    /// range menus have to agree.
+    static func noteName(_ midi: Int) -> String {
+        let names = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"]
+        return "\(names[((midi % 12) + 12) % 12])\(midi / 12 - 1)"
+    }
+
+    /// True when either end has been moved off the default -- in either
+    /// direction now, since the range can be opened as well as narrowed.
+    var rangeIsCustom: Bool {
+        lowNote != SynthController.defaultLowNote ||
+        highNote != SynthController.defaultHighNote
+    }
+
+    func resetRange() {
+        lowNote = SynthController.defaultLowNote
+        highNote = SynthController.defaultHighNote
+    }
+
+    /// Whether a pitch would be refused for being outside the range, which is
+    /// what turns "nothing is happening" into "that note is outside the
+    /// range you set".  Half a semitone either side, matching what the C side
+    /// does with these two numbers.
+    func isOutOfRange(hz: Float) -> Bool {
+        guard hz > 20 else { return false }
+        let midi = 69 + 12 * log2(Double(hz) / 440)
+        return midi < Double(lowNote) - 0.5 || midi > Double(highNote) + 0.5
+    }
+
+    /// A pitch the detector is hearing clearly and refusing for being outside
+    /// the range, named -- or nil, which is every other case.
+    ///
+    /// Guarded on the input meter as well as on the pitch, because
+    /// `detectedHz` holds its last trustworthy reading rather than going to
+    /// zero: without that guard, one refused note would leave the message on
+    /// screen for the rest of a silent room.
+    var refusedNote: String? {
+        guard !voiced, inputPeak > 0.02, isOutOfRange(hz: detectedHz) else {
+            return nil
+        }
+        return SynthController.noteName(withCents: detectedHz)
+    }
+
+    private func publishRange() {
+        whistle_set_note_range(Int32(lowNote), Int32(highNote))
+    }
+
+    /// Passthrough is somewhere you go to check something -- the input level,
+    /// the gate, whether the right microphone is selected -- rather than
+    /// somewhere you play from, and on a machine whose speakers can hear its
+    /// own microphone it is an unconditional feedback loop that howls within
+    /// a second.  So the button that goes there is the button that comes
+    /// back, to the voice that was playing rather than to a fixed one: with a
+    /// room howling, the way out has to be the control you just pressed and
+    /// not a second one you have to find.
+    func togglePassthrough() {
+        voice = isPassthrough ? comeBackTo : 0
+    }
+
+    /// What that button will put back, for the button to say so.
+    var comeBackToVoice: Int { comeBackTo }
 
     // MARK: - Microphone permission
 
@@ -526,6 +765,10 @@ final class SynthController: ObservableObject {
         // while whistling a long note to set `level_full`, so it has to stay
         // legible between the analysis hops that produce it.
         playingLevel = max(status.playing_level, playingLevel * 0.94)
+        // About eight seconds to fall by half at 24Hz, which is long enough
+        // to whistle, stop, look and click, and short enough that it is
+        // still about what you just did.
+        playingHold = max(status.playing_level, playingHold * 0.9964)
 
         // The C side reports the peak since it was last asked and then
         // resets, so hold the needle and let it fall, or a meter sampled at
@@ -542,12 +785,15 @@ final class SynthController: ObservableObject {
     /// way to tell a detector problem from a whistling problem.
     var detectedNote: String? {
         guard voiced, detectedHz > 20 else { return nil }
-        let names = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"]
-        let midi = 69 + 12 * log2(Double(detectedHz) / 440)
+        return SynthController.noteName(withCents: detectedHz)
+    }
+
+    /// The same, without asking whether it is being played -- for saying what
+    /// was heard and refused.
+    static func noteName(withCents hz: Float) -> String {
+        let midi = 69 + 12 * log2(Double(hz) / 440)
         let rounded = Int(midi.rounded())
         let cents = Int(((midi - Double(rounded)) * 100).rounded())
-        let name = names[((rounded % 12) + 12) % 12]
-        let octave = rounded / 12 - 1
-        return "\(name)\(octave) \(cents >= 0 ? "+" : "")\(cents)¢"
+        return "\(noteName(rounded)) \(cents >= 0 ? "+" : "")\(cents)¢"
     }
 }

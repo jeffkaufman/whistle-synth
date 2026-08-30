@@ -75,9 +75,9 @@ static void build_record(struct SelfTest* t) {
 // than guessed at:
 //
 //   - notes that start while the last one's tail is still sounding, which is
-//     the only place this voice has a discontinuity to click on.  The tail is
-//     two seconds, so a 2s rest puts the next note where it starts to release
-//     and a 1s rest puts it dead in the middle of the sustain.
+//     the only place this voice has a discontinuity to click on.  A tail runs
+//     until the next note now, so both rest lengths land on one that is still
+//     at full -- 1s while it is still settling in and 2s once it is sitting.
 //   - long deliberate notes, ended in the several ways a whistle really ends,
 //     so what gets held can be compared against what was meant.
 //   - playing with no rests in it at all, which should hold nothing.

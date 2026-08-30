@@ -99,19 +99,58 @@
 // anything at all look like a note.
 #define FLOOR_MIN 1e-5f
 
+// The window that goes with a search out to `max_period`: enough signal left
+// behind the longest lag to compare it against.  Four times the longest lag
+// keeps three periods of it inside the comparison, which is the ratio the
+// fixed 384/96 pair had and what the detector was tuned at.
+static int window_for(int max_period) {
+  int want = 4 * max_period;
+  // A whole number of hops, so the fill logic below stays exact.
+  want = (want + PITCH_HOP - 1) / PITCH_HOP * PITCH_HOP;
+  if (want < PITCH_WINDOW_MIN) {
+    want = PITCH_WINDOW_MIN;
+  }
+  if (want > PITCH_WINDOW) {
+    want = PITCH_WINDOW;
+  }
+  return want;
+}
+
+// Points the search at everything down to `min_hz`, and sizes the window for
+// it.  `fill` is clamped rather than cleared: a shorter window must not be
+// left holding more samples than it has room to analyze, and a longer one is
+// simply short of a full window for a moment, which is the same state it is
+// in at startup.
+static void set_search_floor(struct PitchDetector* d, float min_hz) {
+  int period = min_hz > 0 ? (int)(d->sample_rate / min_hz) : d->period_cap;
+  if (period > d->period_cap) {
+    period = d->period_cap;
+  }
+  if (period < d->min_period + 1) {
+    period = d->min_period + 1;
+  }
+  d->max_period = period;
+  d->window_len = window_for(period);
+  if (d->fill > d->window_len - PITCH_HOP) {
+    d->fill = d->window_len - PITCH_HOP;
+  }
+}
+
 void pitch_init(struct PitchDetector* d, float sample_rate,
                 float min_hz, float max_hz) {
   memset(d, 0, sizeof(*d));
   d->sample_rate = sample_rate;
 
-  d->max_period = (int)(sample_rate / min_hz);
-  if (d->max_period > PITCH_MAX_PERIOD) {
-    d->max_period = PITCH_MAX_PERIOD;
-  }
   d->min_period = (int)(sample_rate / max_hz);
   if (d->min_period < 2) {
     d->min_period = 2;
   }
+  d->period_cap = (int)(sample_rate / min_hz);
+  if (d->period_cap > PITCH_MAX_PERIOD) {
+    d->period_cap = PITCH_MAX_PERIOD;
+  }
+  // Everything it may ever be asked for, until it is asked for less.
+  set_search_floor(d, min_hz);
 
   pitch_set_gate(d, 3.0f);
   // Start pessimistic and let it fall to the real floor within a second or
@@ -122,6 +161,24 @@ void pitch_init(struct PitchDetector* d, float sample_rate,
 
 void pitch_set_gate(struct PitchDetector* d, float margin) {
   d->gate_margin = fmaxf(1.5f, margin);
+}
+
+void pitch_set_trigger_range(struct PitchDetector* d,
+                             float min_hz, float max_hz) {
+  // A range with nothing in it would be a detector that can never trigger,
+  // which is indistinguishable from a broken one; an inverted pair is taken
+  // as no limit rather than as silence.
+  if (min_hz > 0 && max_hz > 0 && min_hz >= max_hz) {
+    min_hz = 0;
+    max_hz = 0;
+  }
+  d->trigger_min_hz = min_hz > 0 ? min_hz : 0;
+  d->trigger_max_hz = max_hz > 0 ? max_hz : 0;
+  // The bottom of the range is the bottom of the search: there is no point
+  // paying for lags the player has said they will not use, and the price is
+  // paid in latency rather than only in cycles.  The top is deliberately not
+  // touched -- see the header.
+  set_search_floor(d, d->trigger_min_hz);
 }
 
 static float median3(float a, float b, float c) {
@@ -137,8 +194,9 @@ static float estimate(struct PitchDetector* d, float* out_confidence) {
   const float* x = d->window;
   const int tau_max = d->max_period;
   // Lags are compared over whatever is left of the window once the longest
-  // lag is accounted for.
-  const int compared = PITCH_WINDOW - tau_max;
+  // lag is accounted for.  The window is sized for the search, so this stays
+  // around three times tau_max whatever the range is.
+  const int compared = d->window_len - tau_max;
 
   float diff[PITCH_MAX_PERIOD + 1];
   float normalized[PITCH_MAX_PERIOD + 1];
@@ -229,10 +287,10 @@ static void analyze(struct PitchDetector* d) {
   h->onset = false;
 
   double sumsq = 0;
-  for (int i = 0; i < PITCH_WINDOW; i++) {
+  for (int i = 0; i < d->window_len; i++) {
     sumsq += d->window[i] * (double)d->window[i];
   }
-  h->level = sqrtf(sumsq / PITCH_WINDOW);
+  h->level = sqrtf(sumsq / d->window_len);
 
   float confidence;
   float freq = estimate(d, &confidence);
@@ -269,7 +327,17 @@ static void analyze(struct PitchDetector* d) {
 
   float threshold = d->noise_floor * d->gate_margin;
   bool loud_enough = h->level >= (h->voiced ? threshold * 0.5f : threshold);
-  bool clear_enough = confidence >= (h->voiced ? CONF_OFF : CONF_ON);
+  // In the player's range, tested on the smoothed estimate rather than on
+  // h->freq: h->freq holds its last trustworthy value, so a note that walked
+  // out of range would be kept alive by the reading it used to have.
+  bool in_range =
+      (d->trigger_min_hz <= 0 || smoothed >= d->trigger_min_hz) &&
+      (d->trigger_max_hz <= 0 || smoothed <= d->trigger_max_hz);
+  // Folded in with the confidence rather than tested on its own, so that
+  // leaving the range ends a note exactly the way losing the pitch does:
+  // after OFF_HOPS, not on the first hop that says so.
+  bool clear_enough = confidence >= (h->voiced ? CONF_OFF : CONF_ON) &&
+                      in_range;
 
   if (h->voiced) {
     d->voiced_hops++;
@@ -304,11 +372,11 @@ static void analyze(struct PitchDetector* d) {
 
 const struct PitchHint* pitch_process(struct PitchDetector* d, float sample) {
   d->window[d->fill++] = sample;
-  if (d->fill == PITCH_WINDOW) {
+  if (d->fill >= d->window_len) {
     analyze(d);
     memmove(d->window, d->window + PITCH_HOP,
-            (PITCH_WINDOW - PITCH_HOP) * sizeof(float));
-    d->fill = PITCH_WINDOW - PITCH_HOP;
+            (d->window_len - PITCH_HOP) * sizeof(float));
+    d->fill = d->window_len - PITCH_HOP;
   } else {
     d->hint.onset = false;
   }

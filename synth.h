@@ -132,6 +132,13 @@ struct SynthParams {
   // Input RMS that counts as playing as hard as you're going to.  Absolute,
   // so it assumes a calibrated mic level, but soft-kneed so being off by 2x
   // costs expression rather than usability.
+  //
+  // Every preset in the table sets the same value, and that is not an
+  // accident waiting to be tidied away: an input level is a fact about the
+  // microphone and the player, not about a sound.  synth_set_level_full is
+  // the control that belongs to them, and it overrides this for every voice
+  // at once; what is left here is the default for a caller that has not set
+  // one, which is the command-line build.
   float level_full;
 
   // Where the key contact makes, as a fraction of `level_full`.  Above it the
@@ -376,10 +383,23 @@ struct Synth {
   const struct SynthParams* params;
 
   // What the preset's `octave` is multiplied by before anything is
-  // synthesized: 1 normally, and 2/3 when the fifth is switched on.  It lives
-  // on the synth rather than in the params because it is a player control
-  // that applies across the whole table, and the presets are const.
+  // synthesized: 1 normally, 2/3 when the fifth is switched on, times two to
+  // the octave shift.  It lives on the synth rather than in the params
+  // because these are player controls that apply across the whole table, and
+  // the presets are const.
+  //
+  // The two are kept apart as well as multiplied together, so that either can
+  // be changed without having to know what the other is doing -- a voice
+  // change must not drop the octave someone is playing in, and switching the
+  // fifth must not undo it either.
   float octave_mul;
+  bool fifth;
+  int octave_shift;
+
+  // The input level that counts as full blow, when the player has set one,
+  // or 0 to leave each voice on the value its preset carries.  See
+  // synth_set_level_full.
+  float player_level_full;
 
   // Whether the sustain control is on, which is what turns a note the player
   // held into one that outlives the breath that made it.  Like the fifth this
@@ -403,10 +423,18 @@ struct Synth {
   float gate;
   float loudness_env;
   float amp;           // gate * loudness_env
-  // Seconds of full-level hold the note has left now that the player has
-  // stopped, when the sustain control is on.  The gate does not move at all
-  // until this runs out.
-  float release_hold;
+  // Whether a tail is holding the gate where it is.  Armed while the note is
+  // being played, so that the moment the player stops the voice already knows
+  // whether this note earned one; while it is set the gate does not move at
+  // all, for as long as that takes.  Nothing but a new note or the switch
+  // going off clears it -- there is no clock.
+  bool tail;
+  // And the one gesture that ends a tail without a note to replace it: the
+  // switch going off underneath a sounding one.  It fades at the tail's own
+  // release rather than the voice's, and holds `settle` where it is while it
+  // goes, so that letting a drone go sounds like the end of a note instead of
+  // the level jumping back up to the note's and then being cut.
+  bool tail_ending;
   float level;         // smoothed hint level
   // A holding preset's running level-weighted pitch, as a leaky numerator and
   // denominator whose quotient is the average.  This is the pitch such a
@@ -560,22 +588,66 @@ void synth_set_preset(struct Synth* s, int preset);
 // instrument -- well inside how accurately anyone whistles.
 void synth_set_fifth(struct Synth* s, bool on);
 
+// How far synth_set_octave_shift will go either way.  Three is already past
+// where the voices make sense -- `bass` is four octaves down to start with,
+// so three more puts a whistled note under 10Hz -- and the point of a limit
+// is that the buttons stop somewhere rather than that the last step is
+// useful.
+#define SYNTH_OCTAVE_SHIFT 3
+
 // Whether a note the player holds outlives the breath that made it.
 //
 // Off, every voice sounds for exactly as long as you whistle, which is an
 // organ: the bass line stops when you take a breath.  On, a note held for
 // SYNTH_HOLD_MIN_NOTE_S slides onto the nearest real note, settles under
-// itself, sits there for SYNTH_HOLD_S and then fades -- so one note every
-// couple of bars holds a drone under a tune, and the line carries through the
-// breath and under the next phrase.  It is still monophonic, so a new note
-// takes the tail with it: what you get is a line that never stops, not two
-// notes at once.
+// itself, and stays there -- indefinitely, not for a set time -- so one note
+// every couple of bars holds a drone under a tune, and the line carries
+// through the breath and under the next phrase.  It is still monophonic, so a
+// new note takes the tail with it: what you get is a line that never stops,
+// not two notes at once.
+//
+// Which leaves two ways for a drone to end and no third: the next note, or
+// this switch going off.  Nothing expires on its own, so a tail left alone is
+// still sounding a minute later -- that is the point of it, and it is also
+// the thing to know before wondering why the room is humming.
 //
 // Notes too short to have been meant that way are untouched, which is what
 // lets this be a switch rather than a voice: with it on, a fast phrase sounds
 // exactly as it does with it off, and the tail only appears where a note was
 // deliberately held.  See the SYNTH_HOLD_* block in synth.c.
 void synth_set_sustain(struct Synth* s, bool on);
+
+// Moves every voice by whole octaves, on top of the octave its preset already
+// plays at.  0 is the voice as written; the range is +/-SYNTH_OCTAVE_SHIFT.
+//
+// A player control like the fifth, and for the same reason: where a voice
+// sits is a decision about the arrangement -- a bass line under a tune, the
+// same voice up two to play the tune itself -- rather than a property of the
+// timbre, so it survives a voice change and applies to all of them.  It is
+// also the one transposition that is musically free: an octave is a power of
+// two, so nothing about the tuning or the sustain's snap moves with it.
+//
+// Whole octaves rather than semitones because that is the control it is: an
+// instrument that transposes by an interval is a different instrument, and
+// the fifth is already the one exception.
+void synth_set_octave_shift(struct Synth* s, int octaves);
+
+// Overrides every voice's `level_full` with one the player has set, or 0 to
+// leave each voice on its own.
+//
+// This is a player control wearing a preset field's clothes, and the table
+// says so: every preset in it asks for the same 0.22.  It could not be
+// otherwise -- `level_full` is an input level in input units, so what it
+// depends on is the microphone, the preamp and how hard this particular
+// person whistles, none of which is a property of a sound.  Two players
+// swapping rigs want to change one number, not twelve, and the number they
+// want to change is not a description of any voice.
+//
+// `contact_level` follows it, being a fraction of it by construction, so a
+// voice with a key contact keeps its knee in the same place relative to full
+// blow.  Nothing else in a preset is measured in input units, so nothing else
+// has to move with it.
+void synth_set_level_full(struct Synth* s, float level);
 
 // Plays `params` instead of a preset.  The struct is borrowed, not copied, so
 // it must outlive the synth -- and since the audio thread reads it every

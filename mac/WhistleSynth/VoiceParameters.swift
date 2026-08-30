@@ -34,7 +34,7 @@ struct ParamSpec: Identifiable, Hashable {
             case .note:
                 return "The shape of a single note, beyond starting and stopping."
             case .dynamics:
-                return "How the sound answers how hard you are blowing."
+                return "How the sound answers how hard you are blowing. What counts as blowing hard is Full blow, on the Play tab: it is an input level, so it belongs to your microphone rather than to any of these voices."
             case .output:
                 return "Level."
             }
@@ -393,12 +393,6 @@ enum VoiceParameters {
             set: { $0.no_sustain = $1 > 0.5 }),
 
         ParamSpec(
-            id: "level_full", label: "Full-blow level", group: .dynamics,
-            range: 0.01...1, step: nil,
-            help: "The input level that counts as playing as hard as you are going to. Whistle your loudest and set this to what \"While playing\" reads on the Play tab — not the input meter, which measures something else.",
-            format: fixed(3),
-            get: { Double($0.level_full) }, set: { $0.level_full = Float($1) }),
-        ParamSpec(
             id: "drive_soft", label: "Drive, soft", group: .dynamics,
             range: 0...8, step: nil,
             help: "Saturation when you back off.",
@@ -426,7 +420,7 @@ enum VoiceParameters {
         ParamSpec(
             id: "out_gain", label: "Output gain", group: .output,
             range: 0...2, step: nil,
-            help: "Not a taste control: each preset's value is set so every voice measures the same loudness (ITU-R BS.1770). Changing one means re-running the loudness match.",
+            help: "Not a taste control: each preset's value is set so every voice measures the same loudness (ITU-R BS.1770). Changing one means re-running the loudness match. Reese sits a volume step under the match and the two drawbars two steps, deliberately.",
             format: fixed(3),
             get: { Double($0.out_gain) }, set: { $0.out_gain = Float($1) }),
     ]

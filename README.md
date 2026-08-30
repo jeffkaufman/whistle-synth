@@ -128,9 +128,10 @@ because the interval has nothing to do with the timbre: any voice can be
 played at either.
 
 Writing `1` to `current-sustain` makes a note you *hold* outlive the breath
-that made it: it slides onto the nearest real note, settles under itself, sits
-there for two seconds and then fades, so one note every couple of bars holds a
-drone under a tune.  Notes too short to have been meant that way are left
+that made it: it slides onto the nearest real note, settles under itself, and
+stays there until the next note or until you write `0` -- it does not expire,
+so one note every couple of bars holds a drone under a tune and one note left
+alone holds it all day.  Notes too short to have been meant that way are left
 alone, so a fast phrase sounds the same either way and the tail only appears
 where you put it.  `0` puts it back.  Separate from the voice for the same
 reason the fifth is: whether the line breathes with you or carries through is
@@ -160,9 +161,13 @@ they share no state.  That split is the whole design:
   earlier version did and why notes used to garble as they started and
   stopped.
 * Because the synth free-runs, **detection lag is not audio latency**.  The
-  analysis window is 384 samples, so the synth learns about a pitch change
-  about 4ms after it happens, but nothing is delayed on the way through; the
-  round trip stays what the sound card gives us.
+  analysis window is 384 samples over the ordinary whistle range, so the synth
+  learns about a pitch change about 4ms after it happens, but nothing is
+  delayed on the way through; the round trip stays what the sound card gives
+  us.  The window follows the bottom of the range it has been pointed at --
+  see `pitch_set_trigger_range` -- so a range reaching down to F3 uses 1152
+  samples and hears about a change 12ms late instead.  The command-line build
+  never moves it and is always the first case.
 
 `pitch.c` uses YIN.  Plain autocorrelation peaks at every multiple of the true
 period, which is where octave errors come from; YIN minimizes a difference
@@ -328,6 +333,15 @@ is why `out_gain` differs so much between presets -- `subbass` is set to
 not a taste control: changing one means re-running the match, not just
 adjusting that voice.
 
+Three voices are then deliberately turned down from the matched value:
+`reese` by one volume step and the two drawbars by two, in the same
+3.5dB-a-step units the volume knob uses.  Equal LUFS is equal loudness for
+material of the same kind, and a sustained organ pad through a leslie is not
+doing the job a plucked bass line is -- matched on the meter it sits on the
+ear as a wall.  The offsets are the only taste in these numbers, they are
+written down where the values are, and re-running the match means re-applying
+them rather than replacing them.
+
 The peaks that fall out of this range from 0.36 to 0.75 at full volume.  The
 headroom target is 0.75 rather than something closer to 1.0 because
 `loudness` is capped, so whistling harder than the test signal can still add
@@ -492,9 +506,12 @@ though `PITCH_MAX_PERIOD` bounds how low the range can reach.
 That table is the *audio* round trip and it is still what it says: the synth
 free-runs, so nothing is buffered on the way through.  On top of it the synth
 learns about a pitch change about 4ms late, because the detector needs a
-window to see a pitch at all (`PITCH_WINDOW`, and it prints this at startup).
+window to see a pitch at all (`d->window_len`, and it prints this at startup).
 A shorter window responds sooner and detects worse, and it can't go below a
-couple of periods of the lowest note you want to play.
+couple of periods of the lowest note you want to play -- which is why the
+window is now chosen from the range rather than fixed: ask the detector for
+notes an octave lower and it takes the window, and the lag, that finding them
+requires.
 
 ### Future
 

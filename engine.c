@@ -25,13 +25,17 @@ static int clamp_step(int step) {
 
 void engine_init(struct Engine* e, float sample_rate) {
   memset(e, 0, sizeof(*e));
-  pitch_init(&e->detector, sample_rate, ENGINE_MIN_HZ, ENGINE_MAX_HZ);
+  pitch_init(&e->detector, sample_rate, ENGINE_LOWEST_HZ, ENGINE_HIGHEST_HZ);
   synth_init(&e->synth, sample_rate, 1);
   engine_set_voice(e, 2);
   engine_set_volume(e, 5);
   engine_set_gate(e, 5);
   engine_set_fifth(e, 0);
   engine_set_sustain(e, 0);
+  engine_set_octave(e, 0);
+  // The default range, not the widest: same search, same window and same
+  // detection lag as before there was a range control at all.
+  engine_set_range(e, ENGINE_MIN_HZ, ENGINE_MAX_HZ);
 }
 
 // Voice 0 is the raw input; 1..synth_preset_count() are synth presets.  Out
@@ -62,6 +66,14 @@ void engine_set_sustain(struct Engine* e, int step) {
   synth_set_sustain(&e->synth, step != 0);
 }
 
+void engine_set_octave(struct Engine* e, int octaves) {
+  synth_set_octave_shift(&e->synth, octaves);
+}
+
+void engine_set_range(struct Engine* e, float min_hz, float max_hz) {
+  pitch_set_trigger_range(&e->detector, min_hz, max_hz);
+}
+
 void engine_set_params(struct Engine* e, const struct SynthParams* params) {
   if (!e->passthrough) {
     synth_set_params(&e->synth, params);
@@ -83,9 +95,36 @@ void engine_set_volume(struct Engine* e, int step) {
 void engine_set_gate(struct Engine* e, int step) {
   // Keeps the feel of the old knob -- higher numbers gate less -- but the
   // number now means "how far above the room noise a note has to be", which
-  // is the same on any microphone.  Step 5 is 3x the noise floor.
+  // is the same on any microphone.
+  //
+  // 2dB a step counting down from 9, so 9 is 1.5x the room and 0 is 11.9x.
+  // Anchored at the top rather than in the middle because the top is where
+  // the wall is: pitch_set_gate will not accept a margin under 1.5, and the
+  // old curve -- 3.5dB a step around 3.0x in the middle -- asked for 1.9,
+  // 1.3 and 0.9 at steps 7, 8 and 9, which all arrived as 1.5.  Three of the
+  // ten buttons did the same thing.  Starting from the floor is what makes
+  // all ten distinct, and 2dB is what then fits the useful span into ten.
   step = clamp_step(step);
-  pitch_set_gate(&e->detector, 3.0f * powf(1.5f, (float)(5 - step)));
+  pitch_set_gate(&e->detector, 1.5f * powf(10.0f, 0.1f * (float)(9 - step)));
+}
+
+// The input level a voice treats as playing as hard as the player is going
+// to, as a 0-9 knob: 3dB a step around 0.22 in the middle, which is what
+// every preset in the table asks for and therefore what the knob is
+// calibrated to leave alone.  Ten steps span 27dB, which is the difference
+// between a laptop microphone across the room and a vocal mic at the lip.
+//
+// A pure function, and public, because the UI has to be able to *show* the
+// level it is about to set without owning a second copy of this formula.
+float engine_level_full_for_step(int step) {
+  return 0.22f * powf(10.0f, 0.15f * (float)(clamp_step(step) - 5));
+}
+
+void engine_set_level_full(struct Engine* e, int step) {
+  // Below zero is "leave every voice on its own", which is where the engine
+  // starts and where the command-line build stays.
+  synth_set_level_full(&e->synth,
+                       step < 0 ? 0 : engine_level_full_for_step(step));
 }
 
 float engine_take_peak_level(struct Engine* e) {
