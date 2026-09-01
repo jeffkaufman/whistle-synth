@@ -1,6 +1,6 @@
 # Bass voices
 
-Ten bass voices and two that are not basses, all designed for **mono**
+Ten bass voices and three that are not basses, all designed for **mono**
 through a QSC K10.2.  Renders to listen to are in this directory (gitignored).
 
 ```
@@ -16,6 +16,7 @@ through a QSC K10.2.  Renders to listen to are in this directory (gitignored).
   10: square            a plain hollow square
   11: drawbar           tonewheel organ, 2 down, breath drives the leslie
   12: drawbar-hi        the same organ an octave up, same leslie
+  13: accordion         L+M+M+ free reeds, wet, breath on the volume
 ```
 
 Plus two controls that are not voices: `current-fifth` and `current-sustain`,
@@ -476,6 +477,161 @@ Across pitch it is the flattest voice here:
 That is not the audibility compensation working hard.  It is a voice whose
 lowest partial is 69Hz never asking it for anything -- plus the correction
 above, which is what took these from 1.0 and 2.2.
+
+## The accordion
+
+`accordion` is the thirteenth voice and the second that is not a bass: three
+free reeds sounding at once, two of them 13 cents apart so they beat against
+each other.  That beat is the whole voice.  An accordion tuned dead on is a
+small organ; what makes a musette sound like an accordion is two reeds that
+refuse to agree.
+
+The register is **L+M+M+**, which is what one of the switches under the chin
+selects: a reed an octave below the note, one at it, and one 13 cents sharp.
+The M pair carry the melody at `drawbar-hi`'s pitch -- 275-1575Hz from a
+550-3150Hz whistle -- and the L reed is an octave under that, 137-787Hz, which
+is `drawbar`'s.  So the two organs bracket this voice rather than sitting
+beside it.
+
+### What `unison` could not say
+
+`detune_cents` spreads the copies at equal distances either side of the note
+and all at one level.  A register is a *list* of reeds, and this one has a
+reed an octave down in it, so `reed_cents[]` and `reed_gain[]` name each
+copy's tuning and level outright.  All gains zero means the preset is not a
+reed bank and the symmetric spread does what it always did; the ten bass
+voices and the two organs render bit-identically across the change.
+
+The gains are there for the same reason the cents are.  Which reeds are
+sounding is the one thing an accordionist chooses -- it is what the register
+switches are -- and the balance between them is not free.
+
+### The beat
+
+In cents rather than in Hz, so what is fixed is the *interval* and the rate
+climbs with the line.  Measured off the render over `in-ladder.f32`:
+
+```
+   note      330   467   660   933  1320   Hz
+   beat     2.22  3.89  5.56  7.22 10.00   Hz
+```
+
+A musette gets more agitated as it climbs rather than pulsing at one rate all
+the way up, and that is why: each pair is tuned to a cents offset and the beat
+rate is whatever falls out of it.  13 cents is inside the 10-15 a tuner
+setting a "musette" or "French" tuning works to.
+
+### The L reed is holding the fundamental up
+
+This is the part that is not obvious, and it is the same problem `reese` had.
+Two reeds 13 cents apart do not swing the fundamental, they **null** it: two
+equal sines in antiphase are silence, and this is played through one speaker.
+What fills the null is the L reed's second partial, which sits at exactly the
+note.  Fundamental swing over the ladder's five held notes:
+
+```
+                        330    467    660    933   1320   Hz
+   L off               46.6   40.0   33.7   27.3   20.0   dB
+   L at -4dB           14.9   14.6   14.2   13.3   11.4        <- kept
+   L at 0dB            11.6   11.4   11.2   10.7    9.4
+   L 2 cents flat      24.9   48.0   31.8   36.3   33.3
+```
+
+So the L reed is doing two jobs and its level is the balance between them.  At
+0dB the melody is rock solid and the voice has lost most of its wetness; with
+it off the note disappears twice a second.  What the 4dB costs is nothing you
+can measure -- the **broadband** swing, which is what the tremolo actually
+sounds like, is 4.9dB with the reed and 4.7 without it, against `drawbar-hi`'s
+leslie at 2.9-4.7.  The L reed takes the null out of the fundamental and
+leaves the beat everywhere else.
+
+**The octave has to be exact**, and that is the one thing here a real
+accordion would not have told you.  At exactly -1200 the L reed's second
+partial sits at exactly the note and holds a fixed phase against the M pair,
+so it fills their null the same way on every note.  Two cents flat -- a
+perfectly ordinary tuning error on a real instrument -- and the fill drifts
+through the null instead of sitting under it: the swing goes from a steady
+11-15dB to 25-48dB that depends on which note you played.  The reed that is
+there to keep the low end still has to be locked to it.
+
+### The reed itself
+
+Unlike the organs this is the table's ordinary pulse series, because that is
+what a reed is: a tongue swinging through a slot, chopping the airflow.  The
+reediness is in the width -- 0.33 puts a null near the third partial, which is
+the hollow, slightly nasal place a reed's spectrum has and a square does not.
+
+It has a filter and the breath opens it, which `drawbar` cannot have and a
+reed genuinely does: push the bellows harder and the tongue swings further and
+the chop gets sharper.  The drive is small and biased, and it is not modelling
+an amplifier -- there is no amplifier in an accordion.  It is the asymmetry of
+the reed, which swings through its slot one way and is blocked the other, and
+the bias is what puts the even harmonics in.
+
+`top_hz` is 5kHz, against the organ's 3.5.  The top of a real accordion is a
+fretwork grille and a wooden case, not an open reed, but it is a good deal
+brighter than a leslie and the difference between the two numbers is the
+difference between the two instruments.  In octave bands over
+`recordings/whistling.f32`, relative to each voice's own total:
+
+```
+                63    125    250    500     1k     2k     4k     8k
+   bass       -5.3   -8.6  -17.5  -30.0  -43.2  -59.1  -69.1  -69.8
+   drawbar-hi -42.4  -20.9   -8.9   -7.5   -9.7  -16.1  -24.9  -37.9
+   accordion  -49.3  -26.6  -13.0   -6.0   -8.8  -16.7  -23.4  -34.9
+```
+
+(Measured with a different band filter from the tables above, so these three
+rows compare to each other and not to those.)  Lighter than the organ below
+250Hz and brighter above 2k, which is an accordion against a Hammond.  It is
+*not* more forward than `drawbar-hi` in the 2-4kHz a K10.2's horn is most
+forward in, which is what `top_hz` is there to ensure.
+
+### The bellows is a volume control
+
+Which is the one thing an organ cannot do, so unlike the two drawbars this
+voice has no `contact_level` and the breath goes straight through to the
+output the way the basses do.  Over `in-steps.f32`, rendered level against
+breath:
+
+```
+   breath              0.18   0.41   0.68   1.00   1.36   2.05  of level_full
+   accordion            --     --   -21.6  -18.4  -16.0  -15.5  dB
+   bass                 --     --   -19.3  -16.3  -14.0  -13.6
+   drawbar-hi           --     --   -29.2  -28.6  -28.2  -27.6
+```
+
+6.1dB of range against `bass`'s 5.7 and the organ's 1.6.  (The two quietest
+steps are under the gate for every voice.)
+
+### Loudness
+
+Matched, with none of the offset the two drawbars carry, and the meter says
+why: over `recordings/whistling.f32` this has an LRA of 12.8 LU against
+`bass`'s 12.6 and the organs' 6.4 and 7.0.  The offsets exist because equal
+LUFS is equal loudness only for material of the same kind, and a flat-level
+pad matched to a bass line sits on the ear as a wall.  This voice's level
+follows the playing, so it is the same kind of material as the rest of the
+table and the integral is the whole story.  -22.3 LUFS against the unoffset
+voices' -21.9 to -22.9, peaking at 0.363.
+
+Across pitch, on the ladder, 1.4dB bottom to top -- against `drawbar-hi`'s 0.7
+and `square`'s 7.8 measured the same way.  Flat for the organs' reason: with
+nothing under a speaker's corner, the audibility compensation is never asked
+for much.
+
+### What is not modelled
+
+The bellows itself -- the air noise, the valve clatter, and the fact that on a
+real one a change of bellows direction is audible.  The other registers: LMM
+is one switch of several, and M, LM, MM and LMMM are all real and all a
+different `reed_cents`/`reed_gain` pair away.  And the L reed here is the M
+reed an octave down rather than its own thing, since `harmonic_amp[]` is
+shared across the copies -- a real L reed is a physically different tongue.
+What that comes to is that the L reed's cutoff, which is counted in partial
+numbers, sits an octave lower in Hz than the M pair's.  For two reeds of
+similar construction that is about right, and it is why it has not been worth
+fixing.
 
 ## The fifth
 

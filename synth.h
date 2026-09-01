@@ -376,6 +376,32 @@ struct SynthParams {
   // rather than a moving mouth, so it moves much less.
   float leslie_horn_cents;
   float leslie_drum_cents;
+
+  // A reed bank: the `unison` copies tuned and levelled one at a time instead
+  // of being spread symmetrically about the note by `detune_cents`.
+  // `reed_cents[u]` is where copy u sits relative to the played note and
+  // `reed_gain[u]` is how loud it is, linear.  All gains zero means this is
+  // not a reed voice and `detune_cents` spreads the copies as it always has.
+  //
+  // The symmetric spread cannot express an accordion, and not for want of a
+  // wider range: a free-reed register is a *list* of reeds.  L+M+M+ is one
+  // reed an octave below the note, one at it and one a few cents sharp, which
+  // is neither symmetric about anything nor all at one pitch -- and the
+  // asymmetry is the sound, because the beat between the two M reeds is what
+  // "wet" means and the L underneath is what stops it being a beating sine.
+  //
+  // The gains are here for the same reason the cents are.  Which reeds are
+  // sounding is the one thing an accordionist chooses -- it is what the
+  // register switches under the chin do -- and the balance between them is
+  // not free: an L reed as loud as the pair it sits under is a different
+  // instrument from one a few dB below it.  See `accordion`.
+  //
+  // Copy 0 should be the flattest and the last the sharpest, as the symmetric
+  // spread's are, since `synth_artifact_offset` reads copy 0 as the one the
+  // low partials come from.  Nothing enforces it; the Nyquist limit does not
+  // assume it.
+  float reed_cents[SYNTH_UNISON];
+  float reed_gain[SYNTH_UNISON];
 };
 
 struct Synth {
@@ -411,6 +437,13 @@ struct Synth {
   float phase[SYNTH_UNISON];
   float detune[SYNTH_UNISON];
   float pan[SYNTH_UNISON];   // -1 left to +1 right, always summing to zero
+  // How loud each copy is, 1 unless the preset is a reed bank.
+  float gain[SYNTH_UNISON];
+  // The copies' gains summed in power, which is `unison` when they are all at
+  // 1.  This is the divisor the output normalisation wants: detuned copies
+  // are mutually incoherent and so add in power, and a reed bank whose copies
+  // are not all at the same level adds up to less than `unison` of them.
+  float copy_power;
   int unison;
 
   // Only used when the preset stretches its partials off the harmonic series.

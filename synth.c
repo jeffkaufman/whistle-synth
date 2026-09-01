@@ -902,6 +902,131 @@ static const struct SynthParams presets[] = {
     // mid-phrase must not hear a step.
     .out_gain = 0.089f,
   },
+  {
+    // A wet accordion: three free reeds sounding at once, two of them a few
+    // cents apart so they beat against each other.  That beat is the whole
+    // voice -- an accordion tuned dead on is a small organ, and what makes a
+    // musette sound like an accordion is two reeds that refuse to agree.
+    //
+    // The register is L+M+M+, which is what a switch on a real one selects:
+    // one reed an octave below the note, one at it, and one 13 cents sharp.
+    // The M pair carries the melody at `drawbar-hi`'s pitch -- 275-1575Hz
+    // from a 550-3150Hz whistle -- and the L reed is an octave under it,
+    // 137-787Hz, which is `drawbar`'s.  So the two organs bracket this voice
+    // rather than sitting beside it, and it is a fuller thing than either.
+    //
+    // 13 cents is inside the 10-15 that a tuner setting a "musette" or
+    // "French" tuning works to.  In cents rather than in Hz, so the beat is
+    // a fixed *interval* and its rate climbs with the line.  Measured off
+    // the render over prototypes/in-ladder.f32:
+    //
+    //     note      330   467   660   933  1320  Hz
+    //     beat     2.22  3.89  5.56  7.22 10.00  Hz
+    //
+    // That is what a reed bank actually does -- each pair is tuned to a
+    // cents offset and the rate is whatever falls out -- and it is why a
+    // musette gets more agitated as it climbs rather than pulsing at one
+    // rate all the way up.
+    .name = "accordion",
+    .octave = 0.5f,
+    // The two things `unison` could never say.  A symmetric spread puts the
+    // copies at equal distances either side of the note and all at one
+    // level; a register is a list, and this one has a reed an octave down in
+    // it.  See `reed_cents` in synth.h.
+    .unison = 3,
+    // The L reed is an exact -1200 and that exactness is load-bearing, which
+    // is the one thing here a real accordion would not have told you.  At
+    // exactly an octave the L reed's second partial sits at exactly the note
+    // and holds a fixed phase against the M pair, so it fills their null the
+    // same way on every note.  Detuned even slightly -- 2 cents flat, which
+    // is a perfectly ordinary tuning error on a real one -- the fill drifts
+    // through the null instead of sitting under it, and the fundamental's
+    // swing goes from a steady 11-15dB to 25-48dB that depends on the note.
+    // The reed that is there to keep the low end still has to be locked to
+    // it.
+    .reed_cents = { -1200.0f, 0.0f, 13.0f },
+    // The L reed 4dB under the pair above it.  At equal level it is a fatter
+    // and more convincing accordion on its own, and through a mono PA it is
+    // an octave of energy sitting on top of whatever bass voice is playing --
+    // 137-787Hz is exactly `drawbar`'s register.  4dB keeps it as weight
+    // under the melody instead of as a second melody.
+    //
+    // The other half of the choice is what it does to the beat, and it is
+    // not what it looks like.  Two reeds 13 cents apart do not swing the
+    // fundamental, they *null* it -- the same cancellation `reese` had to be
+    // rescued from with `mono_partials`, and for the same reason: this is
+    // played through one speaker.  What fills the null is the L reed's
+    // second partial, which sits at exactly the note.  Fundamental swing
+    // over the ladder's five held notes:
+    //
+    //                       330   467   660   933  1320  Hz
+    //     L off            46.6  40.0  33.7  27.3  20.0  dB
+    //     L at -4dB        14.9  14.6  14.2  13.3  11.4        <- this
+    //     L at 0dB         11.6  11.4  11.2  10.7   9.4
+    //
+    // So the L reed is doing two jobs at once and the level is the balance
+    // between them: at 0dB the melody is rock solid and the voice has lost
+    // most of its wetness, and with it off the note disappears twice a
+    // second.  What the 4dB costs is nothing measurable -- the *broadband*
+    // swing, which is what the tremolo actually sounds like, is 4.9dB with
+    // the reed and 4.7 without it.  The L reed takes the null out of the
+    // fundamental and leaves the beat everywhere else.
+    .reed_gain = { 0.63f, 1.0f, 1.0f },
+    // A reed is a tongue swinging through a slot and chopping the airflow,
+    // which is a pulse -- so unlike the organs this voice is the table's
+    // ordinary pulse series, and the reediness is in the width.  0.33 puts a
+    // null near the third partial, which is the hollow, slightly nasal place
+    // a reed's spectrum has and a square does not.
+    .tilt = 1.0f,
+    .pwm_center = 0.33f, .pwm_slow_hz = 0.0f, .pwm_slow_depth = 0.0f,
+    // Reeds do get brighter when the bellows are pushed harder -- the tongue
+    // swings further and the chop gets sharper -- so unlike `drawbar` this
+    // voice has a filter and the breath opens it.  Partial 12 of the M reed
+    // is 3.3kHz at the bottom of the range.
+    .cutoff_soft = 4.0f, .cutoff_loud = 12.0f, .rolloff_exp = 2.0f,
+    // Very little, and biased.  An accordion has no amplifier in it at all,
+    // so this is not modelling one; what it is doing is the asymmetry of the
+    // reed itself, which swings through its slot one way and is blocked the
+    // other.  The bias is what puts the even harmonics in -- see drive_bias.
+    .drive_soft = 0.5f, .drive_loud = 1.2f, .drive_bias = 0.12f,
+    .harmonics = 32,
+    // The grille and the box.  A free reed is a bright thing and this voice
+    // belongs above the organs, but the same lesson `drawbar` learned from
+    // the K10.2 applies: the top of a real accordion is a fretwork grille and
+    // a wooden case, not an open reed.  5kHz is a good deal brighter than the
+    // organ's 3.5, which is the difference between the two instruments.
+    .top_hz = 5000.0f,
+    .level_full = 0.22f,
+    // No key contact.  A bellows is a volume control -- push harder and it is
+    // louder, which is the one thing an organ cannot do and the reason this
+    // voice takes the breath straight through to the output the way the
+    // basses do.
+    .contact_level = 0.0f,
+    // A reed has to start moving before it speaks, and on a real one that is
+    // audibly slower than a key contact closing: 12ms against `drawbar`'s 2.
+    // The release is the reed ringing down after the valve shuts.
+    .attack_s = 0.012f, .release_s = 0.045f,
+    .articulation_s = 0.010f, .glide_s = 0.005f,
+    // Less than the table's default, for `drawbar`'s reason turned round: the
+    // beat between the M reeds is already movement, and it is movement of
+    // exactly the kind the shimmer exists to supply.
+    .shimmer_depth = 0.12f,
+    // Matched, with none of the offset the two drawbars carry, and the meter
+    // says why: over recordings/whistling.f32 this has an LRA of 12.8 LU
+    // against `bass`'s 12.6 and the organs' 6.4 and 7.0.  The offsets exist
+    // because equal LUFS is equal loudness only for material of the same
+    // kind, and a flat-level pad matched to a bass line sits on the ear as a
+    // wall.  This voice's level follows the playing, so it is the same kind
+    // of material as the rest of the table and the integral is the whole
+    // story.  -22.3 LUFS against the unoffset voices' -21.9 to -22.9, and it
+    // peaks at 0.363 doing it.
+    //
+    // Across pitch it is 1.4dB from the bottom of the ladder to the top,
+    // against `drawbar-hi`'s 0.7 and `square`'s 7.8 measured the same way --
+    // flat for the organs' reason, that nothing in it sits under a speaker's
+    // corner where the audibility compensation has to work hard.
+    .out_gain = 0.408f,
+  },
 };
 
 #define N_PRESETS ((int)(sizeof(presets)/sizeof(presets[0])))
@@ -1262,6 +1387,21 @@ void synth_sanitize_params(struct SynthParams* p) {
   if (p->top_hz < 0) {
     p->top_hz = 0;
   }
+  // A reed bank's gains are amplitudes and its cents go through exp2f, and
+  // both come in from the Mac app's editable parameters as well as from the
+  // table.  A negative gain would flip a reed's phase and cancel the bank;
+  // a runaway cents would put a copy past Nyquist or under DC.
+  for (int u = 0; u < SYNTH_UNISON; u++) {
+    if (!(p->reed_gain[u] > 0)) {
+      p->reed_gain[u] = 0;
+    }
+    if (!(p->reed_cents[u] > -4800.0f)) {
+      p->reed_cents[u] = -4800.0f;
+    }
+    if (p->reed_cents[u] > 4800.0f) {
+      p->reed_cents[u] = 4800.0f;
+    }
+  }
 }
 
 void synth_set_params(struct Synth* s, const struct SynthParams* params) {
@@ -1276,19 +1416,47 @@ void synth_set_params(struct Synth* s, const struct SynthParams* params) {
   }
   s->unison = unison;
 
-  // Spread symmetrically about the centre voice, in tuning and in position:
-  // the copy that is flat is the one on the left.  Symmetric means the pans
-  // sum to zero, which is what keeps the side signal from leaking a copy of
-  // the mid into the image.
+  // A reed bank names each copy's tuning and level outright; everything else
+  // spreads them symmetrically about the note.  See `reed_cents` in synth.h.
+  bool reeds = false;
+  for (int u = 0; u < unison; u++) {
+    if (params->reed_gain[u] > 0) {
+      reeds = true;
+    }
+  }
+
+  // Otherwise: spread symmetrically about the centre voice, in tuning and in
+  // position, so the copy that is flat is the one on the left.  Symmetric
+  // means the pans sum to zero, which is what keeps the side signal from
+  // leaking a copy of the mid into the image.
+  s->copy_power = 0;
   for (int u = 0; u < unison; u++) {
     float spread = unison > 1
       ? (u / (float)(unison - 1)) * 2 - 1   // -1..1
       : 0;
-    s->detune[u] = exp2f(spread * params->detune_cents / 1200.0f);
-    s->pan[u] = spread;
+    if (reeds) {
+      s->detune[u] = exp2f(params->reed_cents[u] / 1200.0f);
+      s->gain[u] = params->reed_gain[u];
+      // Dead centre, every reed.  A reed bank's copies are not symmetric --
+      // an L reed has nothing on the other side of the note to balance it --
+      // so panning them by their position would put a copy of the whole voice
+      // in the side signal rather than a difference between copies.  An
+      // accordion is one box anyway.
+      s->pan[u] = 0;
+    } else {
+      s->detune[u] = exp2f(spread * params->detune_cents / 1200.0f);
+      s->gain[u] = 1;
+      s->pan[u] = spread;
+    }
+    s->copy_power += s->gain[u] * s->gain[u];
+  }
+  if (s->copy_power < 1e-6f) {
+    s->copy_power = 1e-6f;
+  }
+  for (int u = 0; u < unison; u++) {
     // The first copy carries the low partials alone, at the level the rest
-    // get from `unison` copies summing in power.
-    s->low_gain[u] = u == 0 ? sqrtf((float)unison) : 0.0f;
+    // get from the copies summing in power.
+    s->low_gain[u] = u == 0 ? sqrtf(s->copy_power) : 0.0f;
   }
 
   // The drawbars, resolved into the one thing the partial loop wants: an
@@ -1457,9 +1625,16 @@ static void update_controls(struct Synth* s, bool playing) {
   s->fm_index *= 1 + fade * SYNTH_TAIL_SHIMMER_FM * s->shimmer_gain[0];
 
   // Stop before Nyquist rather than aliasing back down.  The highest unison
-  // voice is the one that runs out of room first.
-  float f0 = exp2f(synth_pitch_log(s)) * synth_octave(s) *
-             s->detune[s->unison - 1];
+  // voice is the one that runs out of room first -- found by looking rather
+  // than by taking the last copy, because a reed bank's copies are tuned
+  // one at a time and nothing makes them ascend.
+  float highest = s->detune[0];
+  for (int u = 1; u < s->unison; u++) {
+    if (s->detune[u] > highest) {
+      highest = s->detune[u];
+    }
+  }
+  float f0 = exp2f(synth_pitch_log(s)) * synth_octave(s) * highest;
   int active = p->harmonics;
   if (active > SYNTH_MAX_HARMONICS) {
     active = SYNTH_MAX_HARMONICS;
@@ -1561,7 +1736,7 @@ static void update_controls(struct Synth* s, bool playing) {
   // pitch is a different voice at every pitch.  Making the *heard* level
   // steady is a separate job, done after the saturator -- see
   // audibility_comp below.
-  float norm = sqrtf(power * s->unison * 0.5f);
+  float norm = sqrtf(power * s->copy_power * 0.5f);
   if (norm < 1e-6f) {
     norm = 1e-6f;
   }
@@ -2133,8 +2308,8 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
       }
     }
 
-    out += voice;
-    spread += voice * s->pan[u];
+    out += s->gain[u] * voice;
+    spread += s->gain[u] * voice * s->pan[u];
   }
 
   // Drive before the envelope, so how dirty it sounds is set by how hard the
