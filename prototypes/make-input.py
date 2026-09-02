@@ -60,6 +60,25 @@ def ladder_gate(t):
     return min(1.0, u / 0.010, (LADDER_ON - u) / 0.020)
 LADDER_S = LADDER_STEPS * (LADDER_ON + LADDER_OFF)
 
+# The same ladder, held far longer, for the voices whose whole point is a slow
+# beat.  `in-ladder.f32`'s 1.6s notes are plenty to measure a level over and
+# nowhere near enough to measure a rate of 1-3Hz off: one and a bit cycles
+# fits in the steady part of one, and a beat rate read off that is a guess.
+# Eight seconds is eight to twenty-four cycles, which resolves the rate to
+# better than a tenth of a Hz and is also long enough to see it wander.
+#
+# Same pitches and same level as the ladder, so the two are comparable; the
+# gaps are only long enough for the detector to call a new onset.
+BEAT_ON, BEAT_OFF = 8.0, 1.0
+def beat_freq(t):
+    step = int(t / (BEAT_ON + BEAT_OFF)) % LADDER_STEPS
+    return BASE * 2 ** (step * OCTAVES / (LADDER_STEPS - 1))
+def beat_gate(t):
+    u = t % (BEAT_ON + BEAT_OFF)
+    if u > BEAT_ON: return 0.0
+    return min(1.0, u / 0.010, (BEAT_ON - u) / 0.020)
+BEAT_S = LADDER_STEPS * (BEAT_ON + BEAT_OFF)
+
 # One steady note at six levels, six seconds each, for the voices where the
 # input level controls something other than how loud the output is.  Constant
 # pitch on purpose: `drawbar` answers the breath with rotor speed, and the
@@ -139,6 +158,8 @@ elif which == 'pad':
     buf = render(pad_freq, PAD_S, pad_gate)
 elif which == 'ladder':
     buf = render(ladder_freq, LADDER_S, ladder_gate)
+elif which == 'beat':
+    buf = render(beat_freq, BEAT_S, beat_gate)
 elif which == 'glide':
     buf = render(glide_freq, SWEEP_S * REPEATS)
 else:

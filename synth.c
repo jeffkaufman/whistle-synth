@@ -251,6 +251,12 @@
 // under 5 and J_n(x) is negligible past about x + 5.
 #define SYNTH_FM_TERMS 12
 
+// How fast the per-pipe offsets move to the pipe the player has landed on.
+// Short enough that a note struck by an onset arrives inside its own attack,
+// long enough that a slow glissando crossing a semitone bends rather than
+// steps.  See `pipe_detune_cents` in synth.h.
+#define SYNTH_PIPE_SMOOTH_S 0.05f
+
 #define SYNTH_TAIL_SHIMMER 0.35f
 #define SYNTH_TAIL_SHIMMER_FM 0.30f
 static const float synth_shimmer_hz[SYNTH_SHIMMER_LFOS] = { 0.31f, 0.53f, 0.79f };
@@ -1027,6 +1033,230 @@ static const struct SynthParams presets[] = {
     // corner where the audibility compensation has to work hard.
     .out_gain = 0.408f,
   },
+  {
+    // A voix celeste: two ranks of soft string-toned flue pipes, one tuned
+    // sharp of the other so that every note beats slowly against itself.  The
+    // beat is not an ornament on this stop, it is the stop -- a celeste
+    // tuned dead on is a quiet pair of gambas and there is no reason to draw
+    // it -- and everything else here is in service of leaving room for it.
+    //
+    // It is the third voice built on the same lesson the two organs and the
+    // accordion taught: a whistle gives a sustained line with no attack in
+    // it, and a clean static tone played that way is dead on arrival.  What
+    // is different is where the motion comes from.  `drawbar` has a leslie
+    // chewing on it, the accordion has reeds that will not agree in cents,
+    // and this has two ranks that disagree by a fixed number of beats a
+    // second whatever note you play.
+    .name = "celeste",
+    // The same register as `drawbar-hi` and the accordion, so the three sit
+    // beside each other rather than in different octaves: a 550-3150Hz
+    // whistle comes out at 275-1575Hz.  A celeste is an 8' stop and this is
+    // the range one lives in.
+    .octave = 0.5f,
+    // Two ranks, and only two -- that is what the stop is.  The detune is not
+    // here at all; it is computed per note from the beat rate below, which is
+    // the whole point of the voice.  See `beat_low_hz` in synth.h.
+    .unison = 2, .detune_cents = 0.0f,
+    // 1Hz at middle C and 3Hz three octaves up, straight in log frequency
+    // between them and clamped outside.  Both ends are what an organ builder
+    // counts: slow enough at the bottom that a held note undulates rather
+    // than warbles, let up towards the top because a 1Hz beat under a short
+    // pipe reads as a rank that is simply flat.
+    //
+    // In beats rather than in cents, which is the one thing that separates
+    // this from the accordion, and on the same input it is the whole voice.
+    // Measured over prototypes/in-beat.f32 -- five eight-second holds, which
+    // is what that input exists for; `in-ladder.f32`'s 1.6s notes do not fit
+    // enough cycles to read a rate off:
+    //
+    //     note        330   467   660   933  1320  Hz
+    //     celeste    1.34  1.54  1.78  2.18  2.42  Hz   <- this
+    //     accordion  2.49  3.52  4.98  7.04  9.96
+    //
+    // Two octaves moves this one by a factor of 1.8 and the accordion's by
+    // 4.0, which is the frequency ratio exactly, because that is what a fixed
+    // cents offset is.  The undulation stays as deep as it started, too --
+    // p95 over p5 of the envelope across the same five notes, 7.9 7.9 7.8 8.1
+    // 8.2dB against the accordion's 4.5 4.4 4.1 3.6 2.7.  A musette gets
+    // faster and shallower as it climbs; a celeste does neither.
+    //
+    // The fundamental itself swings 16.7-19.2dB, which is a good deal more
+    // than the broadband 8, and that is the stop rather than a fault: two
+    // equal ranks a beat apart null their fundamental twice a cycle, exactly
+    // as two pipes in a room do.  Nothing needs `mono_partials` to rescue it
+    // the way `reese` and the accordion did, because harmonic n beats at n
+    // times the rate: when the fundamental is at its null the second partial
+    // has come all the way back round, so half the spectrum is at full
+    // whenever the other half is out, and the note never disappears.
+    //
+    // The reference pitches are middle C and the C three octaves above it, so
+    // they read as the register a player thinks of the stop as living in
+    // rather than as the ends of whatever range the detector happens to
+    // cover; the played range sits inside them and the octave control can
+    // reach both ends.
+    .beat_low_hz = 1.0f, .beat_high_hz = 3.0f,
+    .beat_low_ref_hz = 261.6f, .beat_high_ref_hz = 2093.0f,
+    // And the thing that keeps it from being a machine: each rank wandering
+    // 0.12Hz rms on its own, over about a second and a half.  Two independent
+    // walks move the beat rate itself, and measured in three windows across
+    // each of the five holds it comes out 0.06-0.36Hz apart within one note
+    // -- so no two undulations are quite the same length, and nothing is ever
+    // far enough off to hear as going out of tune.
+    .rank_drift_hz = 0.12f, .rank_drift_s = 1.5f,
+    // Per-pipe irregularity, keyed to the semitone: no two pipes in a rank
+    // are quite the same and on a real stop that is audible from note to
+    // note.  Half-ranges, all of them small: a cent and a half of tuning, 4%
+    // of cutoff, and 0.8dB of level.  It moves the note and never the beat,
+    // because both ranks get the same offset.
+    //
+    // Over the 37 semitones from middle C up, the hash hands out -1.50 to
+    // +1.43 cents and a level 0.43dB rms, and it is the level that shows on a
+    // meter: the five ladder notes measure 1.1dB apart with this on and 0.2dB
+    // with it off, which is a rank of pipes rather than a voice whose
+    // loudness moves with pitch.  Every other voice here is judged on that
+    // spread being small; this one is the exception, and the 0.2dB underneath
+    // is the number that says the compensation is still doing its job.
+    .pipe_detune_cents = 1.5f, .pipe_bright = 0.04f, .pipe_level_db = 0.8f,
+    // The string spectrum.  A narrow pulse through a steep tilt rather than
+    // the moderate widths the rest of the table uses, and the two together
+    // are what puts it where a soft string rank sits -- brighter than a sine,
+    // much duller than a saw.
+    //
+    // The arithmetic is worth stating because the two numbers do not do what
+    // they look like they do.  Partial n of a width-w pulse is
+    // sin(n*pi*w)/n^tilt, and at w=0.065 the sine is still nearly linear over
+    // the partials being kept -- so it cancels one power of n and leaves
+    // n^(1-tilt), which at tilt 2.5 is n^-1.5.  That is exactly the envelope
+    // a string-toned flue pipe has.  The sine then stops being linear towards
+    // the top and rolls the last few partials off harder than 1/n^1.5, which
+    // is the gentle low-pass such a rank is voiced with, arriving for free.
+    //
+    // Measured off held notes at three pitches, as the distance from 1/n^1.5:
+    //
+    //     partial      1     2     3     4     6     8    12
+    //     330Hz      0.0  -0.5  -0.7  -1.2  -2.8  -5.3 -13.1  dB
+    //     660        0.0  -0.6  -1.2  -2.0  -4.6  -8.1 -17.7
+    //     1320       0.0  -1.3  -2.8  -4.6  -8.9 -13.6 -23.8
+    //
+    // The first four partials are the string and the rest is the low-pass.
+    // High notes are duller because the box below is fixed in Hz and the
+    // spectrum climbs past it, which is the same thing `drawbar-hi` says
+    // about a leslie: play a real one high and the cabinet stops helping.
+    //
+    // 12 partials and no more, because the pulse series has its first null at
+    // n = 1/w = 15.4 and there is no reason to keep partials on their way
+    // into it.  Additive, so the top of the range is alias-free by
+    // construction rather than by oversampling -- see the wind, below, for
+    // the measurement that says so.
+    .pwm_center = 0.065f, .tilt = 2.5f,
+    .harmonics = 12,
+    // A gentle filter on top, and it is doing one job only: keeping the tone
+    // alive as the player leans in.  A pipe organ has no touch dynamics at
+    // all, so this is deliberately the smallest range in the table: over
+    // prototypes/in-steps.f32, from the quietest step this voice sounds at to
+    // the loudest, 1.2dB at the 8th partial and 2.2dB at the 12th, and
+    // nothing measurable below the 4th.  The corner sits well above the
+    // partials on purpose -- inside them it would be a filter sweep, which is
+    // an instrument this is not.
+    .cutoff_soft = 9.0f, .cutoff_loud = 26.0f, .rolloff_exp = 2.0f,
+    // Almost nothing, and unbiased.  There is no amplifier in an organ; what
+    // little is here is the pipe's own tone not being a perfect sum of sines.
+    //
+    // It has to stay this low for a reason particular to this voice, and the
+    // reason is measurable.  The beating is a slow swing in amplitude, and a
+    // saturator big enough to see it compresses it -- the null comes up and
+    // the peak comes down.  Beat swing over the three levels of
+    // prototypes/in-steps.f32 the voice sounds at:
+    //
+    //     drive_loud    quiet   mid   loud
+    //     0.8            8.3    7.9    7.8  dB    <- this
+    //     1.6            7.3    6.4    6.1
+    //
+    // At 0.8 the undulation is the same depth however hard the voice is being
+    // played, which is what a stop with no dynamics in it should do.  At 1.6
+    // playing louder costs 1.7dB of the one thing this voice is for.
+    .drive_soft = 0.5f, .drive_loud = 0.8f,
+    // The swell box and the room.  Darker than the accordion's 5kHz and
+    // brighter than the leslie's 3.5: a celeste is behind shades, and what is
+    // veiled about it is mostly the top.
+    .top_hz = 6500.0f,
+    // The wind.  Banded on the fundamental and the first harmonic rather than
+    // at the flute's 2.5x, because a pipe's noise is the jet at its own mouth
+    // and climbs with the note; pink-ish rather than white; and with no duck
+    // at all, because the wind is the same wind however the stop is played --
+    // what makes it come and go is the note envelope it is multiplied by,
+    // which is the pipe speaking and stopping.
+    //
+    // Quiet enough to be felt rather than heard: it is the loudest thing in
+    // the spectrum that is not a harmonic, and integrating the band midway
+    // between partials it sits 36-38dB under the fundamental across the whole
+    // range.  That is also the number that says there is no aliasing to find
+    // -- above the twelfth partial, where an alias is the only thing that
+    // could be, there is nothing over -54dB anywhere and -67dB at the top of
+    // the range.
+    .breath = 0.055f,
+    .breath_ratio = 1.6f, .breath_top_hz = 3000.0f, .breath_duck = 0.0f,
+    // The chiff, and it is deliberately understated: this voice's identity is
+    // the sustain, and a flue pipe that announced itself would be a different
+    // stop.  50ms of the wind at four times its level, with two thirds of an
+    // octave of extra brightness over the same 50ms from the per-note cutoff
+    // envelope -- the two halves of one gesture, which is why the brightness
+    // half is the existing parameter and not a new one.
+    //
+    // Rendered against the same note with both switched off and differenced,
+    // it is 34dB under the note over the first 30ms, 26dB under from 30 to
+    // 80, back to 35dB by 200ms and gone entirely by half a second.
+    .chiff_breath = 3.0f, .chiff_s = 0.05f,
+    .cutoff_env_octaves = 0.7f, .cutoff_env_s = 0.05f,
+    .level_full = 0.22f,
+    // No key contact, unlike the two organs, and it is not an oversight.
+    // They have one because a tonewheel organ has no dynamics in it and the
+    // breath had to be spent somewhere else -- on the leslie's speed.  There
+    // is nowhere to spend it here: the one thing this stop does is beat, and
+    // the beat is a property of the tuning rather than of the playing.  So
+    // the breath goes where it does on the accordion and the basses, to the
+    // level, and to the small brightness range above.
+    .contact_level = 0.0f,
+    // A pipe speaks by getting a column of air moving, which is slower than a
+    // reed and much slower than a key contact: 35ms against the accordion's
+    // 12 and `drawbar`'s 2.  The release is the column running down.
+    .attack_s = 0.035f, .release_s = 0.15f,
+    // Slower than anything else in the table, and it is the same fact twice.
+    // Within a note this is what lets a glottal stop separate two tongued
+    // notes, and a pipe does not articulate that quickly -- 30ms passes a
+    // 25ms dip at 57% instead of the accordion's 92%, so a run comes out
+    // legato, which is what a run on this stop is.  It is also what makes
+    // staccato whistling safe: counting clicks the way the sustain work does,
+    // as energy above 8kHz jumping far above what the voice has been putting
+    // there, prototypes/in-scale.f32 and in-padfast.f32 give one each -- the
+    // same as the accordion, and both of them the file's first sample --
+    // and over recordings/whistling.f32 this gives 3 against 5.
+    .articulation_s = 0.030f,
+    // A little more smoothing on the pitch than the rest of the table, which
+    // is this voice tolerating the controller rather than exposing it: 12ms
+    // takes the detector's hop-to-hop jitter off without touching a whistle's
+    // own vibrato, which at 5Hz comes through 93% intact.  Over
+    // prototypes/in-glide.f32 -- two octaves in eight seconds, crossing a
+    // semitone every third of a second -- the level moves a median 0.166dB
+    // per millisecond against the accordion's 0.285, and the per-pipe offsets
+    // never step: the 50ms smoothing turns each crossing into a bend.
+    .glide_s = 0.012f,
+    .stereo_width = 0.35f,
+    // Less than the table's default, for the accordion's reason: the ranks
+    // beating against each other is already movement of exactly the kind the
+    // tail's shimmer exists to supply, and unlike the accordion's this one
+    // does not stop when the note does.
+    .shimmer_depth = 0.10f,
+    // Matched, with none of the offset the two drawbars carry, for the
+    // accordion's reason: this voice's level follows the playing rather than
+    // sitting flat under a key contact, so it is the same kind of material as
+    // the rest of the table and the integral is the whole story.  -22.3 LUFS
+    // through the K10.2 model over recordings/whistling.f32, against the
+    // accordion's -22.3 on the same meter, at an LRA of 13.6 LU against its
+    // 13.4 -- the same material, landing in the same place.  It peaks at
+    // 0.375 doing it.
+    .out_gain = 0.540f,
+  },
 };
 
 #define N_PRESETS ((int)(sizeof(presets)/sizeof(presets[0])))
@@ -1091,6 +1321,26 @@ static float synth_noise(struct Synth* s) {
   x ^= x << 5;
   s->noise_state = x;
   return (float)(int32_t)x * (1.0f / 2147483648.0f);
+}
+
+// A small deterministic number in -1..1, from the semitone a pipe stands on
+// and which of its properties is being asked about.  Deterministic is the
+// entire point: a rank of pipes is irregular but it is not *moving*, and the
+// same note has to come out the same every time or this is a wobble rather
+// than a rank.  So it is a hash and not the generator above.
+//
+// The mixing is the usual pair of xorshift-multiply rounds; nothing here
+// needs it to be good, only to have no audible pattern from one semitone to
+// the next.
+static float synth_pipe_hash(int semitone, int slot) {
+  uint32_t x = (uint32_t)semitone * 2654435761u + (uint32_t)slot * 0x9e3779b9u;
+  x ^= x >> 15;
+  x *= 0x2c1b3c6du;
+  x ^= x >> 12;
+  x *= 0x297a2d39u;
+  x ^= x >> 15;
+  // 24 bits, scaled to -1..1.
+  return (float)(x >> 8) * (1.0f / 8388608.0f) - 1.0f;
 }
 
 // One-pole coefficient reaching ~63% of the way in `seconds`.
@@ -1219,6 +1469,14 @@ static float synth_snap_log(float log_hz) {
 // played pitch into a frequency goes through here.
 static float synth_octave(const struct Synth* s) {
   return s->params->octave * s->octave_mul;
+}
+
+// The fundamental this voice is actually sounding: the pitch being played,
+// moved by the octave, and off by however much the particular pipe standing
+// on this note is out.  The rank detunes are ratios on top of it, so this is
+// also the frequency a beat rate in Hz has to be worked out against.
+static float synth_f0(const struct Synth* s) {
+  return exp2f(synth_pitch_log(s) + s->pipe_log) * synth_octave(s);
 }
 
 // What sits between the pitch this voice is playing and the note a listener
@@ -1402,6 +1660,67 @@ void synth_sanitize_params(struct SynthParams* p) {
       p->reed_cents[u] = 4800.0f;
     }
   }
+  // The celeste's two reference pitches are the ends of a log interpolation,
+  // so they have to be real frequencies and they have to be distinct; and a
+  // rate given at only one end means that rate everywhere.
+  if (p->beat_low_hz > 0 || p->beat_high_hz > 0) {
+    if (!(p->beat_low_ref_hz > 1)) {
+      p->beat_low_ref_hz = 261.6f;
+    }
+    if (!(p->beat_high_ref_hz > p->beat_low_ref_hz * 1.01f)) {
+      p->beat_high_ref_hz = p->beat_low_ref_hz * 8;
+    }
+    if (!(p->beat_low_hz > 0)) {
+      p->beat_low_hz = p->beat_high_hz;
+    }
+    if (!(p->beat_high_hz > 0)) {
+      p->beat_high_hz = p->beat_low_hz;
+    }
+  }
+  // A negative drift would be a negative variance, and a walk with no time
+  // constant at all steps the whole way every hop, which is white noise on a
+  // frequency rather than a wander.
+  if (!(p->rank_drift_hz >= 0)) {
+    p->rank_drift_hz = 0;
+  }
+  if (!(p->rank_drift_s > 0.01f)) {
+    p->rank_drift_s = 0.01f;
+  }
+  // The three pipe irregularities are half-ranges, so negative is meaningless
+  // rather than mirrored, and a brightness that could reach 1 would let a
+  // pipe's cutoff hit zero.
+  if (!(p->pipe_detune_cents >= 0)) {
+    p->pipe_detune_cents = 0;
+  }
+  if (!(p->pipe_bright >= 0)) {
+    p->pipe_bright = 0;
+  }
+  if (p->pipe_bright > 0.9f) {
+    p->pipe_bright = 0.9f;
+  }
+  if (!(p->pipe_level_db >= 0)) {
+    p->pipe_level_db = 0;
+  }
+  // The breath band's placement, and how it answers the playing.
+  if (!(p->breath_ratio >= 0)) {
+    p->breath_ratio = 0;
+  }
+  if (!(p->breath_top_hz >= 0)) {
+    p->breath_top_hz = 0;
+  }
+  if (!(p->breath_duck >= 0)) {
+    p->breath_duck = 0;
+  }
+  if (p->breath_duck > 1) {
+    p->breath_duck = 1;
+  }
+  // A chiff that decayed at a negative rate would grow instead of fading.
+  if (!(p->chiff_breath >= 0)) {
+    p->chiff_breath = 0;
+  }
+  if (!(p->chiff_s > 0)) {
+    p->chiff_s = 0.001f;
+  }
 }
 
 void synth_set_params(struct Synth* s, const struct SynthParams* params) {
@@ -1534,6 +1853,10 @@ void synth_init(struct Synth* s, float sample_rate, int preset) {
   // at full, not silent, or the very first note is missing its attack.
   s->pluck = 1;
   s->audibility_comp = 1;
+  // The per-pipe offsets are multipliers, so a voice with no pipes in it has
+  // to start at unity rather than at the zero memset left.
+  s->pipe_bright = 1;
+  s->pipe_level = 1;
   synth_set_preset(s, preset);
 }
 
@@ -1545,8 +1868,92 @@ static bool synth_earned(const struct Synth* s) {
          s->note_playing >= SYNTH_HOLD_MIN_NOTE_S;
 }
 
+// The three things that make a rank of pipes a rank rather than an
+// oscillator: where the second rank sits against the first, how far each one
+// has wandered off on its own, and what is particular about the pipe standing
+// on this note.  All of it at the control rate, and all of it smoothed or
+// slow, because every number here comes out as a frequency or a gain that
+// reaches the listener with nothing between.
+static void update_celeste(struct Synth* s) {
+  const struct SynthParams* p = s->params;
+  float hop_rate = s->sample_rate / (float)SYNTH_CONTROL_HOP;
+  float k = coeff(SYNTH_PIPE_SMOOTH_S, hop_rate);
+
+  // Which pipe is standing here.  Asked of the *played* pitch rather than of
+  // the detuned one, so that the offset a pipe gets can never feed back into
+  // the note it was chosen for.  The grid is the sustain's, because there is
+  // only one semitone grid in this program and a second one with a different
+  // origin would put the two half a comma apart for no reason.
+  if (p->pipe_detune_cents > 0 || p->pipe_bright > 0 || p->pipe_level_db > 0) {
+    int semitone = (int)floorf(
+        (synth_pitch_log(s) - log2f(SYNTH_HOLD_SNAP_HZ)) * 12 + 0.5f);
+    s->pipe_log +=
+      k * (p->pipe_detune_cents * synth_pipe_hash(semitone, 0) / 1200.0f -
+           s->pipe_log);
+    s->pipe_bright +=
+      k * (1 + p->pipe_bright * synth_pipe_hash(semitone, 1) - s->pipe_bright);
+    // dB to amplitude, as 2^(dB/6.0206) rather than a powf of ten.
+    s->pipe_level +=
+      k * (exp2f(p->pipe_level_db * synth_pipe_hash(semitone, 2) / 6.0206f) -
+           s->pipe_level);
+  } else {
+    // A voice with no pipes in it relaxes back to neutral rather than keeping
+    // whatever the last one left behind: these three multiply straight into
+    // the output, and a voice change must not carry a stranger's tuning.
+    s->pipe_log -= k * s->pipe_log;
+    s->pipe_bright += k * (1 - s->pipe_bright);
+    s->pipe_level += k * (1 - s->pipe_level);
+  }
+
+  if (!(p->beat_low_hz > 0)) {
+    return;
+  }
+
+  // The beat rate the ranks are tuned to here: a straight line in log
+  // frequency between the two reference pitches, clamped outside them.
+  float f = fmaxf(1.0f, synth_f0(s));
+  float span = log2f(p->beat_high_ref_hz / p->beat_low_ref_hz);
+  float u = span > 1e-6f ? log2f(f / p->beat_low_ref_hz) / span : 0;
+  u = fmaxf(0, fminf(1, u));
+  float beat = p->beat_low_hz + (p->beat_high_hz - p->beat_low_hz) * u;
+  // Below the register the anchors were set in, a beat in Hz stops being a
+  // beat and becomes an interval: three octaves down on the octave control
+  // puts middle C at 33Hz, where 1Hz is half a semitone and the two ranks are
+  // a chord.  1% is 17 cents -- wider than any celeste on any organ, and
+  // still far narrower than anything a listener would hear as two notes.
+  beat = fminf(beat, 0.01f * f);
+
+  // Each rank's own wander: a mean-reverting random walk stepped once per
+  // control hop.  Mean-reverting because what this moves is a frequency and
+  // an ordinary walk does not come back; a walk rather than a slow LFO
+  // because a sine is still a cycle, and two of them make the beat rate
+  // itself pulse at a rate you can count.
+  //
+  // sqrt(6k) rather than the sqrt(2k) an Ornstein-Uhlenbeck step would use,
+  // because synth_noise is uniform and so has variance 1/3.  With it, the
+  // steady-state rms of the walk is `rank_drift_hz` itself, which is what the
+  // parameter should mean.
+  float dk = coeff(p->rank_drift_s, hop_rate);
+  float step = sqrtf(6.0f * dk) * p->rank_drift_hz;
+  float lim = 3 * p->rank_drift_hz;
+  for (int r = 0; r < s->unison; r++) {
+    s->rank_drift[r] += step * synth_noise(s) - dk * s->rank_drift[r];
+    s->rank_drift[r] = fmaxf(-lim, fminf(lim, s->rank_drift[r]));
+  }
+
+  // Rank 0 sits on the note and each one after it a further `beat` sharp,
+  // which for the two ranks a celeste actually has is exactly f and f+beat.
+  // A third would beat at `beat` against the second and at twice it against
+  // the first, which is what a third rank in a celeste is for.
+  for (int r = 0; r < s->unison; r++) {
+    s->detune[r] = 1 + (r * beat + s->rank_drift[r]) / f;
+  }
+}
+
 static void update_controls(struct Synth* s, bool playing) {
   const struct SynthParams* p = s->params;
+
+  update_celeste(s);
 
   float reach = fmaxf(0, s->level / synth_level_full(s));
 
@@ -1608,6 +2015,9 @@ static void update_controls(struct Synth* s, bool playing) {
   width = fmaxf(0.06f, fminf(0.5f, width));
 
   float cutoff = p->cutoff_soft + (p->cutoff_loud - p->cutoff_soft) * dynamics;
+  // What is particular about this pipe, on top of what the player is doing.
+  // Exactly 1 for every voice that does not ask for pipes.
+  cutoff *= s->pipe_bright;
   // Both cutoff modulations are in octaves and multiply, so a wobble stays
   // the same wobble wherever the dynamics and the note envelope have put the
   // filter.  cutoff_env is what the note has left of its opening sweep.
@@ -1634,7 +2044,7 @@ static void update_controls(struct Synth* s, bool playing) {
       highest = s->detune[u];
     }
   }
-  float f0 = exp2f(synth_pitch_log(s)) * synth_octave(s) * highest;
+  float f0 = synth_f0(s) * highest;
   int active = p->harmonics;
   if (active > SYNTH_MAX_HARMONICS) {
     active = SYNTH_MAX_HARMONICS;
@@ -1645,7 +2055,7 @@ static void update_controls(struct Synth* s, bool playing) {
   }
   s->harmonics_active = active;
 
-  float base = exp2f(synth_pitch_log(s)) * synth_octave(s);
+  float base = synth_f0(s);
 
   // Drop partials too low for anything to reproduce.
   int lowest = 1;
@@ -1742,6 +2152,16 @@ static void update_controls(struct Synth* s, bool playing) {
   }
   for (int i = lowest - 1; i < active; i++) {
     s->harmonic_target[i] *= 0.7f / norm;
+  }
+
+  // How loud this particular pipe is, after the normalisation for the same
+  // reason the leslie's amplitude swing is after it: what it says is that
+  // this pipe is a shade louder than its neighbour, and a normalisation that
+  // took it straight back out would leave nothing at all.  It is outside the
+  // audibility sum above too, which is what lets it survive: that
+  // compensation is a ratio of two powers and scaling both leaves it alone.
+  for (int i = lowest - 1; i < active; i++) {
+    s->harmonic_target[i] *= s->pipe_level;
   }
 
   // The leslie's amplitude half, and the one place in this file where a
@@ -1964,6 +2384,7 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     // note instead of stacking them up.
     s->drop = p->drop_octaves;
     s->cutoff_env = p->cutoff_env_octaves;
+    s->chiff = 1;
     s->pluck = 1;
   } else if (playing) {
     // Otherwise track continuously.  Glide is in the log domain so a bend
@@ -2193,6 +2614,7 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
 
   s->drop -= coeff(p->drop_s, s->sample_rate) * s->drop;
   s->cutoff_env -= coeff(p->cutoff_env_s, s->sample_rate) * s->cutoff_env;
+  s->chiff -= coeff(p->chiff_s, s->sample_rate) * s->chiff;
   if (p->decay_s > 0) {
     s->pluck += coeff(p->decay_s, s->sample_rate) * (p->sustain_level - s->pluck);
   }
@@ -2214,7 +2636,7 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     return 0;
   }
 
-  float f0 = exp2f(synth_pitch_log(s)) * synth_octave(s);
+  float f0 = synth_f0(s);
   // The rotors' doppler, per sample rather than at the control rate: this is
   // a frequency, and a frequency that steps 1455 times a second has a 1455Hz
   // buzz on it.  Unlike a gain there is nothing downstream smoothing it.
@@ -2360,7 +2782,24 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     // Centred low, at two and a half times the fundamental, because that is
     // where a large flute's air sits.  Capped in absolute Hz so the top of
     // the range doesn't drag the band up into the hiss again.
-    float fc = fminf(900.0f, f0 * 2.5f);
+    // One pole ahead of the band, tilting the white noise down before it
+    // gets there.  Wind is pink-ish and white noise is not, and through a
+    // band an octave or so wide the difference is small -- but it is the
+    // difference between air and hiss, and it costs one pole.  The make-up
+    // gain is what the pole took out, so `breath` means the same thing it
+    // meant before this was here.
+    float pa = 1 - expf(-2 * (float)M_PI * 1500.0f / s->sample_rate);
+    s->breath_pink += pa * (n - s->breath_pink);
+    n = s->breath_pink * sqrtf((2 - pa) / pa);
+
+    // Where the band sits.  A flute's air is low and stays low -- the tube's
+    // resonances are what shape it -- so 2.5x the fundamental, capped, is the
+    // default and what the flutes were built on.  A pipe organ's wind is the
+    // jet at the pipe's own mouth, so it sits on the fundamental and the
+    // first harmonic or two and climbs with the note; see `breath_ratio`.
+    float ratio = p->breath_ratio > 0 ? p->breath_ratio : 2.5f;
+    float cap = p->breath_top_hz > 0 ? p->breath_top_hz : 900.0f;
+    float fc = fminf(cap, f0 * ratio);
     float f = 2 * sinf((float)M_PI * fc / s->sample_rate);
     const float q = 1.0f / 1.2f;
     s->breath_lp += f * s->breath_bp;
@@ -2373,7 +2812,20 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     // but at any depth worth noticing it stops being a flute and becomes a
     // snare, which is a band of noise switched on and off at a low pitch.
     // 15% is enough to bind the air to the note and not enough to rattle.
-    out += s->breath_bp * p->breath * (1.0f - 0.4f * s->dynamics) *
+    //
+    // How it answers the playing is `breath_duck`, and the two instruments
+    // that use this want opposite things from it: a flute's air is buried as
+    // the player leans in, and a pipe's wind is the same wind however the
+    // stop is being played.  What makes an organ's come and go is the note
+    // envelope this is multiplied by on the way out, which is the pipe
+    // speaking and stopping.
+    //
+    // The chiff rides on top: a flue pipe puffs before it settles into
+    // speech, and that is a short burst of exactly this noise.  Armed at the
+    // onset with the other per-note envelopes and decaying at `chiff_s`, so
+    // it belongs to the note rather than to the phrase.
+    out += s->breath_bp * p->breath * (1 + p->chiff_breath * s->chiff) *
+           (1.0f - p->breath_duck * s->dynamics) *
            (0.9f + 0.15f * out);
   }
 

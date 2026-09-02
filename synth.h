@@ -402,6 +402,96 @@ struct SynthParams {
   // assume it.
   float reed_cents[SYNTH_UNISON];
   float reed_gain[SYNTH_UNISON];
+
+  // A celeste: two ranks tuned a fixed number of *beats per second* apart
+  // rather than a fixed interval.  0 on `beat_low_hz` switches the whole
+  // thing off, which is what every other voice wants.
+  //
+  // This is the one thing neither `detune_cents` nor a reed bank can say, and
+  // the reason is arithmetic rather than taste.  A cents offset is a fixed
+  // frequency *ratio*, so the difference in Hz -- which is what a beat is --
+  // grows in proportion to the note: the accordion's 13 cents measures 2.2Hz
+  // at 330 and 10.0Hz at 1320, and that is correct for a reed bank, where
+  // each pair is tuned to an offset and the rate is whatever falls out.  A
+  // voix celeste is not tuned that way.  An organ builder tunes the celeste
+  // rank against the principal by counting beats, note by note, to a rate
+  // that stays slow all the way up -- so what is constant is the Hz, and the
+  // cents shrink as the rank climbs.  It is the difference between a musette
+  // getting more agitated as it rises and a celeste that undulates at the
+  // same gentle rate wherever you play it.
+  //
+  // Not quite constant, because builders do not tune it that way either: the
+  // rate is let up a little towards the top, where a 1Hz beat under a short
+  // pipe reads as flat rather than as shimmer.  So it is two rates at two
+  // reference pitches and a straight line in log frequency between them,
+  // clamped outside.  The references are in Hz, and they are the *sounding*
+  // pitch rather than the whistled one, so they read in the register a player
+  // thinks of the stop as living in.
+  //
+  // Rank A sits exactly on the note and rank B runs sharp of it, which is
+  // which way round a celeste is drawn: the second rank is the one that
+  // floats above the first, and the pitch of the stop is the rank that is in
+  // tune.
+  float beat_low_hz, beat_high_hz;
+  float beat_low_ref_hz, beat_high_ref_hz;
+
+  // How far each rank wanders on its own, as an rms in Hz, and how long it
+  // takes to wander that far.  A mean-reverting random walk rather than an
+  // LFO: a slow sine is still a cycle, and two of them make the beat rate
+  // itself pulse at a rate you can count, which is one more machine in a
+  // voice that is trying to sound like two pipes not quite agreeing.
+  //
+  // In Hz for exactly the reason the beat is.  Expressed in cents -- which is
+  // how a tuner would describe a pipe drifting -- 2 cents is 0.3Hz at the
+  // bottom of the range and 2.4Hz at the top, so the same "few cents" that
+  // gently loosens a 1Hz beat down low completely swamps a 3Hz one up high.
+  // The wander has to be a fraction of the beat, and the beat is in Hz.
+  float rank_drift_hz;
+  float rank_drift_s;
+
+  // Per-pipe irregularity: no two pipes in a rank are quite the same, and on
+  // a real stop that is audible as one note being a shade brighter or a shade
+  // louder than its neighbour.  Derived from the semitone the player is on,
+  // so it is a property of the note rather than a wobble -- the same note
+  // always sounds the same, which is what makes it read as pipes rather than
+  // as randomness.
+  //
+  // The three amounts are the half-ranges: a detune this many cents either
+  // way, a cutoff this fraction either way, and a level this many dB either
+  // way.  Applied to both ranks together, so this moves the note and never
+  // the beat.
+  //
+  // Smoothed on the way in, which is what keeps a slow glissando from
+  // stepping as it crosses a semitone: what a quantized offset would make a
+  // 1.5-cent jump becomes a 1.5-cent bend over a twentieth of a second, and
+  // a note landed on by an onset arrives inside its own attack.
+  float pipe_detune_cents;
+  float pipe_bright;
+  float pipe_level_db;
+
+  // Where the breath band sits, as a multiple of the fundamental, and the
+  // ceiling on it in Hz.  Both 0 keep the large flute's 2.5x capped at 900Hz,
+  // which is where a flute's air is and is nowhere near where a pipe's wind
+  // is: an organ pipe's noise is the jet at its own mouth, so it sits on the
+  // fundamental and the first harmonic or two and climbs with the note.
+  float breath_ratio;
+  float breath_top_hz;
+
+  // How much the breath backs off as the player leans in, 0 to 1.  A flute
+  // wants 0.4 -- on a contrabass flute the air is nearly as loud as the note
+  // and the harder you blow the more the note buries it.  An organ wants 0,
+  // because the wind is the same wind however the stop is being played; what
+  // makes it come and go here is the note envelope it is multiplied by on the
+  // way out, which is the pipe speaking and stopping.
+  float breath_duck;
+
+  // The chiff: the puff of wind before a flue pipe settles into speech.  This
+  // is the depth, as a multiple of `breath` added on top of it, and how long
+  // it takes to decay.  The brightness half of a chiff is the existing
+  // per-note cutoff envelope -- see `cutoff_env_octaves` -- because it is the
+  // same gesture and there is no reason to have two.
+  float chiff_breath;
+  float chiff_s;
 };
 
 struct Synth {
@@ -567,6 +657,19 @@ struct Synth {
   // variable filter that bands it.
   uint32_t noise_state;
   float breath_lp, breath_bp;
+  // One pole ahead of the band, to tilt the white noise down before it gets
+  // there.  Wind is pink-ish and white noise is not; through a band an octave
+  // wide the difference is small, but it is the difference between air and
+  // hiss and it costs one multiply.
+  float breath_pink;
+
+  // Each rank's own slow wander, in Hz, and the chiff decaying from 1.
+  float rank_drift[SYNTH_UNISON];
+  float chiff;
+
+  // The per-pipe offsets, smoothed: the detune in log2 (so it multiplies the
+  // fundamental), and the brightness and level as plain multipliers.
+  float pipe_log, pipe_bright, pipe_level;
 
   // Two one-pole high-pass stages, for the low voices only.
   float hp_x[2], hp_y[2];

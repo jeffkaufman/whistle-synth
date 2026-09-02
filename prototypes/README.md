@@ -633,6 +633,238 @@ numbers, sits an octave lower in Hz than the M pair's.  For two reeds of
 similar construction that is about right, and it is why it has not been worth
 fixing.
 
+## The voix celeste
+
+`celeste` is the fourteenth voice and the third that is not a bass: two ranks
+of soft string-toned flue pipes, one tuned sharp of the other so that every
+note beats slowly against itself.  The beat is not an ornament on this stop,
+it is the stop.  A celeste tuned dead on is a quiet pair of gambas and there
+is no reason to draw it.
+
+It is the third voice built on the same lesson the organs and the accordion
+taught -- a whistle gives a sustained line with no attack in it, and a clean
+static tone played that way is dead on arrival.  What is different is where
+the movement comes from.  `drawbar` has a leslie chewing on it, `accordion`
+has reeds that will not agree in cents, and this has two ranks that disagree
+by a fixed number of beats a second whatever note you play.
+
+Same register as `drawbar-hi` and the accordion: 275-1575Hz from a 550-3150Hz
+whistle, which is where an 8' celeste lives.
+
+### Beats, not cents
+
+This is the one thing neither `detune_cents` nor a reed bank could say, and
+the reason is arithmetic rather than taste.  A cents offset is a fixed
+frequency **ratio**, so the difference in Hz -- which is what a beat is --
+grows in proportion to the note.  That is correct for a reed bank, where each
+pair is tuned to an offset and the rate is whatever falls out.  It is not how
+a celeste is tuned: an organ builder sets the second rank against the first by
+counting beats, note by note, to a rate that stays slow all the way up.  What
+is constant is the Hz, and the cents shrink as the rank climbs.
+
+So `beat_low_hz`/`beat_high_hz` name a rate at two reference pitches -- 1Hz at
+middle C, 3Hz three octaves above it -- and the detune is worked out from the
+note.  Not quite constant, because builders do not tune it that way either:
+the rate is let up towards the top, where a 1Hz beat under a short pipe reads
+as a rank that is simply flat.
+
+Measured over `in-beat.f32`, five eight-second holds:
+
+```
+   note        330   467   660   933  1320   Hz
+   celeste    1.34  1.54  1.78  2.18  2.42   Hz
+   accordion  2.49  3.52  4.98  7.04  9.96
+```
+
+Two octaves moves this one by a factor of 1.8 and the accordion's by 4.0,
+which is the frequency ratio exactly, because that is what a fixed cents
+offset is.  The depth holds up too -- p95 over p5 of the envelope, across the
+same five notes:
+
+```
+   celeste     7.9   7.9   7.8   8.1   8.2   dB
+   accordion   4.5   4.4   4.1   3.6   2.7
+```
+
+A musette gets faster and shallower as it climbs.  A celeste does neither.
+
+`in-ladder.f32` cannot be used for any of this: 1.6s notes fit one and a bit
+cycles of a 1.3Hz beat, and a rate read off that is a guess.  `in-beat.f32` is
+the same five pitches at the same level held for eight seconds, which is eight
+to twenty-four cycles.
+
+### The fundamental nulls, and that is the stop
+
+Two equal ranks a beat apart do not swing their fundamental, they **null** it,
+which is exactly the problem `reese` needed `mono_partials` for and the
+accordion needed its L reed for.  Measured, the fundamental swings 16.7-19.2dB
+against the broadband 8.
+
+Here it needs no rescue, and the reason is the one thing that is different
+about a celeste: both ranks are complete.  Harmonic n beats at n times the
+rate, so when the fundamental is at its null the second partial has come all
+the way back round -- half the spectrum is at full whenever the other half is
+out, and the note never disappears.  A rank of pipes in a room does the same
+thing, and it is why a celeste sounds like breathing rather than like a
+tremolo.
+
+### The drift, and why it is in Hz
+
+Each rank also wanders on its own: a mean-reverting random walk, 0.12Hz rms
+over about a second and a half.  A walk rather than a slow LFO because a sine
+is still a cycle, and two of them make the beat rate itself pulse at a rate
+you can count.  Measured in three windows across each of the five holds, the
+rate comes out 0.06-0.36Hz apart within one note.
+
+In Hz for the same reason the beat is.  Expressed in cents -- which is how a
+tuner would describe a pipe drifting -- 2 cents is 0.3Hz at the bottom of the
+range and 2.4Hz at the top, so the same "few cents" that gently loosens a 1Hz
+beat down low completely swamps a 3Hz one up high.  The wander has to be a
+fraction of the beat, and the beat is in Hz.
+
+### Per-pipe character
+
+No two pipes in a rank are quite the same, and on a real stop that is audible
+from note to note.  `pipe_detune_cents`, `pipe_bright` and `pipe_level_db` are
+half-ranges hashed off the semitone the player is on: a cent and a half of
+tuning, 4% of cutoff, 0.8dB of level.  Deterministic, so the same note always
+sounds the same -- a rank of pipes is irregular but it is not *moving*.  Both
+ranks get the same offset, so this moves the note and never the beat.
+
+Over the 37 semitones from middle C up the hash hands out -1.50 to +1.43 cents
+and a level 0.43dB rms, and it is the level that shows on a meter: the five
+ladder notes measure 1.1dB apart with this on and 0.2dB with it off.  Every
+other voice here is judged on that spread being small; this one is the
+exception, and the 0.2dB underneath is what says the audibility compensation
+is still doing its job.
+
+It is quantized to the semitone and then smoothed over 50ms, which is what
+keeps a glissando from stepping.  Over `in-glide.f32` -- two octaves in eight
+seconds, crossing a semitone every third of a second -- the level moves a
+median 0.166dB per millisecond against the accordion's 0.285.  A note landed
+on by an onset arrives inside its own 35ms attack.
+
+### The string spectrum
+
+A narrow pulse through a steep tilt: `pwm_center` 0.065 and `tilt` 2.5.  The
+two together do something neither says on its own.  Partial n of a width-w
+pulse is `sin(n*pi*w)/n^tilt`, and at this width the sine is still nearly
+linear over the first few partials -- so it cancels one power of n and leaves
+`n^(1-tilt)`, which at 2.5 is `n^-1.5`.  That is the envelope a string-toned
+flue pipe has.  The sine then stops being linear and rolls the upper partials
+off harder, which is the gentle low-pass such a rank is voiced with, arriving
+for free.  Distance from `1/n^1.5`, at three pitches:
+
+```
+   partial      1     2     3     4     6     8    12
+   330Hz      0.0  -0.5  -0.7  -1.2  -2.8  -5.3 -13.1   dB
+   660        0.0  -0.6  -1.2  -2.0  -4.6  -8.1 -17.7
+   1320       0.0  -1.3  -2.8  -4.6  -8.9 -13.6 -23.8
+```
+
+High notes are duller because `top_hz` is fixed in Hz and the spectrum climbs
+past it -- the same thing `drawbar-hi` says about a leslie.  Twelve partials,
+additive, so the top of the range is alias-free by construction: above the
+twelfth partial, where an alias is the only thing that could be, there is
+nothing over -54dB anywhere and -67dB at the top of the range.
+
+The loudest non-harmonic thing in the spectrum is the wind, 36-38dB under the
+fundamental.
+
+### The wind, and the chiff
+
+`breath` was built for the flutes and banded at 2.5x the fundamental capped at
+900Hz, which is where a large flute's air sits and nowhere near where a pipe's
+wind does: an organ pipe's noise is the jet at its own mouth, so it sits on
+the fundamental and the first harmonic or two and climbs with the note.
+`breath_ratio` and `breath_top_hz` move the band; a pole ahead of it tilts the
+white noise to something pink-ish, which is the difference between air and
+hiss.  `breath_duck` is how much it backs off as the player leans in: 0.4 for
+a flute, where the air is buried by blowing harder, and 0 here, because the
+wind is the same wind however the stop is played.  What makes it come and go
+is the note envelope it is multiplied by, which is the pipe speaking and
+stopping.  No preset used `breath` before this one, so nothing moved.
+
+The chiff is `chiff_breath` on top of that, decaying at `chiff_s`, plus the
+existing per-note cutoff envelope for the brightness half -- one gesture, so
+one of them is an existing parameter.  It is deliberately understated: this
+voice's identity is the sustain, and a flue pipe that announced itself would
+be a different stop.  Differenced against the same note with both switched
+off, it is 34dB under the note over the first 30ms, 26dB from 30 to 80, back
+to 35dB by 200ms, and gone by half a second.
+
+### No drive to speak of
+
+There is no amplifier in an organ, and here that is not only faithfulness.
+The beating is a slow swing in amplitude, and a saturator big enough to see it
+compresses it -- the null comes up and the peak comes down.  Beat swing over
+the three levels of `in-steps.f32` the voice sounds at:
+
+```
+   drive_loud    quiet   mid   loud
+   0.8            8.3    7.9    7.8   dB
+   1.6            7.3    6.4    6.1
+```
+
+At 0.8 the undulation is the same depth however hard the voice is being
+played, which is what a stop with no dynamics in it should do.  At 1.6,
+playing louder costs 1.7dB of the one thing this voice is for.
+
+The brightness range is the smallest in the table for the same reason: 1.2dB
+at the 8th partial and 2.2dB at the 12th from the quietest step to the
+loudest, nothing measurable below the 4th.  A pipe organ has no touch
+dynamics; this is only there to keep the tone alive.
+
+### Note shaping
+
+A pipe speaks by getting a column of air moving, which is slower than a reed
+and much slower than a key contact: 35ms attack against the accordion's 12 and
+`drawbar`'s 2, and a 150ms release for the column running down.
+`articulation_s` is 30ms, the slowest in the table -- a 25ms glottal stop
+passes at 57% instead of the accordion's 92%, so a run comes out legato, which
+is what a run on this stop is.
+
+That is also what makes staccato safe.  Counting clicks the way the sustain
+work does -- energy above 8kHz jumping far above what the voice has been
+putting there -- `in-scale.f32` and `in-padfast.f32` give one each, the same as
+the accordion and both of them the file's first sample, and over
+`recordings/whistling.f32` this gives 3 against the accordion's 5.
+
+Pitch is followed continuously and never quantized; `glide_s` is 12ms, a
+little more smoothing than the rest of the table, which is this voice
+tolerating the controller rather than exposing it.  A 5Hz whistle vibrato
+comes through 93% intact.
+
+### The sustain
+
+`shimmer_depth` is 0.10, less than the table's default, for the accordion's
+reason turned round: the ranks beating is already movement of exactly the kind
+the tail's shimmer supplies.  Unlike the accordion's, it does not stop when
+the note does -- the ranks keep beating in the tail.  Measured over three
+tails from `in-pad.f32`, 1.65-2.03Hz at 8.4-8.6dB, which is the same voice
+still breathing after the player has stopped.
+
+### Loudness
+
+Matched, with none of the offset the two drawbars carry, for the accordion's
+reason: this voice's level follows the playing rather than sitting flat under
+a key contact, so it is the same kind of material as the rest of the table.
+-22.3 LUFS through the K10.2 model over `recordings/whistling.f32`, against
+the accordion's -22.3 on the same meter, at an LRA of 13.6 LU against its
+13.4.  It peaks at 0.375.
+
+### What is not modelled
+
+The swell box as a thing that moves: `top_hz` is a fixed corner, and on a real
+organ the shades are a pedal and closing them is the expression this stop is
+usually played with.  There is nowhere obvious to put it -- the breath is
+already spent on level.  The two ranks are the same rank twice, since
+`harmonic_amp[]` is shared across the copies, where a real celeste rank is
+voiced a shade differently from the one it beats against.  And the ranks beat
+but do not fight: real pipes on one windchest pull each other into tune when
+they get close, which is why an organ builder cannot make a celeste beat much
+slower than 1Hz.  Nothing here would stop you asking for 0.2.
+
 ## The fifth
 
 `fm-fifth` is gone and the interval it was built around is now a control of
@@ -1328,7 +1560,9 @@ for `zeros2-offline`, with a `.sections` file naming what was being asked for
 when.  `--record` is the same thing for the voices that follow the whistle.
 
 `in-ladder.f32` is five steady notes across the range at identical amplitude,
-which is what the loudness match is measured over.  `in-scale.f32` is a
+which is what the loudness match is measured over; `in-beat.f32` is the same
+five held for eight seconds each, which is what a beat rate of 1-3Hz has to be
+measured over.  `in-scale.f32` is a
 two-octave chromatic climb repeated three times;
 `in-glide.f32` is the same range as a continuous rise; `in-pad.f32` is six
 steady notes spaced seconds apart.  The last two were made for the pads and
