@@ -1027,6 +1027,178 @@ static const struct SynthParams presets[] = {
     // corner where the audibility compensation has to work hard.
     .out_gain = 0.408f,
   },
+  {
+    // A tenor trombone, and the first voice here that is a wind instrument
+    // played by a person rather than a machine with a keyboard on it.
+    //
+    // Three octaves down, so the 550-3150Hz the detector covers lands at
+    // 69-394Hz.  That is chosen against a real instrument's range rather than
+    // by ear: a tenor trombone plays E1 to F4 in the naming Samplemodeling's
+    // manual uses -- 82 to 698Hz -- so this covers its bottom two thirds and
+    // the top of the whistle range comes out at G4, in the middle of the
+    // horn, rather than asking it for notes above where it is comfortable.
+    // Under 82Hz it is into the pedal register, which is a real place on a
+    // trombone and a rare one, so the very bottom of the whistle range is the
+    // part of this voice a player will visit least.
+    //
+    // Everything else follows from two facts about brass.  It is one
+    // instrument and not a section, and its timbre is a function of how hard
+    // it is being blown to a degree nothing else in this table comes near.
+    .name = "trombone",
+    .octave = 0.0625f,
+    // One oscillator.  Not for `bass`'s reason -- this is not down where a
+    // detune smears the low end -- but because a trombone is one column of
+    // air.  Two copies a couple of cents apart is two players, and two
+    // players is a phasing artifact rather than a wider sound: the library
+    // this is drawn from ships Tenor Trombones 2 and 3 as separate
+    // instruments precisely so that a section can be built without one.  The
+    // old `trombone` preset ran two copies 2.5 cents apart and that was a
+    // stereo-era decision; summed to the one speaker this is played through
+    // it is `reese`'s cancellation on a voice that has no `mono_partials` to
+    // be rescued by.
+    .unison = 1,
+    // ------------------------------------------------------------------
+    // The spectrum.  A narrow pulse and a steep corner that the breath moves,
+    // which between them are this voice's whole timbre.
+    //
+    // A brass player's lips are a valve that snaps open for a small fraction
+    // of each cycle, so the source is a spike and its spectrum is flat --
+    // flat until the pulse's own first null, which sits at partial 1/width.
+    // 0.07 puts that at partial 14, above everything the corner below
+    // reaches, which is the point: the pulse supplies a flat band and the
+    // corner decides how much of it is heard.  The old preset's 0.34 put the
+    // null at partial 3 instead, which is a hole in the middle of the range
+    // where a trombone is at its strongest.
+    .pwm_center = 0.07f,
+    // Enough width movement to keep a held note alive and no more, and at
+    // this width a very little goes a long way: the two together reach 0.06
+    // to 0.08 when they line up, which slides the null between partials 12.5
+    // and 16.7.  That is a gentle brightness wobble rather than the timbral
+    // swing the same numbers would be on a 0.34 pulse.  The growl is on note
+    // length, as everywhere else, so it belongs to long notes and stays out
+    // of runs.
+    //
+    // 0.06 is also the floor the width is clamped to, so the centre cannot go
+    // much lower than this without the movement becoming one-sided.
+    .pwm_slow_hz = 0.12f, .pwm_slow_depth = 0.004f,
+    .growl_hz = 5.2f, .growl_depth = 0.006f, .growl_onset_s = 0.45f,
+    // 0.75 rather than a pulse's 1.0.  Brass keeps its energy well above the
+    // fundamental -- on a low note the fundamental is not the loudest partial
+    // at all -- and this is what leaves it there.
+    .tilt = 0.75f,
+    // The brightness, which on this voice is the entire instrument.  A
+    // trombone at ppp is nearly a sine and at fff is a flat spectrum out past
+    // 2kHz, and nothing else about it changes as much.
+    //
+    // Four poles, not the table's usual two, and `cutoff_soft` at almost
+    // nothing.  Both are forced by the same thing: the engine's dynamics knee
+    // is `1 - exp(-2.2 * reach)`, which is already at 0.31 by the 25th
+    // percentile of real playing and 0.92 by the 95th (measured over
+    // recordings/whistling.f32).  The corner is linear in that, so the most
+    // sweep any setting can buy is the ratio between those two numbers -- and
+    // it is a ratio, so an intercept above zero only shrinks it.  What is
+    // left to choose is the slope, and a 4-pole gets twice the dB out of the
+    // same sweep as a 2-pole does.  Measured over the ladder's 165Hz note,
+    // spectral centroid across the playable range:
+    //
+    //     dynamics        0.32   0.47   0.65   0.79   0.96
+    //     2-pole           470    570    651    689    722  Hz
+    //     4-pole           390    481    566    578    612        <- this
+    //
+    // The 2-pole is brighter everywhere and moves less: 1.54x against 1.57x,
+    // and it never gets genuinely dark at the quiet end, which is where a
+    // trombone spends half its expression.
+    .cutoff_soft = 0.2f, .cutoff_loud = 14.0f, .rolloff_exp = 4.0f,
+    // And the saturator is flat, which is the one setting here that looks
+    // wrong and is not.
+    //
+    // Every other voice in this table opens the drive up as the player leans
+    // in, and on a trombone that is the physically correct story as well:
+    // brassiness is a shock wave forming in the bore, which is distortion and
+    // not a filter.  It does not survive contact with the measurement.  A
+    // narrow pulse is already spikier than anything an `atan` will make of
+    // it, so saturating it flattens the spike, widens it, and takes the top
+    // off.  Centroid over the same five points:
+    //
+    //     dynamics        0.32   0.47   0.65   0.79   0.96
+    //     drive 1.2 flat   390    481    566    578    612  Hz
+    //     drive 1.0->4.0   368    422    451    437    433
+    //
+    // The second row is the old preset's arrangement and it is a voice that
+    // gets *duller* the harder it is pushed, which is the opposite of the
+    // only thing everybody knows about brass.  So the drive stays where it
+    // is, doing the one job it can still do here: a fixed gentle nonlinearity
+    // that fills in above the 32 partials this synthesizes, which at the
+    // bottom of the range only reach 2.2kHz.
+    //
+    // No `drive_bias` either.  That exists to put even harmonics into a
+    // saturator that is an odd function and cannot make them; a pulse this
+    // narrow arrives with its evens already there -- partial 2 measures
+    // within 0.4dB of partial 1 at every dynamic.
+    .drive_soft = 1.2f, .drive_loud = 1.2f,
+    .harmonics = 32,
+    // The top of the horn.  Worth very little -- 0.5dB at 4kHz and 0.6 at
+    // 8kHz against leaving it off -- because with 32 partials on a 69-394Hz
+    // note there is not much up there to remove, and what there is comes from
+    // the saturator rather than from anything the instrument does.  Kept for
+    // the reason `drawbar` learned from the K10.2: what the drive invents at
+    // 8kHz is not a sound a brass bell has ever made, and the cheapest place
+    // to say so is here.
+    .top_hz = 6000.0f,
+    .level_full = 0.22f,
+    // No key contact.  The manual for the library this is drawn from puts it
+    // in capitals: the instrument will not play at all without a continuous
+    // controller on the dynamics, because on a wind instrument the breath is
+    // the volume and there is nothing else.  That is `contact_level` at zero,
+    // which is what the basses do and the opposite of the two organs.
+    // ------------------------------------------------------------------
+    // The note, and the slide.
+    //
+    // The slowest attack in the table, and by some way: 25ms against
+    // `accordion`'s 12 and `bass`'s 4.  A brass note is a column of air that
+    // has to be got moving, and the render says 48ms from a tenth to nine
+    // tenths of the note's own peak against `bass`'s 16 and `drawbar`'s 19.
+    .attack_s = 0.025f, .release_s = 0.060f,
+    .articulation_s = 0.009f, .glide_s = 0.009f,
+    // The slide, which is the thing a trombone has and no other instrument
+    // does.  A tritone is the full stroke of the arm, first position to
+    // seventh, and a player throws it in about two tenths of a second -- 30
+    // semitones a second, which is the 2.5 octaves here.
+    //
+    // What it buys is that an interval takes time in proportion to its size,
+    // which is what the ear reads as an arm moving.  Over prototypes/
+    // in-slur.f32, where each note runs into the next with no gap for the
+    // detector to call an onset on:
+    //
+    //     leap           2st    5st    7st   12st
+    //     trombone       76ms  159ms  220ms  381ms
+    //     accordion      20ms   18ms   19ms   23ms
+    //
+    // The second row is every other voice in the table: a one-pole covers a
+    // twelfth as fast as it covers a whole tone and simply moves quicker to
+    // do it, which is a pitch wheel and not a slide.
+    //
+    // It bites on 13% of voiced hops over recordings/whistling.f32 and the
+    // median hop moves at 0.55 octaves a second, so ordinary melodic movement
+    // and the player's own vibrato pass under it untouched and only the top
+    // decile -- the leaps -- is slowed.  Tongued notes are not touched at
+    // all: they arrive on their onset and never glide.  That is the division
+    // a trombonist actually works with, which is why legato tonguing exists.
+    .slide_octaves_s = 2.5f,
+    // Matched with none of the offset the organs carry, for `accordion`'s
+    // reason: the breath is the volume here, so this is the same kind of
+    // material as the rest of the table and the integral is the whole story.
+    // -22.3 LUFS over recordings/whistling.f32, against the unoffset voices'
+    // -21.9 to -22.9, peaking at 0.459.
+    //
+    // Across pitch it is the flattest voice in the table -- 0.2dB from the
+    // bottom of the ladder to the top, against `accordion`'s 0.3, `bass`'s
+    // 2.3 and `square`'s 3.8 measured the same way.  Not the audibility
+    // compensation working hard: at 69Hz the fundamental is under the
+    // cabinet's corner, but this is a voice whose energy sits well above its
+    // fundamental by construction, so there is little down there to lose.
+    .out_gain = 0.535f,
+  },
 };
 
 #define N_PRESETS ((int)(sizeof(presets)/sizeof(presets[0])))
@@ -1971,7 +2143,24 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     // while still smoothing the detector's hop-to-hop jitter.  When the hint
     // is not trustworthy its freq simply hasn't moved, so this holds.
     float target = log2f(fmaxf(1, hint->freq));
-    s->log_freq += coeff(p->glide_s, s->sample_rate) * (target - s->log_freq);
+    if (p->slide_octaves_s > 0) {
+      // A slide has a top speed, so the step is clamped rather than the time
+      // constant changed: small moves and vibrato are untouched and only a
+      // real leap is made to take the time an arm would take.  See
+      // `slide_octaves_s`.
+      //
+      // The line below is repeated rather than hoisted out of the branch, and
+      // that is deliberate: `a += b * c` is one statement and the compiler may
+      // contract it into a fused multiply-add, `float step = b * c; a += step`
+      // rounds in between, and the two do not give the same bits.  Every voice
+      // in the table renders identically across this change, which is worth
+      // more than the duplicated line.
+      float limit = p->slide_octaves_s / s->sample_rate;
+      float step = coeff(p->glide_s, s->sample_rate) * (target - s->log_freq);
+      s->log_freq += fmaxf(-limit, fminf(limit, step));
+    } else {
+      s->log_freq += coeff(p->glide_s, s->sample_rate) * (target - s->log_freq);
+    }
   } else if (earned) {
     // A note being held slides onto the pitch it was *played* at rather than
     // the one it ended on.  The last few tens of milliseconds of a whistle are

@@ -189,6 +189,27 @@ struct SynthParams {
 
   float glide_s;
 
+  // The most pitch this voice will cover in a second, in octaves, when the
+  // player moves *within* a note.  0 leaves `glide_s` on its own, which is
+  // what every voice that is not on the end of a slide does.
+  //
+  // `glide_s` is a one-pole, so it covers a wide interval and a narrow one in
+  // the same time and simply moves faster on the wide one.  That is what a
+  // bend is and it is wrong for the one instrument whose pitch is a piece of
+  // brass tubing being pushed: a trombonist's arm has a top speed, so a
+  // tritone takes six times as long to reach as a semitone and the ear hears
+  // the difference between them as *distance*.  Clamping the one-pole's step
+  // rather than replacing it keeps what the one-pole is there for -- the
+  // detector's hop-to-hop jitter is smoothed either way -- and makes the
+  // large moves, and only the large moves, take time proportional to how far
+  // they go.
+  //
+  // It does not touch a tongued note, which arrives on its onset and never
+  // glides at all.  That is the same division a real player works with: the
+  // slide moves between slurred notes and the tongue starts the ones it
+  // cannot reach.
+  float slide_octaves_s;
+
   float out_gain;
 
   // ------------------------------------------------------- prototypes ---

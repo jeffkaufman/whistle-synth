@@ -254,15 +254,18 @@ of the headphone volume knob, not of your whistling.
 `trombone` and `bass` are the same engine pointed at different registers.
 Which octave they sit in is the whole design; everything else follows.
 
-* **trombone** drops three octaves, so a comfortable whistle lands around
-  100-300Hz -- tenor trombone, with room for a fiddle above and a piano
-  underneath.  Brass doesn't chorus, so the width sweep is nearly off, but it
-  does growl, and the growl is already wired to note length.  Its defining
-  trait is the brightness range: `cutoff_soft` 1.1 to `cutoff_loud` 14, the
-  widest of any preset, because going from nothing to blazing as you lean on
-  it is more recognizably brass than any particular harmonic recipe.
-  Measured, the partials open up monotonically from +0dB at the fundamental
-  to +8dB at the twelfth as you push.
+* **trombone** drops three octaves, so the whistle range lands at 69-394Hz --
+  tenor trombone, with room for a fiddle above and a piano underneath.  Its
+  defining trait is the brightness range, because going from nothing to
+  blazing as you lean on it is more recognizably brass than any particular
+  harmonic recipe: a narrow pulse for a flat source spectrum, a four-pole
+  corner on top of it, and the breath on the corner.  Measured, the spectral
+  centroid runs 390 to 612Hz across the playable dynamics on one note, and
+  12dB more input lifts its 2kHz band 3.5dB further than its 250Hz band --
+  where every other voice in the table moves all its bands together.  It is
+  also the one voice with a slide: `slide_octaves_s` caps how fast the pitch
+  may move *within* a note, so a twelfth takes five times as long to reach as
+  a whole tone instead of the same time.  See prototypes/README.md.
 * **bass** drops four octaves, landing around 50-160Hz, which is where an
   electric bass actually plays.  (Five octaves, which an earlier version of
   this program used, is below the low E.)  One oscillator, no detune, almost

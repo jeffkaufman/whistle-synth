@@ -119,6 +119,13 @@ enum VoiceParameters {
             format: milliseconds,
             get: { Double($0.glide_s) }, set: { $0.glide_s = Float($1) }),
         ParamSpec(
+            id: "slide_octaves_s", label: "Slide speed", group: .pitch,
+            range: 0...8, step: nil,
+            help: "The most pitch a move within a note may cover in a second. Off at zero, which leaves Glide alone: a bend then takes the same time whatever the interval. Set it and a wide interval takes proportionally longer than a narrow one, which is what a trombone slide does and what makes it sound like an arm rather than a pitch wheel. Small moves and your own vibrato are under it either way.",
+            format: offAtZero({ String(format: "%.1f oct/s", $0) }),
+            get: { Double($0.slide_octaves_s) },
+            set: { $0.slide_octaves_s = Float($1) }),
+        ParamSpec(
             id: "drop_octaves", label: "Pitch drop", group: .pitch,
             range: 0...2, step: nil,
             help: "How far sharp each note starts before falling to pitch. This is the whole of an 808: the drop is what a drum machine put there to fake the thump of a skin, and without it the voice is just a sub.",

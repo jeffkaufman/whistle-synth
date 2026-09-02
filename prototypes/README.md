@@ -17,6 +17,7 @@ through a QSC K10.2.  Renders to listen to are in this directory (gitignored).
   11: drawbar           tonewheel organ, 2 down, breath drives the leslie
   12: drawbar-hi        the same organ an octave up, same leslie
   13: accordion         L+M+M+ free reeds, wet, breath on the volume
+  14: trombone          tenor, 3 down, breath on the brightness, and a slide
 ```
 
 Plus two controls that are not voices: `current-fifth` and `current-sustain`,
@@ -1173,6 +1174,157 @@ two second hold the level swings 1.1dB, against the 1.6dB `bass` manages while
 being held perfectly still.  The churn stays where it was put, above the
 octave.
 
+## The trombone
+
+The fourteenth voice and the third that is not a bass: a tenor trombone three
+octaves down, so the 550-3150Hz the detector covers comes out at 69-394Hz.
+The register is picked against the real instrument rather than by ear -- a
+tenor trombone plays 82 to 698Hz -- so this covers its bottom two thirds and
+the top of the whistle range lands at G4, in the middle of the horn.  Below
+82Hz is the pedal register, which is a real place on a trombone and a rare
+one.
+
+There was a `trombone` here before, in the first version of the rewrite, and
+almost nothing of it survived contact with a measurement.
+
+**Its pulse had a hole where the instrument is loudest.**  The old one used
+`pwm_center` 0.34, and a pulse of width *w* nulls at partial 1/*w*: 0.34 puts
+a null at partial 3.  A brass player's lips are a valve that snaps open for a
+small fraction of each cycle, so the source is a spike and its spectrum is
+flat, and the only thing the width should decide is where the flat band
+*ends*.  0.07 puts the null at partial 14, above everything the filter below
+reaches.
+
+**The brightness has to come out of the filter, not the drive.**  This is the
+one that cost the most to find.  Brassiness is a shock wave forming in the
+bore, which is distortion and not a filter, so the obvious arrangement -- and
+the old preset's -- is a saturator that opens up with the breath.  It does the
+opposite of what it should.  A narrow pulse is already spikier than anything
+an `atan` will make of it, so driving it flattens the spike, widens it, and
+takes the top off.  Spectral centroid on the ladder's 165Hz note, across the
+playable dynamics:
+
+```
+   dynamics          0.32   0.47   0.65   0.79   0.96
+   drive 1.2 flat     390    481    566    578    612   Hz   <- this
+   drive 1.0 -> 4.0   368    422    451    437    433
+```
+
+The second row is a voice that gets duller the harder it is pushed.  So the
+drive is flat here, and it is the corner that moves.
+
+**And the corner is a 4-pole starting at nothing**, which is forced rather
+than chosen.  The engine's dynamics knee is `1 - exp(-2.2 * reach)`, and over
+`recordings/whistling.f32` that is already 0.31 at the 25th percentile of
+playing and 0.92 at the 95th.  The corner is linear in it, so the widest
+sweep any setting can buy is the ratio between those, and an intercept above
+zero only shrinks it.  What is left to choose is the slope, and a 4-pole gets
+twice the dB from the same sweep:
+
+```
+   dynamics        0.32   0.47   0.65   0.79   0.96    ratio
+   2-pole           470    570    651    689    722  Hz  1.54
+   4-pole           390    481    566    578    612       1.57   <- this
+```
+
+The ratios are nearly the same; what the 4-pole buys is that the quiet end is
+genuinely quiet.  A trombone at ppp is nearly a sine, and half its expression
+lives down there.
+
+What that adds up to is the one thing in this table whose *tone* follows the
+playing rather than only its level.  12dB more input, by band, against three
+voices that do not:
+
+```
+                total    250    500     1k     2k     4k
+   square        10.1   10.4   10.7   10.7   10.6   10.7
+   grind          9.6   10.2   10.4   10.5   10.4   10.4
+   bass          10.2   10.1   10.3   10.3   10.3   10.3
+   trombone       7.7    6.9    8.3    9.9   10.4   10.2
+```
+
+Every other voice moves all its bands together, which is what a fixed timbre
+getting louder looks like.  This one puts 3.5dB more into 2kHz than into
+250Hz, and its total moves less than the rest because the partial
+normalisation holds the level while the spectrum opens.
+
+### The slide
+
+The mechanism the old one did not have, and the thing a trombone has that
+nothing else does.  `glide_s` is a one-pole, so it covers a twelfth and a
+whole tone in the same time and simply moves faster on the twelfth.  That is a
+pitch wheel.  A slide is a piece of brass tubing on the end of an arm, the arm
+has a top speed, and the ear reads the difference between a near interval and
+a far one as *distance*.
+
+`slide_octaves_s` clamps how far the one-pole may step in a sample.  Clamping
+the step rather than lengthening the time constant is what keeps the small
+moves alone -- the one-pole is also what smooths the detector's hop-to-hop
+jitter, and that job is unchanged.  Measured over `in-slur.f32`, where each
+note runs straight into the next with no gap for the detector to call an
+onset on, time to reach nine tenths of the interval:
+
+```
+   leap            2st     5st     7st    12st
+   trombone       76ms   159ms   220ms   381ms
+   accordion      20ms    18ms    19ms    23ms
+```
+
+2.5 octaves a second is 30 semitones a second, which is a tritone -- the full
+stroke of the slide, first position to seventh -- in two tenths of a second.
+That is a fast throw on a real one rather than a comfortable one, and it is
+deliberately at the quick end: the limit only exists to make far intervals
+cost more than near ones, not to make the voice slow.
+
+It bites on 13% of voiced hops over `recordings/whistling.f32`, where the
+median hop moves at 0.55 octaves a second and the p90 at 2.93.  So ordinary
+melodic movement and the player's own vibrato pass under it untouched and only
+the leaps are slowed.  **Tongued notes are not touched at all**: a note with
+an onset lands on its pitch and never glides.  That is the same division a
+trombonist works with, and the reason legato tonguing exists -- the notes you
+can slur, you slide to, and the ones you cannot, you start with the tongue.
+
+The thirteen existing voices render bit-identically across the change, checked
+over `recordings/whistling.f32` and again over `recordings/holding.f32` under
+fifth+sustain.  The one-pole's line is repeated inside the branch rather than
+hoisted out of it, because `a += b * c` may be contracted into a fused
+multiply-add and `float step = b * c; a += step` rounds in between.
+
+### Loudness
+
+Matched with none of the offset the two organs carry, for `accordion`'s
+reason: the breath is the volume on a wind instrument, so this is the same
+kind of material as the rest of the table and the integral is the whole story.
+-22.3 LUFS over `recordings/whistling.f32` against the unoffset voices' -21.9
+to -22.9, peaking at 0.459.
+
+Across pitch it is the flattest voice here -- 0.2dB from the bottom of the
+ladder to the top, against `accordion`'s 0.3, `bass`'s 2.3 and `square`'s 3.8
+measured the same way.  That is not the audibility compensation working hard:
+at 69Hz the fundamental is well under the cabinet's corner, but this is a
+voice whose energy sits above its fundamental by construction, so there is
+little down there to lose.
+
+### What it does not have
+
+- **No detune.**  A trombone is one column of air, and the library this was
+  built against ships two extra tenor patches precisely so a section can be
+  made without phasing.  The old preset ran two copies 2.5 cents apart, which
+  was a stereo-era decision; through one speaker it is `reese`'s cancellation
+  on a voice with no `mono_partials` to be rescued by.
+- **No `drive_bias`.**  It exists to put even harmonics into an odd function;
+  a pulse this narrow arrives with its evens already there, partial 2 within
+  0.4dB of partial 1 at every dynamic.
+- **No vibrato**, though `vibrato_*` is still in the struct.  A trombonist's
+  vibrato is a slide vibrato, which is pitch, and the whistle already supplies
+  pitch: the detector tracks it and `glide_s` passes it through.  Adding the
+  engine's would be doubling the player's.
+- **`top_hz` at 6kHz is worth almost nothing** -- 0.5dB at 4kHz and 0.6 at
+  8kHz against leaving it off, because with 32 partials on a 69-394Hz note
+  there is little up there and what there is comes from the saturator.  Kept
+  for `drawbar`'s reason: what the drive invents at 8kHz is not a sound a
+  brass bell has made.
+
 ## Loudness
 
 Two things have to be true, and only one of them used to be.
@@ -1308,6 +1460,7 @@ the pads.
   python3 prototypes/make-input.py glide > prototypes/in-glide.f32
   python3 prototypes/make-input.py scale > prototypes/in-scale.f32
   python3 prototypes/make-input.py steps > prototypes/in-steps.f32
+  python3 prototypes/make-input.py slur > prototypes/in-slur.f32
   ./zeros2-offline <voice> 9 5 < prototypes/in-scale.f32 > /tmp/o.f32
   ffmpeg -y -f f32le -ar 48000 -ac 1 -i /tmp/o.f32 out.wav
 ```
@@ -1331,7 +1484,10 @@ when.  `--record` is the same thing for the voices that follow the whistle.
 which is what the loudness match is measured over.  `in-scale.f32` is a
 two-octave chromatic climb repeated three times;
 `in-glide.f32` is the same range as a continuous rise; `in-pad.f32` is six
-steady notes spaced seconds apart.  The last two were made for the pads and
+steady notes spaced seconds apart.  `in-slur.f32` is intervals from a whole
+tone to an octave played with no gap between the notes, which is the only way
+to see a glide at all -- a tongued note arrives on its onset and never glides.
+  The last two were made for the pads and
 outlived them: `in-pad.f32`'s seconds of silence between notes are what
 the tail was first measured in, and `in-padfast.f32` changes note every
 200ms and then every 120ms.

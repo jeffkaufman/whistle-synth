@@ -130,8 +130,26 @@ def fast_gate(t):
             return min(1.0, u / 0.008, (dur - u) / 0.012)
     return 0.0
 
+# Legato leaps: one note running straight into the next with no gap and no
+# dip, which is the input a slide has to be seen on.  A tongued note arrives
+# on its onset and never glides, so a gap of any kind hides the mechanism --
+# these deliberately have none, and the intervals climb from a whole tone to
+# an octave so the time each one takes can be compared.  See
+# `slide_octaves_s`.
+SLUR_S = 0.9
+SLUR_NOTES = [660.0, 741.0, 660.0, 880.0, 660.0, 990.0, 660.0, 1320.0, 660.0]
+SLUR_TOTAL = len(SLUR_NOTES) * SLUR_S
+def slur_freq(t):
+    return SLUR_NOTES[min(int(t / SLUR_S), len(SLUR_NOTES) - 1)]
+def slur_gate(t):
+    # Fades only at the two ends of the whole run, so there is nothing in
+    # between for the detector to call an onset on.
+    return min(1.0, t / 0.020, (SLUR_TOTAL - t) / 0.050)
+
 which = sys.argv[1]
-if which == 'steps':
+if which == 'slur':
+    buf = render(slur_freq, SLUR_TOTAL, slur_gate)
+elif which == 'steps':
     buf = render(steps_freq, STEPS_S, steps_gate)
 elif which == 'padfast':
     buf = render(fast_freq, FAST_S, fast_gate)
