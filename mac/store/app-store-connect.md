@@ -53,7 +53,7 @@ below either way.
 
 **Name** — `Whistle Synth`  [13/30]
 
-**Subtitle** — `Whistle it, hear a synth`  [24/30]
+**Subtitle** — `Control a synth by whistling`  [28/30]
 
 **Primary category** — Music.  Matches `LSApplicationCategoryType =
 public.app-category.music` in `Info.plist`; they should not disagree.
@@ -61,7 +61,10 @@ public.app-category.music` in `Info.plist`; they should not disagree.
 **Secondary category** — leave empty.  The obvious second is Entertainment and
 it is not what this is.
 
-**Bundle ID** — `com.jefftk.WhistleSynth`, which Distribute registers for you.
+**Bundle ID** — `com.jefftk.WhistleSynth`.  Register it under Identifiers on
+the developer portal *before* opening this form; the field is a picker over
+already-registered App IDs, and Distribute registering it for you happens a
+step too late to fill that picker.  See "Before any of this: the build" #3.
 
 **SKU** — `whistle-synth-1`.  Never shown to anyone, never reusable, so it
 only has to be a string you will not want back.
@@ -84,21 +87,21 @@ nothing else in this document.)
 
 ## Version 1.0
 
-### Promotional text  [168/170]
+### Promotional text  [148/170]
 
 Editable later without a review, which makes it the place for anything you
 might want to change on a Tuesday.
 
 ```
-Whistle a line and hear a synth play it — twelve voices, continuous pitch, and low enough latency that it plays like an instrument. Headphones or a separate mic needed.
+Control a synth by whistling. Twelve voices, continuous pitch, and low enough latency to play like an instrument. Headphones or separate mic needed.
 ```
 
-### Description  [2755/4000]
+### Description  [2895/4000]
 
 ```
-Whistle Synth turns whistling into a synthesizer.
+Whistle Synth lets you control a synthesizer by whistling.
 
-It listens to your microphone, works out what note you are on, and plays that note back on a synth voice. It follows the pitch continuously, so a slide is a slide and a bend is a bend rather than a jump between keys, and it tracks how hard you are blowing, which is what most of the voices use for their dynamics. It is monophonic: one note at a time, the one you are whistling.
+It listens to your mic, quickly works out what note you're on, and plays that back on a synth voice. It follows pitch continuously, so you can slide and bend, and it tracks how loud your whistle is, which is what most of the voices use for their dynamics. It is monophonic: one note at a time, the one you are whistling.
 
 TWELVE VOICES
 
@@ -106,13 +109,15 @@ Bass, Sub Bass, Octaveless, Reese, 808, Pluck, FM, FM Sub, Grind, Square, Drawba
 
 PLAYING IT
 
+Plug in an external mic or headphones, so you don't get feedback. Whistle into the mic, keeping it as close to your mouth as possible. Listen to the synth.
+
 Down a fifth plays every voice a fifth below what you whistle: a tune whistled in D comes out in G.
 
-Sustain lets a note you hold outlive the breath that made it — it slides onto the nearest real note, settles under itself, and stays there until the next note. A drone left alone is still going a minute later.
+Sustain lets you play a note and have it continue after you stop, which is good for accompanying yourself on another instrument. Unlike the rest of Whistle Synth, this snaps to the nearest concert pitch note. It's triggered by playing a note over half a second long, and stopped by playing a short note.
 
-An octave shift and a settable range mean a whistle can drive a bass line four octaves down, which is most of the point.
+An octave shift and a settable range mean a whistle can drive a bass line four octaves down, which is the biggest reason to use the app.
 
-Mute is on the M key, with no modifier, because a modifier is two hands. It ramps rather than cuts, and the engine keeps running behind it, so unmuting lands in the middle of whatever was already sounding.
+Mute is on the M key, with no modifier, to make it as fast as possible to mute if it's not doing what you want.
 
 THE VOICE EDITOR
 
@@ -126,7 +131,7 @@ The audio device is borrowed, not taken. Whistle Synth starts on your device's d
 
 YOU NEED HEADPHONES OR A SEPARATE MICROPHONE
 
-On a typical Mac the built-in microphone and the built-in speakers are a few inches apart, so the synth hears its own output and howls. Whistle Synth will not run that route at all. Connect headphones — wired or Bluetooth — or use a microphone that sits up by your mouth, and it starts. A dynamic microphone into an audio interface is what it is happiest with.
+On a typical Mac the built-in microphone and the built-in speakers are a few inches apart, so the synth hears its own output and howls. Whistle Synth will not run that route at all. Connect headphones (wired for low latency) or an external microphone (as close as possible to your mouth). A good microphone (SM58 or better) into an audio interface gives best performance.
 
 PRIVACY
 
@@ -195,7 +200,7 @@ and would raise questions nobody wants to answer.
 **Contact:** your name, phone, and email.  Use an address you actually read;
 this is where a rejection arrives.
 
-### Notes  [1695/4000]
+### Notes  [1702/4000]
 
 This field is the whole reason `mac/app-store-review.md` #15 exists.  The app
 refuses the built-in-mic-into-built-in-speakers route, so a reviewer opening
@@ -206,15 +211,15 @@ the reason, and the banner is not a defence if nobody said so in advance.
 ```
 Whistle Synth turns whistling into a synth line: it hears the note you whistle and plays that note back on a synth voice.
 
-PLEASE CONNECT HEADPHONES BEFORE TESTING. Any headphones will do, wired or Bluetooth.
+PLEASE CONNECT HEADPHONES BEFORE TESTING. Use wired headphones for good latency.
 
 The app deliberately refuses to run the built-in microphone into the built-in speakers. On a MacBook they are a few inches apart, so the synth hears its own output through the mic and howls immediately. Rather than ship an app whose first experience is feedback, it declines that one route and shows a "Headphones needed" banner instead. The banner clears by itself within about a second of headphones being connected, and no other setup is needed.
 
 To test:
 
 1. Connect headphones.
-2. Launch Whistle Synth and grant the microphone permission when asked. The app does nothing until it is granted — that is the only thing it uses the microphone for, and there is no other input.
-3. Whistle a steady note. The bar at the bottom of the Play tab moves and the note name beside it shows what it heard; the synth voice follows the same pitch through the headphones.
+2. Launch Whistle Synth and grant the microphone permission when asked. The app does nothing until it is granted: that is the only thing it uses the microphone for, and there is no other input.
+3. Whistle a steady note into the mic. The bar at the bottom of the Play tab moves and the note name beside it shows what it heard; the synth voice follows the same pitch through the headphones.
 4. Try the voice tiles at the top of the Play tab to hear different sounds, or Passthrough to hear your microphone unprocessed if you want to confirm the input is working.
 
 A demo video is attached showing all of the above, since the working state depends on hardware that may not be in front of you.
@@ -227,23 +232,51 @@ Two other things you may notice:
 Thank you.
 ```
 
-### Attachment: the demo video
+### Attachment: the demo video — done
+
+`mac/store/whistle-synth-demo.mp4`.  13.2 MB, 1:08, 2472x1512, H.264 video and
+AAC audio.  Attach it in App Review Information, below the Notes.
 
 Not optional in practice.  It is the ordinary remedy for "the reviewer could
 not reproduce the working state", and this app's working state depends on
 hardware that is not on the reviewer's desk.
 
-The awkward part is capturing the synth output and the whistle in one file.
-The route that needs no extra software:
+**It is an `.mp4` on purpose.**  App Store Connect's accepted attachment types
+are `.pdf .doc .docx .rtf .pages .xls .xlsx .numbers .zip .rar .plist .crash
+.jpg .png .mp4 .avi` — and `.mov` is not among them, which is what ⌘⇧5 writes.
+The capture was already H.264 and AAC, so the conversion is a rewrap, not a
+re-encode: the pixels are bit-identical to what came off the screen.
+
+**The audio was quiet and has been raised.**  As recorded it peaked at −9.4 dB
+and averaged −32 dB, which a reviewer on laptop speakers in an office would
+have struggled with.  It is now +6.4 dB louder, peaking at −3.0 dB, re-encoded
+at 192k so the boost does not amplify the artifacts of the original 106k.
+Nothing was near clipping, so no limiting was needed.
+
+The original `~/Desktop/whistle-synth-demo-video.mov` is untouched.  Rebuild
+from that, not from the `.mp4`, if you change anything — it keeps the audio one
+generation of encoding deep instead of two:
+
+```sh
+ffmpeg -i ~/Desktop/whistle-synth-demo-video.mov \
+  -c:v copy -af "volume=6.4dB" -c:a aac -b:a 192k \
+  -movflags +faststart -map_metadata -1 \
+  mac/store/whistle-synth-demo.mp4
+```
+
+Recheck the level with `ffmpeg -i out.mp4 -af volumedetect -f null -`; the
+`volume=` figure is whatever gets `max_volume` to −3 dB, so it changes with
+every retake.
+
+**How it was captured**, if it needs doing again.  The awkward part is getting
+the synth output and the whistle into one file:
 
 1. **Audio tab:** Input = a real microphone (the Scarlett), Output = MacBook
    Pro Speakers.  That combination is allowed — the refusal is only when
    *both* ends are built-in — and it means the synth is coming out of the
    machine you are recording.
-2. **⌘⇧5 ▸ Options:** turn on the microphone (the built-in one, to catch the
-   room) *and* system audio, if your macOS offers it.  Recent macOS added
-   system-audio capture to the built-in recorder; if this one has no such
-   item, see the fallback below.
+2. **⌘⇧5 ▸ Options:** microphone on (the built-in one, to catch the room) *and*
+   system audio.  Both land in one stereo track.
 3. Record 30–60 seconds: the Play tab, a steady whistle, the note readout
    moving with it, a voice change or two, and the range or the fifth if there
    is time.  Do not narrate over it — the point is that the sound follows the
@@ -256,17 +289,39 @@ and record the room.  The video quality does not matter at all here; the
 audible relationship between whistle and synth is the entire content.  A
 phone recording of a laptop is a completely normal App Review attachment.
 
+**The file is not tracked by git.**  13 MB against a repository whose whole
+history packs to 777 KiB; the screenshots are small enough to track and this is
+not.  It lives in `mac/store/` beside them anyway, because that is where you
+will look for it.
+
 ---
 
-## Before any of this: the build
+## Before any of this: the build — archived and checked
 
-**Five lines in `project.pbxproj` are uncommitted as of 2026-08-30.**
-`DEVELOPMENT_TEAM`, two `ENABLE_APP_SANDBOX`, and two
-`GCC_OPTIMIZATION_LEVEL` are in the working tree and not in `HEAD` — which is
-exactly the state that lost them once already, on 2026-08-23.  See the status
-block at the top of `mac/app-store-review.md`.  **Commit them before
-archiving**, so that the thing you upload is a thing the repository can
-rebuild.
+**The five `project.pbxproj` lines are committed**, in `c71b837` ("mac: the
+App Store prep that was never committed").  `DEVELOPMENT_TEAM`, two
+`ENABLE_APP_SANDBOX` and two `GCC_OPTIMIZATION_LEVEL` are all in `HEAD` with no
+working-tree diff, so the thing you upload is a thing the repository can
+rebuild.  This is the state that was made and lost twice before — see the
+status blocks at the top of `mac/app-store-review.md` — so if you come back to
+this cold, confirm it again with `git diff HEAD --
+mac/WhistleSynth.xcodeproj/project.pbxproj` before archiving.
+
+**The archive exists, 2026-08-31:**
+`~/Library/Developer/Xcode/Archives/2026-08-31/WhistleSynth-2026-08-31.xcarchive`,
+built from the tree at `9b8c4ab` with `xcode-select` already pointing at Xcode.
+What was checked in it: universal (`x86_64 arm64`), `TeamIdentifier=C58DMTY76R`,
+a signature chaining to Apple Root CA with no `adhoc` flag, hardened runtime on,
+exactly the two entitlements (`app-sandbox`, `device.audio-input`), version
+`1.0` build `1`, and the **new whistle icon** — `Assets.car` carries the whole
+ramp from 16 up to a true 1024, which is the copy the App Store reads.
+
+Two things about that archive that look wrong and are not.  It is signed
+`Apple Development`, not `Apple Distribution`: Distribute re-signs on export,
+so this is what an unexported archive is supposed to look like, and it stays
+true after the old certificate is revoked.  And the `AppIcon.icns` beside
+`Assets.car` holds only the small sizes — that is actool's legacy fallback
+file, not the icon anyone reads.
 
 Then, in order:
 
@@ -277,33 +332,59 @@ Then, in order:
    -configuration Release -destination 'generic/platform=macOS' archive`.
    A plain `build` is **not** a rehearsal — with the default destination it
    is arm64 only.
-3. **Distribute App ▸ App Store Connect ▸ Upload.**  This is the step that has
-   never been run.  It creates, on its own, the things that do not exist yet:
-   the App ID registration, the Mac App Store provisioning profile, the
-   `Apple Distribution` certificate that signs the `.app`, and the **Mac
-   Installer Distribution** certificate that signs the `.pkg` that is actually
-   uploaded.  The second certificate is the one people forget, and the error
-   when it is missing names the `.pkg`, not the certificate.
-4. Wait for the build to finish processing in App Store Connect — usually
+3. **The App Store Connect record has to exist before the upload, not after.**
+   This is the one ordering trap in the whole sequence, and it is two deep:
+   ASC's New App form offers a Bundle ID *picker*, which lists only App IDs
+   already registered on the developer portal, and the upload in step 4 fails
+   with "No suitable application records were found" if no record is waiting
+   for the build.  So: register `com.jefftk.WhistleSynth` under Identifiers on
+   the portal, then create the app record in ASC, then upload.  Xcode's
+   automatic signing would register the App ID for you during Distribute, but
+   that is one step too late to fill in the picker.
+
+   The record only has to *exist* before the upload, not be finished.  New App
+   is a six-field form — macOS, `Whistle Synth`, English (U.S.), the bundle ID,
+   SKU `whistle-synth-1`, Full Access — so create that, start the upload in
+   step 4 immediately, and paste the rest of this document into the browser
+   while the build processes.  Processing is minutes to an hour and there is no
+   reason to spend it idle.
+4. **Distribute App ▸ App Store Connect ▸ Upload.**  This is the step that has
+   never been run.  It creates, on its own, the rest of what does not exist
+   yet: the Mac App Store provisioning profile, the `Apple Distribution`
+   certificate that signs the `.app`, and the **Mac Installer Distribution**
+   certificate that signs the `.pkg` that is actually uploaded.  The second
+   certificate is the one people forget, and the error when it is missing
+   names the `.pkg`, not the certificate.
+5. Wait for the build to finish processing in App Store Connect — usually
    minutes, occasionally an hour — then attach it to version 1.0.
-5. Submit.
+6. Submit.
+
+Nothing here bumps a version number, because nothing has been accepted yet.
+The moment a build is uploaded, `CFBundleVersion` (`1`) is spent: any later
+upload for 1.0 needs it raised, even if the code is identical.
 
 ---
 
 ## Leftovers, none of them blocking
 
-* **Revoke the old development certificate.**  It still reads "JEFFREY
-  THOMFORDE KAUFHAN"; revoking makes automatic signing reissue it under the
-  corrected name.  Do this *before* the Distribute run so the distribution
-  certificates are created under the right name from the start.
+* ~~**Revoke the old development certificate.**~~  Done 2026-08-31, before the
+  Distribute run, which is the point: it read "JEFFREY THOMFORDE KAUFHAN", and
+  the distribution certificates Distribute creates are now issued under the
+  corrected name from the start.
 * **Agreements, Tax, and Banking** — confirm the legal name there reads
   Kaufman too.  #14 corrected the membership record; this section is a
   separate copy of the same name, and a mismatch holds up payouts silently
   rather than failing loudly.  It has to be accepted before a free app can be
   distributed at all, so this is worth checking early even though it is
-  filed under "leftovers".
-* **The icon** is `mac/tools/make-icon.swift`'s output — honest and legible at
-  16px, but generated rather than designed.  It is good enough to ship and it
-  is the most visible thing on the product page.
+  filed under "leftovers".  *(2026-08-31: for a **free** app there is nothing
+  to do here — no Paid Apps agreement, no banking, no tax forms.  The one
+  failure mode a free app still has is an un-accepted **update** to the
+  Developer Program License Agreement, which shows as a yellow banner on ASC ▸
+  Business and does block submission.  Ten seconds to rule out.)*
+* **The icon was redrawn on 2026-08-30** (`9b8c4ab`) and is no longer the
+  signal-chain diagram this list used to apologise for.  It is a whistle that
+  is also a synth, still `mac/tools/make-icon.swift`'s output, still legible at
+  16px.  The screenshots predate it and do not need retaking: no tab in the app
+  draws its own icon, so none of the four contains the old one.
 * **#16**, the feedback refusal only catching the built-in transport type, is
   a 1.0.1 item.  It wants a machine with a Studio Display to test on.
