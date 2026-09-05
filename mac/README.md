@@ -625,10 +625,9 @@ Play tab instead.  See **Full blow** above.  Everything else is here.
 `out_gain` is on the tab because the tab is otherwise exhaustive, but it is not a taste
 control: each preset's value is set so that every voice measures the same
 loudness (ITU-R BS.1770), and changing one means re-running the loudness match
-rather than just that voice.  The slider says so.  Three voices sit
-deliberately under the match -- `reese` by one volume step, the two drawbars
-by two -- which is the one place taste overrides the measurement; the reasons
-are in the `out_gain` comment at the top of `synth.c`.
+rather than just that voice.  The slider says so.  No voice sits under the
+match any more: `reese` and the two drawbars carried an offset for a while
+and lost it, for reasons in the `out_gain` comment at the top of `synth.c`.
 
 ## Do not use `LabeledContent`
 

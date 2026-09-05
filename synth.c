@@ -22,21 +22,19 @@
 // because it depends on the material: matched on synthetic test tones the
 // numbers come out several dB different.
 //
-// Three voices deliberately sit *below* the match, and the offsets are the
-// only numbers here that are taste rather than measurement.  `reese` is one
-// volume step down and the two drawbars are two and a half, in the same
-// 3.5dB-a-step units the volume knob uses (see `volume_steps` in engine.c),
-// so the offsets are 0.667x and 0.363x of what the match asked for.  Half a
-// step is geometric like the knob itself -- 1.5^-0.5, half of 3.5dB -- rather
-// than halfway between two of its numbers.  Equal LUFS is equal
-// *loudness*, and these three are not doing the same job as the rest: the
-// drawbars are a sustained pad with a leslie chewing on it, which measures
-// like a bass line and sits on the ear like a wall, and `reese` carries more
-// going on above the fundamental than the LUFS filter charges it for.  Undo
-// the offset and they are correct on a meter and too loud in a room.
-//
-// Re-running the match therefore does not just replace these three numbers:
-// it produces the matched value, which then has its offset applied again.
+// Nothing here sits below the match, and the table is measurement all the
+// way down: re-running it replaces these numbers outright.  `reese` and the
+// two drawbars did carry an offset for a while -- one volume step and two
+// and a half, in the 3.5dB-a-step units the volume knob uses -- on the
+// argument that equal LUFS is equal loudness only for material of the same
+// kind, and that a sustained organ pad through a leslie measures like a bass
+// line and sits on the ear like a wall.  The argument is right about the
+// meter and wrong about the instrument.  It was settled at listening volume
+// in a quiet room; played for real, against a band and at gig level, a
+// drawbar 9dB under everything else is not a pad that stays out of the way,
+// it is a voice that vanishes when you switch to it.  Changing voice
+// mid-tune is asking for a different sound, not a quieter one, and the
+// volume knob is right there for the other thing.
 //
 // It is run through a model of the speaker rather than on the signal itself:
 // a QSC K10.2, flat to about 55Hz and then a ported cabinet's cliff.  Every
@@ -387,10 +385,7 @@ static const struct SynthParams presets[] = {
     .level_full = 0.22f,
     .attack_s = 0.008f, .release_s = 0.060f, .articulation_s = 0.008f,
     .glide_s = 0.006f,
-    // 0.276 matched, one volume step down: see the offsets in the header
-    // comment.  Everything this voice has going on above the fundamental is
-    // loudness the meter does not charge it for.
-    .out_gain = 0.184f,
+    .out_gain = 0.276f,
   },
   {
     // The 808: nearly a sine, with the pitch dropping half an octave over the
@@ -835,12 +830,7 @@ static const struct SynthParams presets[] = {
     // not the audibility compensation working hard, it is a voice with
     // nothing under the cabinet's corner never asking it for anything.  The
     // 1.0 is `top_hz`, which takes more off a high note than a low one.
-    //
-    // 0.242 matched, two and a half volume steps down: see the offsets in the
-    // header comment.  A drawbar registration through a leslie is a sustained
-    // pad, and a pad matched to the same LUFS as a plucked bass line is a pad
-    // that never gets out of the way.
-    .out_gain = 0.088f,
+    .out_gain = 0.242f,
   },
   {
     // The same organ an octave up: a 550-3150Hz whistle lands at 275-1575Hz
@@ -896,11 +886,7 @@ static const struct SynthParams presets[] = {
     .attack_s = 0.002f, .release_s = 0.015f,
     .articulation_s = 0.012f, .glide_s = 0.005f,
     .shimmer_depth = 0.12f,
-    // 0.245 matched, two and a half volume steps down, for the reason
-    // `drawbar` is -- and it has to be the same two and a half, because these
-    // two are each other's manuals and a player changing between them
-    // mid-phrase must not hear a step.
-    .out_gain = 0.089f,
+    .out_gain = 0.245f,
   },
   {
     // A wet accordion: three free reeds sounding at once, two of them a few
@@ -1011,15 +997,14 @@ static const struct SynthParams presets[] = {
     // beat between the M reeds is already movement, and it is movement of
     // exactly the kind the shimmer exists to supply.
     .shimmer_depth = 0.12f,
-    // Matched, with none of the offset the two drawbars carry, and the meter
-    // says why: over recordings/whistling.f32 this has an LRA of 12.8 LU
-    // against `bass`'s 12.6 and the organs' 6.4 and 7.0.  The offsets exist
-    // because equal LUFS is equal loudness only for material of the same
-    // kind, and a flat-level pad matched to a bass line sits on the ear as a
-    // wall.  This voice's level follows the playing, so it is the same kind
-    // of material as the rest of the table and the integral is the whole
-    // story.  -22.3 LUFS against the unoffset voices' -21.9 to -22.9, and it
-    // peaks at 0.363 doing it.
+    // Matched, like everything else in the table.  It was matched while the
+    // two drawbars still carried the offset they have since lost, and did
+    // not take it, because the meter said it was not that kind of voice:
+    // over recordings/whistling.f32 this has an LRA of 12.8 LU against
+    // `bass`'s 12.6 and the organs' 6.4 and 7.0.  Its level follows the
+    // playing, so it is the same kind of material as the rest of the table
+    // and the integral is the whole story.  -22.3 LUFS against the others'
+    // -21.9 to -22.9, and it peaks at 0.363 doing it.
     //
     // Across pitch it is 1.4dB from the bottom of the ladder to the top,
     // against `drawbar-hi`'s 0.7 and `square`'s 7.8 measured the same way --
@@ -1185,11 +1170,11 @@ static const struct SynthParams presets[] = {
     // all: they arrive on their onset and never glide.  That is the division
     // a trombonist actually works with, which is why legato tonguing exists.
     .slide_octaves_s = 2.5f,
-    // Matched with none of the offset the organs carry, for `accordion`'s
-    // reason: the breath is the volume here, so this is the same kind of
-    // material as the rest of the table and the integral is the whole story.
-    // -22.3 LUFS over recordings/whistling.f32, against the unoffset voices'
-    // -21.9 to -22.9, peaking at 0.459.
+    // Matched, for `accordion`'s reason: the breath is the volume here, so
+    // this is the same kind of material as the rest of the table and the
+    // integral is the whole story.  -22.3 LUFS over
+    // recordings/whistling.f32, against the others' -21.9 to -22.9, peaking
+    // at 0.459.
     //
     // Across pitch it is the flattest voice in the table -- 0.2dB from the
     // bottom of the ladder to the top, against `accordion`'s 0.3, `bass`'s

@@ -336,14 +336,14 @@ is why `out_gain` differs so much between presets -- `subbass` is set to
 not a taste control: changing one means re-running the match, not just
 adjusting that voice.
 
-Three voices are then deliberately turned down from the matched value:
-`reese` by one volume step and the two drawbars by two, in the same
-3.5dB-a-step units the volume knob uses.  Equal LUFS is equal loudness for
-material of the same kind, and a sustained organ pad through a leslie is not
-doing the job a plucked bass line is -- matched on the meter it sits on the
-ear as a wall.  The offsets are the only taste in these numbers, they are
-written down where the values are, and re-running the match means re-applying
-them rather than replacing them.
+Three voices were once turned down from the matched value -- `reese` by one
+volume step and the two drawbars by two and a half -- on the argument that
+equal LUFS is equal loudness only for material of the same kind, and that a
+sustained organ pad through a leslie is not doing the job a plucked bass line
+is.  That held in a quiet room and did not survive a gig: a drawbar 9dB under
+everything else does not stay out of the way, it disappears when you switch
+to it.  There are no offsets now.  Every number in the table is the match,
+and re-running it replaces them.
 
 The peaks that fall out of this range from 0.36 to 0.75 at full volume.  The
 headroom target is 0.75 rather than something closer to 1.0 because
