@@ -1691,6 +1691,7 @@ void synth_init(struct Synth* s, float sample_rate, int preset) {
   // at full, not silent, or the very first note is missing its attack.
   s->pluck = 1;
   s->audibility_comp = 1;
+  s->audibility_smoothed = 1;
   synth_set_preset(s, preset);
 }
 
@@ -2228,16 +2229,19 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
     s->control_countdown = SYNTH_CONTROL_HOP;
   }
 
-  if (onset && !holding) {
+  if (onset && !holding && s->gate < 1e-3f) {
     // Start at this note's dynamics rather than ramping up into them.
     //
-    // Not when a tail is already sounding, which is the case only a holding
-    // voice has: every other preset is at gate 0 when a note starts, so
-    // snapping the envelope is inaudible, while here it is a step straight
-    // into the listener's ears from whatever the tail was at.  Measured over
-    // recordings/holding.f32 before this, the rendered envelope stepped down
-    // a median of 8.7dB at an onset and as much as 47dB.  Leaving it alone
-    // lets the one-pole below cover the distance at articulation_s instead.
+    // Only from silence, where the gate is at 0 and so snapping the envelope
+    // is inaudible.  Anything still sounding makes it a step straight into
+    // the listener's ears from whatever was playing.  A holding voice's tail
+    // is one case: measured over recordings/holding.f32 before this, the
+    // rendered envelope stepped down a median of 8.7dB at an onset and as
+    // much as 47dB.  The other is any voice's release: a note started
+    // within release_s of the last one ending finds the gate partway down,
+    // and over a tongued bass line in jammer that stepped the waveform -- one
+    // sample from 0.022 to 0.090 -- at most onsets.  Leaving it alone lets
+    // the one-pole below cover the distance at articulation_s instead.
     s->loudness_env = s->loudness;
   }
 
@@ -2376,12 +2380,21 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // gain that jumps 1455 times a second buzzes at 1455Hz, fixed, regardless
   // of what is being played.  The harmonic amplitudes were already smoothed;
   // the drive was not, and it multiplies the entire signal.
+  //
+  // Nor was audibility_comp, which multiplies the output.  On a held note it
+  // barely moves, but through an attack or a release the pitch and the
+  // dynamics are both moving and it steps every hop: over a whistled bass
+  // line that was a run of ticks at 32-sample spacing at every note's start
+  // and end, and smoothing it here takes the bend at those onsets down to
+  // what updating every control per sample gives.
   float smooth = coeff(0.004f, s->sample_rate);
   for (int i = 0; i < SYNTH_MAX_HARMONICS; i++) {
     s->harmonic_amp[i] += smooth * (s->harmonic_target[i] - s->harmonic_amp[i]);
   }
   s->drive_smoothed += smooth * (s->drive - s->drive_smoothed);
   s->fm_index_smoothed += smooth * (s->fm_index - s->fm_index_smoothed);
+  s->audibility_smoothed +=
+    smooth * (s->audibility_comp - s->audibility_smoothed);
 
   if (s->amp < 1e-5f && !hint->voiced) {
     s->side = 0;
@@ -2587,7 +2600,7 @@ float synth_process(struct Synth* s, const struct PitchHint* hint) {
   // anything cancelling, which for detuned copies is otherwise exactly what
   // goes wrong.
   s->side = spread * drive_gain * p->stereo_width * s->amp * p->out_gain *
-            s->audibility_comp;
+            s->audibility_smoothed;
 
-  return out * s->amp * p->out_gain * s->audibility_comp;
+  return out * s->amp * p->out_gain * s->audibility_smoothed;
 }

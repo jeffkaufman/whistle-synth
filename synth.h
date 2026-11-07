@@ -535,8 +535,10 @@ struct Synth {
   float shimmer_rate;
   // How much louder this spectrum has to be played to be heard as loudly as
   // one sitting where the cabinet and the ear are at their best.  See
-  // synth_audibility.
+  // synth_audibility.  Recomputed at the control rate, and applied as
+  // audibility_smoothed so it doesn't step there.
   float audibility_comp;
+  float audibility_smoothed;
 
   // The plucked part of the note envelope, falling from 1 to sustain_level.
   float pluck;
