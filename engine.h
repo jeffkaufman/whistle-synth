@@ -73,6 +73,9 @@ void engine_set_sustain(struct Engine* e, int step);
 // chair, a squeak of feedback -- from being played as a note.
 void engine_set_range(struct Engine* e, float min_hz, float max_hz);
 
+// For a plucked string rather than a whistle: see pitch_set_plucked.
+void engine_set_plucked(struct Engine* e, bool plucked);
+
 // The input level that counts as playing as hard as the player is going to,
 // as a 0-9 knob; anything negative leaves every voice on the value its preset
 // carries, which is where engine_init starts.

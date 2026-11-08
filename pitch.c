@@ -88,6 +88,20 @@
 // swoop: the note starts an octave out and crawls back over ~120ms.
 #define OCTAVE_GUARD_AFTER_HOPS 8
 
+// Plucked mode: an attack is the level up by this much over
+// PLUCK_LOOKBACK hops (about 5ms at 48kHz), and the reading may move by an
+// octave until the window has filled with what came after it, and a few
+// hops more for the median.  Over a mandolin take the picks came up 1.6x
+// to 3x within that, and a decaying note never more than 1.1x.
+#define PLUCK_ATTACK_RATIO 1.4f
+#define PLUCK_LOOKBACK 4
+#define PLUCK_SETTLE_EXTRA_HOPS 4
+// Not quite from the attack, though: for its first few hops the window is
+// still mostly the old note, which has by then gone over to its octave.
+#ifndef PLUCK_WAIT_HOPS
+#define PLUCK_WAIT_HOPS 3
+#endif
+
 // How fast the noise floor follows the input, per analysis hop.  Down in a
 // few tens of milliseconds, so a loud passage doesn't keep the bar raised
 // after it ends; up over a few seconds, so it takes a sustained change to
@@ -157,6 +171,10 @@ void pitch_init(struct PitchDetector* d, float sample_rate,
   // so, rather than starting at zero and false-triggering on the way up.
   d->noise_floor = 0.01f;
   d->hint.freq = 1000;
+}
+
+void pitch_set_plucked(struct PitchDetector* d, bool plucked) {
+  d->plucked = plucked;
 }
 
 void pitch_set_gate(struct PitchDetector* d, float margin) {
@@ -292,6 +310,15 @@ static void analyze(struct PitchDetector* d) {
   }
   h->level = sqrtf(sumsq / d->window_len);
 
+  float before = d->level_history[d->level_pos];
+  d->level_history[d->level_pos] = h->level;
+  d->level_pos = (d->level_pos + 1) % PLUCK_LOOKBACK;
+  if (h->level > before * PLUCK_ATTACK_RATIO) {
+    d->since_attack = 0;
+  } else if (d->since_attack < 1 << 30) {
+    d->since_attack++;
+  }
+
   float confidence;
   float freq = estimate(d, &confidence);
   h->confidence = confidence;
@@ -310,7 +337,14 @@ static void analyze(struct PitchDetector* d) {
 
   if (confidence >= CONF_TRUST) {
     bool settled = h->voiced && d->voiced_hops >= OCTAVE_GUARD_AFTER_HOPS;
-    h->freq = settled ? snap_octave(smoothed, h->freq, confidence) : smoothed;
+    // Plucked, there's no confidence high enough for an octave between
+    // attacks.
+    bool between_attacks = d->plucked &&
+      (d->since_attack < PLUCK_WAIT_HOPS ||
+       d->since_attack > d->window_len / PITCH_HOP + PLUCK_SETTLE_EXTRA_HOPS);
+    h->freq = settled
+      ? snap_octave(smoothed, h->freq, between_attacks ? 0 : confidence)
+      : smoothed;
   }
   // Otherwise h->freq keeps its last trustworthy value.
 

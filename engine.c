@@ -74,6 +74,10 @@ void engine_set_range(struct Engine* e, float min_hz, float max_hz) {
   pitch_set_trigger_range(&e->detector, min_hz, max_hz);
 }
 
+void engine_set_plucked(struct Engine* e, bool plucked) {
+  pitch_set_plucked(&e->detector, plucked);
+}
+
 void engine_set_params(struct Engine* e, const struct SynthParams* params) {
   if (!e->passthrough) {
     synth_set_params(&e->synth, params);

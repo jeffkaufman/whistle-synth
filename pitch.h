@@ -99,6 +99,13 @@ struct PitchDetector {
   int on_hops, off_hops;
   int voiced_hops;   // analysis hops since this note started
 
+  // Plucked mode: see pitch_set_plucked.  The level over the last few hops,
+  // and how many hops it's been since it last jumped.
+  bool plucked;
+  float level_history[4];
+  int level_pos;
+  int since_attack;
+
 
   struct PitchHint hint;
 };
@@ -148,6 +155,15 @@ void pitch_set_gate(struct PitchDetector* d, float margin);
 // window of settling and nothing else.
 void pitch_set_trigger_range(struct PitchDetector* d,
                              float min_hz, float max_hz);
+
+// For a plucked string rather than a whistle: the reading may only move by an
+// octave just after an attack, a jump in level, since that's the only way
+// a plucked string gets to a new note.  A string's fundamental dies away
+// faster than its second harmonic, so most of the way through its decay it
+// *is* periodic at the octave up, cleanly and confidently -- no confidence
+// threshold tells that from a real leap, but the level does: a new note is
+// picked, and the decay only falls.  Off by default.
+void pitch_set_plucked(struct PitchDetector* d, bool plucked);
 
 // Feeds one input sample.  Returns the current hint, which is re-derived
 // every PITCH_HOP samples and held in between.  Realtime safe.
